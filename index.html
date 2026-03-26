@@ -761,7 +761,7 @@
 //  GOOGLE DRIVE SYNC CONFIG
 //  → Paste your OAuth Client ID below (see setup instructions)
 // ============================================================
-const GD_CLIENT_ID = localStorage.getItem('projflow_gd_client_id') || '';
+const GD_CLIENT_ID = '695739031961-4hvv6qr0aclmg9qvcer0s5ssprbaimnb.apps.googleusercontent.com';
 const GD_SCOPE     = 'https://www.googleapis.com/auth/drive.appdata';
 const GD_FILENAME  = 'projflow_data.json';
 
@@ -2477,10 +2477,7 @@ function gdIsMobile() {
 }
 
 function gdInit() {
-  const clientId = localStorage.getItem('projflow_gd_client_id');
-  if (!clientId) { gdUpdatePanel(false); return; }
-
-  // Check if returning from hash redirect (desktop implicit flow)
+  // Check if returning from hash redirect
   if (window.location.hash.includes('access_token')) {
     const params = new URLSearchParams(window.location.hash.slice(1));
     const token = params.get('access_token');
@@ -2494,24 +2491,17 @@ function gdInit() {
     }
   }
 
-  // On mobile: show connect button, user will do manual token flow
   if (gdIsMobile()) {
-    if (localStorage.getItem('projflow_gd_token_hint')) {
-      // Had token before — prompt to reconnect
-      gdUpdatePanel(false, 'Toque para reconectar');
-    } else {
-      gdUpdatePanel(false);
-    }
+    gdUpdatePanel(false);
     return;
   }
 
-  // Desktop: use GIS popup flow
   if (!window.google?.accounts?.oauth2) {
     setTimeout(gdInit, 600);
     return;
   }
   gdTokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: clientId,
+    client_id: GD_CLIENT_ID,
     scope: GD_SCOPE,
     callback: async (resp) => {
       if (resp.error) { gdUpdatePanel(false, 'Erro: ' + resp.error); return; }
@@ -2529,34 +2519,22 @@ function gdInit() {
 }
 
 function gdSignIn() {
-  const clientId = localStorage.getItem('projflow_gd_client_id');
-  if (!clientId) {
-    const id = prompt('Cole aqui o seu Google OAuth Client ID:\n(veja as instruções em Configurações → Google Drive)');
-    if (!id || !id.includes('.apps.googleusercontent.com')) {
-      alert('Client ID inválido. Deve terminar em .apps.googleusercontent.com');
-      return;
-    }
-    localStorage.setItem('projflow_gd_client_id', id);
-    location.reload();
-    return;
-  }
-
   if (gdIsMobile()) {
+    // Reset modal state
+    document.getElementById('gd-token-step2').style.display = 'none';
+    document.getElementById('gd-token-step1-btn').style.display = 'inline-flex';
+    document.getElementById('gd-token-input').value = '';
+    document.getElementById('gd-token-error').textContent = '';
     openModal('modal-gdtoken');
     return;
   }
-
-  // Desktop popup
   if (!gdTokenClient) { gdInit(); setTimeout(() => gdTokenClient?.requestAccessToken({ prompt: 'consent' }), 800); return; }
   gdTokenClient.requestAccessToken({ prompt: '' });
 }
 
 function gdOpenAuthPage() {
-  const clientId = localStorage.getItem('projflow_gd_client_id');
-  if (!clientId) return;
-  // Open Google OAuth in new tab — user copies the token from the URL
   const url = 'https://accounts.google.com/o/oauth2/v2/auth'
-    + '?client_id=' + encodeURIComponent(clientId)
+    + '?client_id=' + encodeURIComponent(GD_CLIENT_ID)
     + '&redirect_uri=' + encodeURIComponent('https://fredcviana.github.io/projflow/')
     + '&response_type=token'
     + '&scope=' + encodeURIComponent(GD_SCOPE)
@@ -2564,6 +2542,7 @@ function gdOpenAuthPage() {
   window.open(url, '_blank');
   document.getElementById('gd-token-step2').style.display = 'block';
   document.getElementById('gd-token-step1-btn').style.display = 'none';
+  document.getElementById('gd-token-cancel-row').style.display = 'none';
 }
 
 function gdSubmitToken() {
