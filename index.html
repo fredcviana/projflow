@@ -684,6 +684,47 @@
   </div>
 </div>
 
+<!-- Modal Token Manual (mobile) -->
+<div class="modal-overlay" id="modal-gdtoken">
+  <div class="modal">
+    <div class="modal-title">Conectar Google Drive</div>
+    <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:20px;">
+      No tablet, a conexão automática não funciona. Siga os 2 passos abaixo — leva menos de 1 minuto.
+    </p>
+
+    <!-- Step 1 -->
+    <div style="display:flex; gap:12px; margin-bottom:20px; align-items:flex-start;">
+      <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; flex-shrink:0;">1</div>
+      <div style="flex:1;">
+        <div style="font-size:13px; font-weight:500; margin-bottom:6px;">Abra a página de autorização do Google</div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Vai abrir numa nova aba. Faça login e autorize o acesso.</div>
+        <button class="btn btn-primary" id="gd-token-step1-btn" onclick="gdOpenAuthPage()">Abrir página do Google →</button>
+      </div>
+    </div>
+
+    <!-- Step 2 (hidden until step 1 done) -->
+    <div id="gd-token-step2" style="display:none;">
+      <div style="display:flex; gap:12px; margin-bottom:16px; align-items:flex-start;">
+        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; flex-shrink:0;">2</div>
+        <div style="flex:1;">
+          <div style="font-size:13px; font-weight:500; margin-bottom:6px;">Copie a URL da barra de endereços e cole aqui</div>
+          <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Após autorizar, o Google vai redirecionar para o sistema. Copie a URL completa da barra de endereços (mesmo que a página pareça carregando) e cole abaixo.</div>
+          <textarea class="form-control" id="gd-token-input" rows="3" placeholder="Cole aqui a URL completa — ex: https://fredcviana.github.io/projflow/#access_token=ya29.xxx..."></textarea>
+          <div id="gd-token-error" style="color:var(--red); font-size:12px; margin-top:6px;"></div>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end;">
+        <button class="btn btn-ghost" onclick="closeModal('modal-gdtoken')">Cancelar</button>
+        <button class="btn btn-primary" onclick="gdSubmitToken()">Conectar</button>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; margin-top:8px;" id="gd-token-cancel-row">
+      <button class="btn btn-ghost" onclick="closeModal('modal-gdtoken')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Pessoa -->
 <div class="modal-overlay" id="modal-person">
   <div class="modal">
@@ -2428,46 +2469,47 @@ function showToast(msg) {
 }
 
 // ============================================================
-//  GOOGLE DRIVE SYNC
+//  GOOGLE DRIVE SYNC — Fluxo universal (desktop popup + mobile manual token)
 // ============================================================
 
 function gdIsMobile() {
-  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || window.innerWidth < 768;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || window.innerWidth < 900;
 }
 
 function gdInit() {
   const clientId = localStorage.getItem('projflow_gd_client_id');
   if (!clientId) { gdUpdatePanel(false); return; }
 
-  // Check if returning from OAuth redirect (mobile flow)
-  const params = new URLSearchParams(window.location.hash.replace('#','?').replace('access_token','access_token'));
-  const hashToken = params.get('access_token');
-  if (hashToken) {
-    gdAccessToken = hashToken;
-    localStorage.setItem('projflow_gd_token_hint', '1');
-    // Clean URL
-    history.replaceState(null, '', window.location.pathname);
-    gdUpdatePanel(true);
-    gdLoad();
+  // Check if returning from hash redirect (desktop implicit flow)
+  if (window.location.hash.includes('access_token')) {
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const token = params.get('access_token');
+    if (token) {
+      gdAccessToken = token;
+      localStorage.setItem('projflow_gd_token_hint', '1');
+      history.replaceState(null, '', window.location.pathname);
+      gdUpdatePanel(true);
+      gdLoad();
+      return;
+    }
+  }
+
+  // On mobile: show connect button, user will do manual token flow
+  if (gdIsMobile()) {
+    if (localStorage.getItem('projflow_gd_token_hint')) {
+      // Had token before — prompt to reconnect
+      gdUpdatePanel(false, 'Toque para reconectar');
+    } else {
+      gdUpdatePanel(false);
+    }
     return;
   }
 
-  // Also check sessionStorage for token saved just before redirect
-  const stored = sessionStorage.getItem('projflow_gd_access_token');
-  if (stored) {
-    gdAccessToken = stored;
-    sessionStorage.removeItem('projflow_gd_access_token');
-    gdUpdatePanel(true);
-    gdLoad();
-    return;
-  }
-
-  // Wait for GIS library then init token client (desktop popup flow)
+  // Desktop: use GIS popup flow
   if (!window.google?.accounts?.oauth2) {
     setTimeout(gdInit, 600);
     return;
   }
-
   gdTokenClient = google.accounts.oauth2.initTokenClient({
     client_id: clientId,
     scope: GD_SCOPE,
@@ -2479,32 +2521,11 @@ function gdInit() {
       await gdLoad();
     }
   });
-
-  // Auto sign-in silently if user connected before
   if (localStorage.getItem('projflow_gd_token_hint')) {
-    if (gdIsMobile()) {
-      // On mobile, silent popup often fails — use redirect directly
-      gdRedirectSignIn();
-    } else {
-      gdTokenClient.requestAccessToken({ prompt: '' });
-    }
+    gdTokenClient.requestAccessToken({ prompt: '' });
   } else {
     gdUpdatePanel(false);
   }
-}
-
-function gdRedirectSignIn() {
-  const clientId = localStorage.getItem('projflow_gd_client_id');
-  if (!clientId) return;
-  const redirectUri = encodeURIComponent(window.location.origin + window.location.pathname);
-  const scope = encodeURIComponent(GD_SCOPE);
-  const url = `https://accounts.google.com/o/oauth2/v2/auth`
-    + `?client_id=${encodeURIComponent(clientId)}`
-    + `&redirect_uri=${redirectUri}`
-    + `&response_type=token`
-    + `&scope=${scope}`
-    + `&include_granted_scopes=true`;
-  window.location.href = url;
 }
 
 function gdSignIn() {
@@ -2520,23 +2541,53 @@ function gdSignIn() {
     return;
   }
 
-  // Mobile: always use redirect (more reliable)
   if (gdIsMobile()) {
-    gdRedirectSignIn();
+    openModal('modal-gdtoken');
     return;
   }
 
-  // Desktop: try popup first
-  if (!gdTokenClient) {
-    gdInit();
-    setTimeout(() => gdTokenClient?.requestAccessToken({ prompt: 'consent' }), 800);
-    return;
-  }
+  // Desktop popup
+  if (!gdTokenClient) { gdInit(); setTimeout(() => gdTokenClient?.requestAccessToken({ prompt: 'consent' }), 800); return; }
   gdTokenClient.requestAccessToken({ prompt: '' });
 }
 
+function gdOpenAuthPage() {
+  const clientId = localStorage.getItem('projflow_gd_client_id');
+  if (!clientId) return;
+  // Open Google OAuth in new tab — user copies the token from the URL
+  const url = 'https://accounts.google.com/o/oauth2/v2/auth'
+    + '?client_id=' + encodeURIComponent(clientId)
+    + '&redirect_uri=' + encodeURIComponent('https://fredcviana.github.io/projflow/')
+    + '&response_type=token'
+    + '&scope=' + encodeURIComponent(GD_SCOPE)
+    + '&prompt=consent';
+  window.open(url, '_blank');
+  document.getElementById('gd-token-step2').style.display = 'block';
+  document.getElementById('gd-token-step1-btn').style.display = 'none';
+}
+
+function gdSubmitToken() {
+  const raw = document.getElementById('gd-token-input').value.trim();
+  // Accept full URL or just the token
+  let token = raw;
+  if (raw.includes('access_token=')) {
+    const m = raw.match(/access_token=([^&]+)/);
+    token = m ? m[1] : raw;
+  }
+  if (!token || token.length < 20) {
+    document.getElementById('gd-token-error').textContent = 'Token inválido. Copie a URL completa da barra de endereços após autorizar.';
+    return;
+  }
+  gdAccessToken = token;
+  localStorage.setItem('projflow_gd_token_hint', '1');
+  closeModal('modal-gdtoken');
+  document.getElementById('gd-token-input').value = '';
+  gdUpdatePanel(true);
+  gdLoad();
+}
+
 function gdSignOut() {
-  if (gdAccessToken) google.accounts.oauth2.revoke(gdAccessToken);
+  try { if (gdAccessToken && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(gdAccessToken); } catch(e) {}
   gdAccessToken = null;
   gdFileId = null;
   localStorage.removeItem('projflow_gd_token_hint');
