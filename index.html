@@ -1,0 +1,2642 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestão de Projetos</title>
+<!-- Google Identity & Drive API -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0f0f10;
+    --surface: #1a1a1e;
+    --surface2: #222228;
+    --surface3: #2a2a32;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #e8e8ec;
+    --muted: #7a7a8a;
+    --accent: #6c63ff;
+    --accent2: #9d97ff;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --teal: #2dd4bf;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --font: 'DM Sans', sans-serif;
+    --mono: 'DM Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* Layout */
+  .shell { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 220px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 20px 0;
+    flex-shrink: 0;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    padding: 0 20px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .logo span { color: var(--accent2); }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 20px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 13.5px;
+    font-weight: 400;
+    transition: all 0.15s;
+    border-left: 2px solid transparent;
+  }
+  .nav-item:hover { color: var(--text); background: var(--surface2); }
+  .nav-item.active { color: var(--text); background: var(--surface2); border-left-color: var(--accent2); }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  .nav-section {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 16px 20px 6px;
+  }
+
+  .main {
+    margin-left: 220px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .topbar-title { font-size: 16px; font-weight: 500; }
+  .topbar-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .content { padding: 28px; flex: 1; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #7c74ff; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border2); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--border2); background: var(--surface2); }
+  .btn-sm { padding: 5px 11px; font-size: 12px; }
+  .btn-danger { background: rgba(248,113,113,0.12); color: var(--red); border: 1px solid rgba(248,113,113,0.2); }
+  .btn-danger:hover { background: rgba(248,113,113,0.2); }
+  .btn-success { background: rgba(52,211,153,0.12); color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
+  .btn-success:hover { background: rgba(52,211,153,0.22); }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .card-title { font-size: 14px; font-weight: 500; }
+
+  /* Grid */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+
+  /* Stats */
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+  }
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
+  .stat-value { font-size: 26px; font-weight: 600; letter-spacing: -1px; }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* Badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .badge-green { background: rgba(52,211,153,0.12); color: var(--green); }
+  .badge-amber { background: rgba(251,191,36,0.12); color: var(--amber); }
+  .badge-red { background: rgba(248,113,113,0.12); color: var(--red); }
+  .badge-blue { background: rgba(96,165,250,0.12); color: var(--blue); }
+  .badge-gray { background: var(--surface2); color: var(--muted); }
+  .badge-purple { background: rgba(108,99,255,0.15); color: var(--accent2); }
+
+  /* Forms */
+  .form-group { margin-bottom: 16px; }
+  .form-label { font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 6px; display: block; }
+  .form-control {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13.5px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .form-control:focus { border-color: var(--accent); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    padding: 0 16px 12px;
+    text-align: left;
+  }
+  tbody tr {
+    border-top: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  tbody tr:hover { background: var(--surface2); }
+  tbody td { padding: 12px 16px; font-size: 13.5px; vertical-align: middle; }
+
+  /* Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    padding: 28px;
+    width: 520px;
+    max-width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal-wide { width: 700px; }
+  .modal-title { font-size: 17px; font-weight: 600; margin-bottom: 20px; }
+
+  /* Progress bar */
+  .progress-wrap { height: 5px; background: var(--surface3); border-radius: 3px; overflow: hidden; }
+  .progress-bar { height: 100%; border-radius: 3px; background: var(--accent); transition: width 0.3s; }
+  .progress-bar.green { background: var(--green); }
+  .progress-bar.amber { background: var(--amber); }
+  .progress-bar.red { background: var(--red); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--surface2); padding: 4px; border-radius: var(--radius-sm); width: fit-content; }
+  .tab { padding: 7px 16px; border-radius: 5px; cursor: pointer; font-size: 13px; color: var(--muted); transition: all 0.15s; }
+  .tab.active { background: var(--surface); color: var(--text); font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* Person avatar */
+  .avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .avatar-sm { width: 22px; height: 22px; font-size: 9px; }
+
+  /* Dashboard charts */
+  .heatmap-cell {
+    display: inline-block;
+    width: 28px; height: 28px;
+    border-radius: 4px;
+    cursor: default;
+    transition: opacity 0.15s;
+    font-size: 9px;
+    line-height: 28px;
+    text-align: center;
+    font-weight: 600;
+  }
+  .heatmap-cell:hover { opacity: 0.8; }
+
+  /* Timeline bar */
+  .timeline-bar {
+    height: 20px;
+    border-radius: 4px;
+    position: absolute;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    font-size: 10px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    opacity: 0.9;
+  }
+  .timeline-bar:hover { opacity: 1; }
+
+  /* Expand/collapse */
+  .expand-toggle { cursor: pointer; user-select: none; }
+  .expand-icon { transition: transform 0.2s; display: inline-block; }
+  .expanded .expand-icon { transform: rotate(90deg); }
+
+  /* Pills */
+  .pill-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* Separator */
+  .sep { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+  /* Empty state */
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+  }
+  .empty-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.4; }
+  .empty-text { font-size: 14px; margin-bottom: 6px; }
+  .empty-sub { font-size: 12px; opacity: 0.7; }
+
+  /* Slider */
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 5px;
+    background: var(--surface3);
+    border-radius: 3px;
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+
+  /* Tooltip */
+  .tooltip-wrap { position: relative; }
+  .tooltip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface3);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    white-space: nowrap;
+    z-index: 300;
+    pointer-events: none;
+  }
+  .tooltip-wrap:hover .tooltip { display: block; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+
+  /* Responsive tweaks */
+  @media (max-width: 768px) {
+    .sidebar { width: 56px; }
+    .sidebar .logo span, .sidebar .nav-item span, .sidebar .nav-section { display: none; }
+    .main { margin-left: 56px; }
+    .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; }
+  }
+
+  .breadcrumb { font-size: 12px; color: var(--muted); margin-bottom: 20px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; cursor: pointer; }
+  .breadcrumb a:hover { color: var(--text); }
+  .breadcrumb span { margin: 0 6px; }
+
+  .actions-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  .info-row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .info-item { }
+  .info-item .lbl { font-size: 11px; color: var(--muted); }
+  .info-item .val { font-size: 13px; font-weight: 500; margin-top: 2px; }
+
+  .delivery-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .delivery-header {
+    background: var(--surface2);
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+  }
+  .delivery-body { background: var(--surface); padding: 0 18px; max-height: 0; overflow: hidden; transition: max-height 0.3s, padding 0.3s; }
+  .delivery-body.open { max-height: 2000px; padding: 16px 18px; }
+
+  .activity-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 80px 110px 110px 120px 100px;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .activity-row:last-child { border-bottom: none; }
+  .activity-header {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+    display: grid;
+    grid-template-columns: 2fr 1fr 80px 110px 110px 120px 100px;
+    gap: 12px;
+  }
+
+  .chart-bar-wrap { position: relative; margin-top: 8px; }
+
+  .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 14px; }
+
+  /* Color mapping */
+  .c0 { background: #6c63ff; color: #fff; }
+  .c1 { background: #34d399; color: #064e3b; }
+  .c2 { background: #f59e0b; color: #78350f; }
+  .c3 { background: #60a5fa; color: #1e3a5f; }
+  .c4 { background: #f472b6; color: #831843; }
+  .c5 { background: #a78bfa; color: #2e1065; }
+  .c6 { background: #2dd4bf; color: #134e4a; }
+  .c7 { background: #fb923c; color: #7c2d12; }
+  .c8 { background: #e879f9; color: #4a044e; }
+  .c9 { background: #4ade80; color: #14532d; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="logo">Proj<span>·</span>Flow</div>
+    <div class="nav-item active" onclick="navigate('dashboard')">
+      <span class="nav-icon">◈</span><span>Dashboard</span>
+    </div>
+    <div class="nav-item" onclick="navigate('projects')">
+      <span class="nav-icon">⬡</span><span>Projetos</span>
+    </div>
+    <div class="nav-item" onclick="navigate('activities')">
+      <span class="nav-icon">▦</span><span>Atividades</span>
+    </div>
+    <div class="nav-item" onclick="navigate('team')">
+      <span class="nav-icon">◎</span><span>Equipe</span>
+    </div>
+    <div class="nav-section">Configurações</div>
+    <div class="nav-item" onclick="navigate('settings')">
+      <span class="nav-icon">◻</span><span>Configurações</span>
+    </div>
+    <!-- Google Drive sync status -->
+    <div style="margin-top:auto; padding:16px 14px 8px; border-top:1px solid var(--border);">
+      <div id="gd-status-panel">
+        <button class="btn btn-ghost" style="width:100%; font-size:12px; justify-content:center;" onclick="gdSignIn()">
+          <svg width="14" height="14" viewBox="0 0 24 24" style="flex-shrink:0"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          <span>Conectar Google Drive</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title" id="topbar-title">Dashboard</div>
+        <div class="topbar-sub" id="topbar-sub">Visão geral do portfólio</div>
+      </div>
+      <div class="actions-row" id="topbar-actions"></div>
+    </div>
+
+    <div class="content" id="page-content"></div>
+  </div>
+</div>
+
+<!-- ========== MODALS ========== -->
+
+<!-- Modal Projeto -->
+<div class="modal-overlay" id="modal-project">
+  <div class="modal">
+    <div class="modal-title" id="modal-project-title">Novo Projeto</div>
+    <div class="form-group">
+      <label class="form-label">Nome do Projeto *</label>
+      <input class="form-control" id="p-name" placeholder="Ex: Diagnóstico Ambiental Municipal" />
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Data de Início *</label>
+        <input class="form-control" id="p-start" type="date" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data de Término *</label>
+        <input class="form-control" id="p-end" type="date" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Cliente / Contratante</label>
+      <input class="form-control" id="p-client" placeholder="Ex: Prefeitura de Belo Horizonte" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Descrição</label>
+      <textarea class="form-control" id="p-desc" rows="3" placeholder="Descreva brevemente o projeto..."></textarea>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-project')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveProject()">Salvar Projeto</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Entrega -->
+<div class="modal-overlay" id="modal-delivery">
+  <div class="modal">
+    <div class="modal-title">Nova Entrega</div>
+    <div class="form-group">
+      <label class="form-label">Nome da Entrega *</label>
+      <input class="form-control" id="d-name" placeholder="Ex: Relatório de Diagnóstico" />
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Data de Início</label>
+        <input class="form-control" id="d-start" type="date" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prazo</label>
+        <input class="form-control" id="d-end" type="date" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Descrição</label>
+      <textarea class="form-control" id="d-desc" rows="2" placeholder="Breve descrição..."></textarea>
+    </div>
+    <input type="hidden" id="d-project-id" />
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-delivery')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveDelivery()">Salvar Entrega</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Atividade -->
+<div class="modal-overlay" id="modal-activity">
+  <div class="modal modal-wide">
+    <div class="modal-title" id="modal-activity-title">Nova Atividade</div>
+    <div class="form-group">
+      <label class="form-label">Nome da Atividade *</label>
+      <input class="form-control" id="a-name" placeholder="Ex: Levantamento de dados primários" />
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Responsável *</label>
+        <select class="form-control" id="a-person"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Carga Horária (h) *</label>
+        <input class="form-control" id="a-hours" type="number" min="1" max="9999" placeholder="Ex: 40" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Data de Início *</label>
+        <input class="form-control" id="a-start" type="date" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data de Término *</label>
+        <input class="form-control" id="a-end" type="date" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Descrição</label>
+      <textarea class="form-control" id="a-desc" rows="2" placeholder="Detalhes da atividade..."></textarea>
+    </div>
+    <input type="hidden" id="a-delivery-id" />
+    <input type="hidden" id="a-activity-id" />
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-activity')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveActivity()">Salvar Atividade</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Andamento -->
+<div class="modal-overlay" id="modal-progress">
+  <div class="modal">
+    <div class="modal-title">Atualizar Andamento</div>
+    <div id="progress-activity-info" style="margin-bottom:16px; padding:12px; background:var(--surface2); border-radius:var(--radius-sm);"></div>
+    <div class="form-group">
+      <label class="form-label">Progresso: <strong id="progress-label">0%</strong></label>
+      <input type="range" id="progress-slider" min="0" max="100" step="5" value="0"
+        oninput="document.getElementById('progress-label').textContent=this.value+'%'" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Status</label>
+      <select class="form-control" id="progress-status">
+        <option value="nao_iniciado">Não iniciado</option>
+        <option value="em_andamento">Em andamento</option>
+        <option value="concluido">Concluído</option>
+        <option value="atrasado">Atrasado</option>
+        <option value="bloqueado">Bloqueado</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Observação</label>
+      <textarea class="form-control" id="progress-note" rows="2" placeholder="Notas de andamento..."></textarea>
+    </div>
+    <input type="hidden" id="progress-activity-id" />
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-progress')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveProgress()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Importar MS Project -->
+<div class="modal-overlay" id="modal-msproject">
+  <div class="modal modal-wide">
+    <div class="modal-title">Importar do Microsoft Project</div>
+
+    <!-- Step 1: Select file -->
+    <div id="msp-step1">
+      <p style="font-size:13px; color:var(--muted); margin-bottom:16px; line-height:1.7;">
+        Exporte seu projeto no MS Project como <strong style="color:var(--text);">XML</strong> (Arquivo → Salvar Como → Formato XML do Project *.xml).<br>
+        O importador lerá tarefas, subtarefas, datas de início/término e durações automaticamente.
+      </p>
+      <div id="msp-dropzone" onclick="document.getElementById('msp-file').click()"
+        style="border:1.5px dashed var(--border2); border-radius:10px; padding:36px; text-align:center; cursor:pointer; transition:border-color 0.15s;"
+        ondragover="event.preventDefault(); this.style.borderColor='var(--accent)'"
+        ondragleave="this.style.borderColor='var(--border2)'"
+        ondrop="handleMspDrop(event)">
+        <div style="font-size:28px; margin-bottom:10px; opacity:0.4;">⬡</div>
+        <div style="font-size:14px; font-weight:500; margin-bottom:4px;">Solte o arquivo .xml aqui</div>
+        <div style="font-size:12px; color:var(--muted);">ou clique para selecionar</div>
+        <input type="file" id="msp-file" accept=".xml,.mpp" style="display:none" onchange="handleMspFile(this)">
+      </div>
+      <div id="msp-file-info" style="display:none; margin-top:12px; padding:10px 14px; background:var(--surface2); border-radius:var(--radius-sm); font-size:13px;"></div>
+    </div>
+
+    <!-- Step 2: Preview & map -->
+    <div id="msp-step2" style="display:none;">
+      <div id="msp-summary" style="margin-bottom:16px; padding:12px 14px; background:var(--surface2); border-radius:var(--radius-sm); font-size:13px;"></div>
+
+      <div class="form-group">
+        <label class="form-label">Vincular ao Projeto *</label>
+        <select class="form-control" id="msp-target-project">
+          <option value="">— Criar novo projeto —</option>
+        </select>
+      </div>
+
+      <div style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); margin-bottom:10px;">Preview das tarefas</div>
+      <div id="msp-preview" style="max-height:280px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--radius-sm);"></div>
+    </div>
+
+    <div id="msp-error" style="display:none; padding:10px 14px; background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.2); border-radius:var(--radius-sm); font-size:13px; color:var(--red); margin-top:12px;"></div>
+
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-msproject'); resetMspModal()">Cancelar</button>
+      <button class="btn btn-primary" id="msp-btn-import" style="display:none;" onclick="executeMspImport()">↓ Importar Tarefas</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Pessoa -->
+<div class="modal-overlay" id="modal-person">
+  <div class="modal">
+    <div class="modal-title">Cadastrar Pessoa</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Nome Completo *</label>
+        <input class="form-control" id="per-name" placeholder="Ex: Ana Silva" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cargo / Função</label>
+        <input class="form-control" id="per-role" placeholder="Ex: Engenheira Ambiental" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">E-mail</label>
+        <input class="form-control" id="per-email" type="email" placeholder="email@exemplo.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Carga Horária Semanal (h)</label>
+        <input class="form-control" id="per-weekly" type="number" value="40" min="1" max="60" />
+      </div>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-person')">Cancelar</button>
+      <button class="btn btn-primary" onclick="savePerson()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  GOOGLE DRIVE SYNC CONFIG
+//  → Paste your OAuth Client ID below (see setup instructions)
+// ============================================================
+const GD_CLIENT_ID = localStorage.getItem('projflow_gd_client_id') || '';
+const GD_SCOPE     = 'https://www.googleapis.com/auth/drive.appdata';
+const GD_FILENAME  = 'projflow_data.json';
+
+let gdTokenClient  = null;
+let gdAccessToken  = null;
+let gdFileId       = null;
+let gdSyncing      = false;
+let gdSyncTimer    = null;
+
+// ============================================================
+//  DATA STORE  (localStorage primary, Drive secondary)
+// ============================================================
+let state = loadState();
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem('projflow_v2');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return { projects: [], deliveries: [], activities: [], team: [], nextId: 1 };
+}
+
+function saveState() {
+  localStorage.setItem('projflow_v2', JSON.stringify(state));
+  // Debounce Drive sync — write 2s after last change
+  if (gdAccessToken) {
+    clearTimeout(gdSyncTimer);
+    gdSyncTimer = setTimeout(gdSave, 2000);
+  }
+}
+
+function uid() { return state.nextId++; }
+
+// ============================================================
+//  NAVIGATION
+// ============================================================
+let currentPage = 'dashboard';
+let currentProjectId = null;
+
+function navigate(page, id) {
+  currentPage = page;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const map = { dashboard: 0, projects: 1, activities: 2, team: 3, settings: 4 };
+  if (map[page] !== undefined) {
+    document.querySelectorAll('.nav-item')[map[page]]?.classList.add('active');
+  }
+  if (id) currentProjectId = id;
+  render();
+}
+
+function render() {
+  const pages = {
+    dashboard: renderDashboard,
+    projects: renderProjects,
+    project_detail: renderProjectDetail,
+    activities: renderActivitiesDashboard,
+    team: renderTeam,
+    settings: renderSettings,
+  };
+  (pages[currentPage] || renderDashboard)();
+  saveState();
+}
+
+// ============================================================
+//  RENDER: DASHBOARD
+// ============================================================
+function renderDashboard() {
+  document.getElementById('topbar-title').textContent = 'Dashboard';
+  document.getElementById('topbar-sub').textContent = 'Visão geral do portfólio';
+  document.getElementById('topbar-actions').innerHTML = '';
+
+  const totalProjects = state.projects.length;
+  const activeProjects = state.projects.filter(p => p.status !== 'concluido').length;
+  const totalActivities = state.activities.length;
+  const totalHours = state.activities.reduce((s, a) => s + (parseFloat(a.hours)||0), 0);
+  const doneActivities = state.activities.filter(a => a.status === 'concluido').length;
+  const lateActivities = state.activities.filter(a => isLate(a)).length;
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="grid-4" style="margin-bottom:24px;">
+      <div class="stat">
+        <div class="stat-label">Projetos Ativos</div>
+        <div class="stat-value">${activeProjects}</div>
+        <div class="stat-sub">${totalProjects} total</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Atividades</div>
+        <div class="stat-value">${totalActivities}</div>
+        <div class="stat-sub">${doneActivities} concluídas</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Total de Horas</div>
+        <div class="stat-value">${totalHours.toLocaleString('pt-BR')}</div>
+        <div class="stat-sub">alocadas</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Atividades Atrasadas</div>
+        <div class="stat-value" style="color:${lateActivities>0?'var(--red)':'var(--green)'}">${lateActivities}</div>
+        <div class="stat-sub">${lateActivities > 0 ? 'requer atenção' : 'tudo em dia'}</div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:24px;">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Horas por Pessoa (Total)</div>
+        </div>
+        ${renderHoursByPerson()}
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Status das Atividades</div>
+        </div>
+        ${renderStatusSummary()}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Mapa de Carga — Horas por Pessoa por Mês</div>
+      </div>
+      ${renderHeatmap()}
+    </div>
+  `;
+}
+
+function isLate(a) {
+  if (!a.end || a.status === 'concluido') return false;
+  return new Date(a.end) < new Date();
+}
+
+function getStatusBadge(status) {
+  const map = {
+    nao_iniciado: ['badge-gray', 'Não iniciado'],
+    em_andamento: ['badge-blue', 'Em andamento'],
+    concluido: ['badge-green', 'Concluído'],
+    atrasado: ['badge-red', 'Atrasado'],
+    bloqueado: ['badge-amber', 'Bloqueado'],
+  };
+  const [cls, label] = map[status] || ['badge-gray', status || 'Não iniciado'];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function getPersonColor(idx) {
+  const colors = ['#6c63ff','#34d399','#f59e0b','#60a5fa','#f472b6','#a78bfa','#2dd4bf','#fb923c','#e879f9','#4ade80'];
+  return colors[idx % colors.length];
+}
+
+function renderHoursByPerson() {
+  if (!state.team.length) return '<div class="empty"><div class="empty-text">Nenhuma pessoa cadastrada</div></div>';
+  const hoursMap = {};
+  state.team.forEach(p => hoursMap[p.id] = 0);
+  state.activities.forEach(a => {
+    if (a.personId) hoursMap[a.personId] = (hoursMap[a.personId] || 0) + (parseFloat(a.hours)||0);
+  });
+  const max = Math.max(...Object.values(hoursMap), 1);
+  return state.team.map((p, i) => {
+    const h = hoursMap[p.id] || 0;
+    const pct = (h / max * 100).toFixed(0);
+    const col = getPersonColor(i);
+    return `
+      <div style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div class="avatar" style="background:${col}22; color:${col}; font-size:10px;">${initials(p.name)}</div>
+            <span style="font-size:13px;">${p.name}</span>
+          </div>
+          <span style="font-size:12px; color:var(--muted); font-family:var(--mono);">${h}h</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar" style="width:${pct}%; background:${col};"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderStatusSummary() {
+  const s = { nao_iniciado:0, em_andamento:0, concluido:0, atrasado:0, bloqueado:0 };
+  state.activities.forEach(a => {
+    const st = isLate(a) && a.status !== 'concluido' ? 'atrasado' : (a.status || 'nao_iniciado');
+    s[st] = (s[st]||0)+1;
+  });
+  const total = state.activities.length || 1;
+  const items = [
+    ['Concluído', s.concluido, '#34d399'],
+    ['Em andamento', s.em_andamento, '#60a5fa'],
+    ['Não iniciado', s.nao_iniciado, '#7a7a8a'],
+    ['Atrasado', s.atrasado, '#f87171'],
+    ['Bloqueado', s.bloqueado, '#fbbf24'],
+  ];
+  return items.map(([label, count, col]) => `
+    <div style="margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+        <span style="font-size:12px; color:var(--muted);">${label}</span>
+        <span style="font-size:12px; font-family:var(--mono);">${count}</span>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-bar" style="width:${(count/total*100).toFixed(0)}%; background:${col};"></div>
+      </div>
+    </div>`).join('');
+}
+
+function renderHeatmap() {
+  if (!state.team.length || !state.activities.length) {
+    return '<div class="empty"><div class="empty-text">Aloque atividades para ver o mapa de carga</div></div>';
+  }
+
+  // Get date range
+  let minDate = null, maxDate = null;
+  state.activities.forEach(a => {
+    if (a.start) { const d = new Date(a.start); if (!minDate || d < minDate) minDate = d; }
+    if (a.end)   { const d = new Date(a.end);   if (!maxDate || d > maxDate) maxDate = d; }
+  });
+  if (!minDate) minDate = new Date();
+  if (!maxDate) { maxDate = new Date(minDate); maxDate.setMonth(maxDate.getMonth()+6); }
+
+  // Build month list
+  const months = [];
+  const cur = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+  const endM = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+  while (cur <= endM) {
+    months.push(new Date(cur));
+    cur.setMonth(cur.getMonth()+1);
+  }
+  if (months.length > 18) months.splice(18);
+
+  // Compute hours per person per month
+  const data = {}; // data[personId][monthKey] = hours
+  state.team.forEach(p => data[p.id] = {});
+
+  state.activities.forEach(a => {
+    if (!a.personId || !a.start || !a.end) return;
+    const start = new Date(a.start);
+    const end = new Date(a.end);
+    // distribute hours across months
+    const daysTotal = Math.max(1, (end - start) / 86400000);
+    months.forEach(m => {
+      const mStart = new Date(m);
+      const mEnd = new Date(m.getFullYear(), m.getMonth()+1, 0);
+      const overlapStart = start > mStart ? start : mStart;
+      const overlapEnd = end < mEnd ? end : mEnd;
+      if (overlapStart <= overlapEnd) {
+        const days = (overlapEnd - overlapStart) / 86400000 + 1;
+        const h = (parseFloat(a.hours)||0) * days / daysTotal;
+        const key = `${m.getFullYear()}-${m.getMonth()}`;
+        data[a.personId][key] = (data[a.personId][key] || 0) + h;
+      }
+    });
+  });
+
+  // Find max for color scale
+  let maxH = 0;
+  Object.values(data).forEach(pd => Object.values(pd).forEach(h => { if(h>maxH) maxH=h; }));
+
+  const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+  const cellW = Math.max(28, Math.min(52, Math.floor((window.innerWidth - 340) / months.length)));
+
+  let html = `<div style="overflow-x:auto;"><table style="border-collapse:collapse; min-width:100%;">
+    <thead><tr>
+      <th style="padding:4px 10px 8px 0; font-size:11px; color:var(--muted); font-weight:500; text-align:left; white-space:nowrap; min-width:120px;">Pessoa</th>
+      ${months.map(m => `<th style="padding:4px 4px 8px; font-size:10px; color:var(--muted); text-align:center; min-width:${cellW}px;">${monthNames[m.getMonth()]}<br>${String(m.getFullYear()).slice(2)}</th>`).join('')}
+    </tr></thead>
+    <tbody>`;
+
+  state.team.forEach((p, i) => {
+    const col = getPersonColor(i);
+    html += `<tr>
+      <td style="padding:4px 10px 4px 0; white-space:nowrap;">
+        <div style="display:flex; align-items:center; gap:7px;">
+          <div class="avatar avatar-sm" style="background:${col}22; color:${col};">${initials(p.name)}</div>
+          <span style="font-size:12px;">${p.name.split(' ')[0]}</span>
+        </div>
+      </td>`;
+    months.forEach(m => {
+      const key = `${m.getFullYear()}-${m.getMonth()}`;
+      const h = data[p.id][key] || 0;
+      let bg = 'var(--surface2)';
+      let textCol = 'var(--muted)';
+      if (h > 0) {
+        const intensity = Math.min(h / (maxH || 1), 1);
+        const alpha = 0.15 + intensity * 0.75;
+        bg = hexToRgba(col, alpha);
+        textCol = intensity > 0.5 ? '#fff' : col;
+      }
+      html += `<td style="padding:3px 4px; text-align:center;">
+        <div class="tooltip-wrap">
+          <div class="heatmap-cell" style="background:${bg}; color:${textCol}; width:${cellW}px; height:${cellW}px; line-height:${cellW}px; font-size:${cellW>36?10:9}px;">
+            ${h>0 ? Math.round(h)+'h' : ''}
+          </div>
+          ${h>0?`<div class="tooltip">${p.name}<br>${monthNames[m.getMonth()]}/${m.getFullYear()}: <b>${Math.round(h)}h</b></div>`:''}
+        </div>
+      </td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+
+  // Legend
+  html += `<div style="display:flex; align-items:center; gap:8px; margin-top:16px; font-size:11px; color:var(--muted);">
+    <span>Baixa carga</span>
+    ${['0.2','0.4','0.6','0.8','1'].map(op=>`<div style="width:20px; height:14px; border-radius:3px; background:rgba(108,99,255,${op});"></div>`).join('')}
+    <span>Alta carga</span>
+  </div>`;
+
+  return html;
+}
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
+}
+
+// ============================================================
+//  RENDER: PROJECTS LIST
+// ============================================================
+function renderProjects() {
+  document.getElementById('topbar-title').textContent = 'Projetos';
+  document.getElementById('topbar-sub').textContent = `${state.projects.length} projeto(s) cadastrado(s)`;
+  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-ghost" onclick="openMspModal()">↑ Importar MS Project</button><button class="btn btn-primary" onclick="openNewProject()">+ Novo Projeto</button>`;
+
+  if (!state.projects.length) {
+    document.getElementById('page-content').innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">⬡</div>
+        <div class="empty-text">Nenhum projeto cadastrado</div>
+        <div class="empty-sub">Clique em "Novo Projeto" para começar</div>
+      </div>`;
+    return;
+  }
+
+  const rows = state.projects.map(p => {
+    const deliveries = state.deliveries.filter(d => d.projectId === p.id);
+    const activities = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
+    const totalH = activities.reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+    const doneH = activities.filter(a => a.status === 'concluido').reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+    const pct = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
+    const lates = activities.filter(a => isLate(a)).length;
+
+    return `
+      <div class="card" style="margin-bottom:12px; cursor:pointer;" onclick="navigate('project_detail', ${p.id})">
+        <div style="display:flex; align-items:flex-start; gap:16px;">
+          <div style="flex:1; min-width:0;">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
+              <span style="font-size:15px; font-weight:500;">${esc(p.name)}</span>
+              ${lates > 0 ? `<span class="badge badge-red">${lates} atrasada${lates>1?'s':''}</span>` : ''}
+            </div>
+            <div class="info-row" style="margin-bottom:12px;">
+              ${p.client ? `<div class="info-item"><div class="lbl">Cliente</div><div class="val">${esc(p.client)}</div></div>` : ''}
+              <div class="info-item"><div class="lbl">Período</div><div class="val">${fmtDate(p.start)} → ${fmtDate(p.end)}</div></div>
+              <div class="info-item"><div class="lbl">Entregas</div><div class="val">${deliveries.length}</div></div>
+              <div class="info-item"><div class="lbl">Horas Totais</div><div class="val">${totalH.toLocaleString('pt-BR')}h</div></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div class="progress-wrap" style="flex:1;">
+                <div class="progress-bar ${pct===100?'green':pct>60?'':pct>30?'amber':'red'}" style="width:${pct}%;"></div>
+              </div>
+              <span style="font-size:11px; color:var(--muted); white-space:nowrap;">${pct}% concluído</span>
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; flex-shrink:0;" onclick="event.stopPropagation()">
+            <button class="btn btn-ghost btn-sm" onclick="openEditProject(${p.id})">✎ Editar</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id})">✕</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('page-content').innerHTML = rows;
+}
+
+// ============================================================
+//  RENDER: PROJECT DETAIL
+// ============================================================
+function renderProjectDetail() {
+  const p = state.projects.find(x => x.id === currentProjectId);
+  if (!p) { navigate('projects'); return; }
+
+  document.getElementById('topbar-title').textContent = p.name;
+  document.getElementById('topbar-sub').textContent = p.client || 'Projeto';
+  document.getElementById('topbar-actions').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Entrega</button>
+    <button class="btn btn-primary btn-sm" onclick="openEditProject(${p.id})">✎ Editar Projeto</button>
+  `;
+
+  const deliveries = state.deliveries.filter(d => d.projectId === p.id);
+  const allActs = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
+  const totalH = allActs.reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+  const doneH = allActs.filter(a => a.status === 'concluido').reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+  const pct = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
+
+  let deliveriesHTML = '';
+  if (!deliveries.length) {
+    deliveriesHTML = `<div class="empty"><div class="empty-icon">◻</div><div class="empty-text">Nenhuma entrega cadastrada</div><div class="empty-sub">Clique em "+ Entrega" para adicionar</div></div>`;
+  } else {
+    deliveriesHTML = deliveries.map(d => renderDeliveryCard(d, p)).join('');
+  }
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="breadcrumb">
+      <a onclick="navigate('projects')">Projetos</a>
+      <span>›</span>
+      <span>${esc(p.name)}</span>
+    </div>
+
+    <div class="grid-4" style="margin-bottom:24px;">
+      <div class="stat">
+        <div class="stat-label">Progresso</div>
+        <div class="stat-value">${pct}%</div>
+        <div class="stat-sub">${Math.round(doneH)}h / ${totalH}h</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Entregas</div>
+        <div class="stat-value">${deliveries.length}</div>
+        <div class="stat-sub">${deliveries.filter(d => d.status === 'concluido').length} concluídas</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Atividades</div>
+        <div class="stat-value">${allActs.length}</div>
+        <div class="stat-sub">${allActs.filter(a=>a.status==='concluido').length} concluídas</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Horas Alocadas</div>
+        <div class="stat-value">${totalH.toLocaleString('pt-BR')}</div>
+        <div class="stat-sub">horas totais</div>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+      <div class="section-title">Entregas e Atividades</div>
+      <button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Nova Entrega</button>
+    </div>
+    ${deliveriesHTML}
+  `;
+}
+
+function renderDeliveryCard(d, p) {
+  const acts = state.activities.filter(a => a.deliveryId === d.id);
+  const totalH = acts.reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+  const doneH = acts.filter(a => a.status === 'concluido').reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+  const pct = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
+  const lates = acts.filter(a => isLate(a)).length;
+
+  const actsHTML = acts.length ? `
+    <div class="activity-header">
+      <div>Atividade</div>
+      <div>Responsável</div>
+      <div>Horas</div>
+      <div>Início</div>
+      <div>Término</div>
+      <div>Progresso</div>
+      <div>Status</div>
+    </div>
+    ${acts.map(a => renderActivityRow(a)).join('')}
+  ` : `<div style="color:var(--muted); font-size:13px; padding:12px 0;">Nenhuma atividade. <a onclick="openNewActivity(${d.id})" style="color:var(--accent2); cursor:pointer;">Adicionar atividade</a></div>`;
+
+  return `
+    <div class="delivery-card">
+      <div class="delivery-header" onclick="toggleDelivery(${d.id})">
+        <span class="expand-icon" id="exp-${d.id}">▶</span>
+        <div style="flex:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span style="font-size:14px; font-weight:500;">${esc(d.name)}</span>
+            ${lates > 0 ? `<span class="badge badge-red">${lates} atrasada${lates>1?'s':''}</span>` : ''}
+          </div>
+          <div style="font-size:11px; color:var(--muted); margin-top:3px;">
+            ${fmtDate(d.start)} → ${fmtDate(d.end)} · ${acts.length} atividade${acts.length!==1?'s':''} · ${totalH}h · ${pct}% concluído
+          </div>
+        </div>
+        <div style="display:flex; gap:6px;" onclick="event.stopPropagation()">
+          <button class="btn btn-ghost btn-sm" onclick="openNewActivity(${d.id})">+ Atividade</button>
+          <button class="btn btn-ghost btn-sm" onclick="openEditDelivery(${d.id})">✎</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteDelivery(${d.id})">✕</button>
+        </div>
+      </div>
+      <div class="delivery-body" id="body-${d.id}">
+        ${actsHTML}
+      </div>
+    </div>`;
+}
+
+function renderActivityRow(a) {
+  const person = state.team.find(p => p.id === a.personId);
+  const pIdx = state.team.findIndex(p => p.id === a.personId);
+  const col = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+  const prog = a.progress || 0;
+  const late = isLate(a);
+  const statusBadge = late && a.status !== 'concluido' ? `<span class="badge badge-red">Atrasado</span>` : getStatusBadge(a.status);
+
+  return `
+    <div class="activity-row">
+      <div style="min-width:0;">
+        <div style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.name)}</div>
+        ${a.note ? `<div style="font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.note)}</div>` : ''}
+      </div>
+      <div>
+        ${person ? `<div style="display:flex; align-items:center; gap:6px;">
+          <div class="avatar avatar-sm" style="background:${col}22; color:${col};">${initials(person.name)}</div>
+          <span style="font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${person.name.split(' ')[0]}</span>
+        </div>` : '<span style="color:var(--muted);">—</span>'}
+      </div>
+      <div style="font-family:var(--mono); font-size:12px;">${a.hours || '—'}h</div>
+      <div style="font-size:12px; color:var(--muted);">${fmtDate(a.start)}</div>
+      <div style="font-size:12px; color:var(--muted);">${fmtDate(a.end)}</div>
+      <div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <div class="progress-wrap" style="flex:1; width:60px;">
+            <div class="progress-bar ${prog===100?'green':prog>60?'':prog>30?'amber':'red'}" style="width:${prog}%;"></div>
+          </div>
+          <span style="font-size:11px; color:var(--muted); min-width:28px;">${prog}%</span>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        ${statusBadge}
+        <button class="btn btn-ghost btn-sm" style="padding:3px 8px; font-size:11px;" onclick="openProgress(${a.id})">↻</button>
+        <button class="btn btn-ghost btn-sm" style="padding:3px 7px; font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>
+        <button class="btn btn-danger btn-sm" style="padding:3px 7px; font-size:11px;" onclick="deleteActivity(${a.id})">✕</button>
+      </div>
+    </div>`;
+}
+
+function toggleDelivery(id) {
+  const body = document.getElementById(`body-${id}`);
+  const exp = document.getElementById(`exp-${id}`);
+  if (body.classList.contains('open')) {
+    body.classList.remove('open');
+    exp.style.transform = 'rotate(0deg)';
+  } else {
+    body.classList.add('open');
+    exp.style.transform = 'rotate(90deg)';
+  }
+}
+
+// ============================================================
+//  RENDER: ACTIVITIES DASHBOARD
+// ============================================================
+function renderActivitiesDashboard() {
+  document.getElementById('topbar-title').textContent = 'Atividades';
+  document.getElementById('topbar-sub').textContent = 'Visão consolidada de todas as atividades';
+  document.getElementById('topbar-actions').innerHTML = `
+    <select class="form-control" id="act-filter-project" onchange="renderActivitiesDashboard()" style="width:180px; font-size:12px; padding:6px 10px;">
+      <option value="">Todos os projetos</option>
+      ${state.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+    </select>
+    <select class="form-control" id="act-filter-person" onchange="renderActivitiesDashboard()" style="width:160px; font-size:12px; padding:6px 10px;">
+      <option value="">Todas as pessoas</option>
+      ${state.team.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+    </select>
+    <select class="form-control" id="act-filter-status" onchange="renderActivitiesDashboard()" style="width:150px; font-size:12px; padding:6px 10px;">
+      <option value="">Todos os status</option>
+      <option value="nao_iniciado">Não iniciado</option>
+      <option value="em_andamento">Em andamento</option>
+      <option value="concluido">Concluído</option>
+      <option value="atrasado">Atrasado</option>
+      <option value="bloqueado">Bloqueado</option>
+    </select>
+  `;
+
+  // Collect current filter values (may be null if first render)
+  const fProject = document.getElementById('act-filter-project')?.value || '';
+  const fPerson  = document.getElementById('act-filter-person')?.value  || '';
+  const fStatus  = document.getElementById('act-filter-status')?.value  || '';
+
+  // Build enriched activity list
+  let acts = state.activities.map(a => {
+    const delivery  = state.deliveries.find(d => d.id === a.deliveryId);
+    const project   = delivery ? state.projects.find(p => p.id === delivery.projectId) : null;
+    const person    = state.team.find(p => p.id === a.personId);
+    const personIdx = state.team.findIndex(p => p.id === a.personId);
+    const late      = isLate(a);
+    const effStatus = late && a.status !== 'concluido' ? 'atrasado' : (a.status || 'nao_iniciado');
+    return { ...a, delivery, project, person, personIdx, late, effStatus };
+  });
+
+  // Apply filters
+  if (fProject) acts = acts.filter(a => a.project && String(a.project.id) === fProject);
+  if (fPerson)  acts = acts.filter(a => a.personId && String(a.personId) === fPerson);
+  if (fStatus)  acts = acts.filter(a => a.effStatus === fStatus);
+
+  // ---- KPIs ----
+  const total   = acts.length;
+  const done    = acts.filter(a => a.effStatus === 'concluido').length;
+  const late    = acts.filter(a => a.effStatus === 'atrasado').length;
+  const ongoing = acts.filter(a => a.effStatus === 'em_andamento').length;
+  const totalH  = acts.reduce((s,a) => s+(parseFloat(a.hours)||0), 0);
+  const doneH   = acts.filter(a=>a.effStatus==='concluido').reduce((s,a)=>s+(parseFloat(a.hours)||0),0);
+  const avgProg = total ? Math.round(acts.reduce((s,a)=>s+(a.progress||0),0)/total) : 0;
+
+  // ---- Timeline data ----
+  let minDate = null, maxDate = null;
+  acts.forEach(a => {
+    if (a.start) { const d=new Date(a.start); if(!minDate||d<minDate) minDate=d; }
+    if (a.end)   { const d=new Date(a.end);   if(!maxDate||d>maxDate) maxDate=d; }
+  });
+  if (!minDate) { minDate = new Date(); }
+  if (!maxDate) { maxDate = new Date(minDate); maxDate.setMonth(maxDate.getMonth()+3); }
+
+  // ---- Person workload table ----
+  const personMap = {};
+  acts.forEach(a => {
+    if (!a.person) return;
+    const k = a.personId;
+    if (!personMap[k]) personMap[k] = { person: a.person, idx: a.personIdx, total:0, done:0, late:0, ongoing:0, acts:[] };
+    personMap[k].total  += parseFloat(a.hours)||0;
+    personMap[k].acts.push(a);
+    if (a.effStatus==='concluido') personMap[k].done   += parseFloat(a.hours)||0;
+    if (a.effStatus==='atrasado')  personMap[k].late++;
+    if (a.effStatus==='em_andamento') personMap[k].ongoing++;
+  });
+
+  // Today marker for timeline
+  const today = new Date();
+
+  document.getElementById('page-content').innerHTML = `
+
+    <!-- KPI ROW -->
+    <div class="grid-4" style="margin-bottom:24px;">
+      <div class="stat">
+        <div class="stat-label">Total de Atividades</div>
+        <div class="stat-value">${total}</div>
+        <div class="stat-sub">${done} concluídas</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Progresso Médio</div>
+        <div class="stat-value">${avgProg}%</div>
+        <div class="stat-sub">${Math.round(doneH)}h / ${Math.round(totalH)}h entregues</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Em Andamento</div>
+        <div class="stat-value" style="color:var(--blue)">${ongoing}</div>
+        <div class="stat-sub">atividades ativas agora</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Atrasadas</div>
+        <div class="stat-value" style="color:${late>0?'var(--red)':'var(--green)'}">${late}</div>
+        <div class="stat-sub">${late>0?'requer atenção':'tudo em dia'}</div>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs" id="act-tabs">
+      <div class="tab active" onclick="switchActTab('tab-list')">Lista</div>
+      <div class="tab" onclick="switchActTab('tab-timeline')">Linha do Tempo</div>
+      <div class="tab" onclick="switchActTab('tab-people')">Por Pessoa</div>
+    </div>
+
+    <!-- TAB: LIST -->
+    <div class="tab-pane active" id="tab-list">
+      ${renderActList(acts)}
+    </div>
+
+    <!-- TAB: TIMELINE -->
+    <div class="tab-pane" id="tab-timeline">
+      ${renderActTimeline(acts, minDate, maxDate, today)}
+    </div>
+
+    <!-- TAB: PEOPLE -->
+    <div class="tab-pane" id="tab-people">
+      ${renderActByPerson(personMap)}
+    </div>
+  `;
+}
+
+function switchActTab(tabId) {
+  document.querySelectorAll('#act-tabs .tab').forEach((t,i) => {
+    const ids = ['tab-list','tab-timeline','tab-people'];
+    t.classList.toggle('active', ids[i]===tabId);
+  });
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id===tabId));
+}
+
+// ---- LIST VIEW ----
+function renderActList(acts) {
+  if (!acts.length) return `<div class="empty"><div class="empty-icon">▦</div><div class="empty-text">Nenhuma atividade encontrada</div><div class="empty-sub">Ajuste os filtros ou cadastre atividades nos projetos</div></div>`;
+
+  // Sort: late first, then em_andamento, then others
+  const order = { atrasado:0, bloqueado:1, em_andamento:2, nao_iniciado:3, concluido:4 };
+  const sorted = [...acts].sort((a,b) => (order[a.effStatus]??5)-(order[b.effStatus]??5));
+
+  return `
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div style="overflow-x:auto;">
+        <table style="min-width:900px;">
+          <thead>
+            <tr>
+              <th style="padding:14px 16px;">Atividade</th>
+              <th>Projeto / Entrega</th>
+              <th>Responsável</th>
+              <th>Horas</th>
+              <th>Início</th>
+              <th>Término</th>
+              <th>Progresso</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sorted.map(a => {
+              const col = a.personIdx >= 0 ? getPersonColor(a.personIdx) : '#7a7a8a';
+              const prog = a.progress || 0;
+              return `<tr>
+                <td style="max-width:200px;">
+                  <div style="font-weight:500; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.name)}</div>
+                  ${a.note?`<div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(a.note)}</div>`:''}
+                </td>
+                <td style="max-width:180px;">
+                  <div style="font-size:12px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--accent2);">${esc(a.project?.name||'—')}</div>
+                  <div style="font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.delivery?.name||'—')}</div>
+                </td>
+                <td>
+                  ${a.person ? `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+                    <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(a.person.name)}</div>
+                    <span style="font-size:12px;">${a.person.name.split(' ')[0]}</span>
+                  </div>` : '<span style="color:var(--muted);font-size:12px;">—</span>'}
+                </td>
+                <td style="font-family:var(--mono);font-size:12px;">${a.hours||'—'}h</td>
+                <td style="font-size:12px;color:var(--muted);white-space:nowrap;">${fmtDate(a.start)}</td>
+                <td style="font-size:12px;white-space:nowrap;${a.late&&a.effStatus!=='concluido'?'color:var(--red);font-weight:500;':''}">${fmtDate(a.end)}</td>
+                <td style="min-width:100px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div class="progress-wrap" style="flex:1;">
+                      <div class="progress-bar ${prog===100?'green':prog>60?'':prog>30?'amber':'red'}" style="width:${prog}%;"></div>
+                    </div>
+                    <span style="font-size:11px;color:var(--muted);min-width:28px;">${prog}%</span>
+                  </div>
+                </td>
+                <td>${getStatusBadge(a.effStatus)}</td>
+                <td style="white-space:nowrap;">
+                  <button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:11px;" onclick="openProgress(${a.id})">↻</button>
+                  <button class="btn btn-ghost btn-sm" style="padding:3px 7px;font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ---- TIMELINE VIEW ----
+function renderActTimeline(acts, minDate, maxDate, today) {
+  if (!acts.length) return `<div class="empty"><div class="empty-text">Nenhuma atividade para exibir na linha do tempo</div></div>`;
+
+  const actsWithDates = acts.filter(a => a.start && a.end);
+  if (!actsWithDates.length) return `<div class="empty"><div class="empty-text">Nenhuma atividade com datas definidas</div></div>`;
+
+  // Build month list
+  const months = [];
+  const cur = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+  const endM = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+  while (cur <= endM) { months.push(new Date(cur)); cur.setMonth(cur.getMonth()+1); }
+  if (months.length > 24) months.length = 24;
+
+  const totalDays = Math.max(1, (new Date(months[months.length-1].getFullYear(), months[months.length-1].getMonth()+1,0) - new Date(months[0]))/86400000);
+
+  function pct(date) {
+    return Math.max(0, Math.min(100, ((new Date(date)-new Date(months[0]))/86400000/totalDays)*100));
+  }
+
+  const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const ROW_H = 32;
+  const LABEL_W = 180;
+
+  // Group by project for visual separation
+  const byProject = {};
+  actsWithDates.forEach(a => {
+    const pid = a.project?.id || 0;
+    if (!byProject[pid]) byProject[pid] = { name: a.project?.name || 'Sem projeto', acts: [] };
+    byProject[pid].acts.push(a);
+  });
+
+  let rows = [];
+  Object.values(byProject).forEach(grp => {
+    rows.push({ type: 'group', name: grp.name });
+    grp.acts.forEach(a => rows.push({ type: 'act', a }));
+  });
+
+  const statusColors = {
+    concluido: '#34d399', em_andamento: '#60a5fa', nao_iniciado: '#4a4a58',
+    atrasado: '#f87171', bloqueado: '#fbbf24'
+  };
+
+  const totalH = rows.length * ROW_H + 40 + 8; // header + padding
+
+  // Today line position
+  const todayPct = today >= new Date(months[0]) && today <= new Date(months[months.length-1].getFullYear(), months[months.length-1].getMonth()+1,0)
+    ? pct(today) : null;
+
+  let html = `
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div style="overflow-x:auto; padding:20px;">
+        <div style="min-width:700px; position:relative;">
+
+          <!-- Header months -->
+          <div style="display:flex; margin-left:${LABEL_W}px; margin-bottom:8px; position:relative; height:20px;">
+            ${months.map((m,i) => {
+              const left = (i/months.length*100).toFixed(2);
+              const w = (1/months.length*100).toFixed(2);
+              return `<div style="position:absolute; left:${left}%; width:${w}%; font-size:10px; color:var(--muted); text-align:left; padding-left:4px; border-left:1px solid var(--border);">${monthNames[m.getMonth()]} ${String(m.getFullYear()).slice(2)}</div>`;
+            }).join('')}
+          </div>
+
+          <!-- Rows -->
+          <div style="position:relative;">
+            ${rows.map((row, ri) => {
+              if (row.type === 'group') {
+                return `<div style="height:28px; display:flex; align-items:flex-end; padding-bottom:4px;">
+                  <div style="font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--accent2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:${LABEL_W}px; padding-right:12px;">${esc(row.name)}</div>
+                  <div style="flex:1; height:1px; background:var(--border); margin-bottom:6px;"></div>
+                </div>`;
+              }
+              const a = row.a;
+              const left = pct(a.start);
+              const right = pct(a.end);
+              const w = Math.max(right - left, 0.5);
+              const col = statusColors[a.effStatus] || '#4a4a58';
+              const personCol = a.personIdx >= 0 ? getPersonColor(a.personIdx) : '#7a7a8a';
+              return `<div style="height:${ROW_H}px; display:flex; align-items:center; position:relative;">
+                <!-- Label -->
+                <div style="width:${LABEL_W}px; flex-shrink:0; padding-right:12px; display:flex; align-items:center; gap:6px; overflow:hidden;">
+                  ${a.person ? `<div class="avatar avatar-sm" style="background:${personCol}22;color:${personCol};flex-shrink:0;">${initials(a.person.name)}</div>` : ''}
+                  <span style="font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(a.name)}">${esc(a.name)}</span>
+                </div>
+                <!-- Bar area -->
+                <div style="flex:1; height:${ROW_H}px; position:relative; border-top:1px solid var(--border);">
+                  <!-- Alternating bg -->
+                  <div style="position:absolute;inset:0;background:${ri%2===0?'transparent':'rgba(255,255,255,0.01)'}"></div>
+                  <!-- Bar -->
+                  <div style="position:absolute; top:50%; transform:translateY(-50%); left:${left.toFixed(2)}%; width:${w.toFixed(2)}%; min-width:4px; height:18px; background:${col}; border-radius:4px; display:flex; align-items:center; padding:0 6px; overflow:hidden; opacity:0.88; cursor:pointer;" onclick="openProgress(${a.id})" title="${esc(a.name)} · ${a.hours||0}h · ${fmtDate(a.start)}→${fmtDate(a.end)}">
+                    <span style="font-size:10px; font-weight:500; color:${a.effStatus==='nao_iniciado'?'#999':'rgba(0,0,0,0.7)'}; white-space:nowrap; overflow:hidden;">${w>8?esc(a.name):''}</span>
+                  </div>
+                  <!-- Progress overlay -->
+                  ${a.progress > 0 ? `<div style="position:absolute; top:50%; transform:translateY(-50%); left:${left.toFixed(2)}%; width:${(w*(a.progress/100)).toFixed(2)}%; min-width:0; height:18px; background:rgba(0,0,0,0.25); border-radius:4px 0 0 4px;"></div>` : ''}
+                </div>
+              </div>`;
+            }).join('')}
+
+            <!-- Today line -->
+            ${todayPct !== null ? `
+              <div style="position:absolute; top:0; bottom:0; left:calc(${LABEL_W}px + ${todayPct.toFixed(2)}% * (100% - ${LABEL_W}px) / 100); width:1px; background:var(--amber); opacity:0.7; pointer-events:none; z-index:5;">
+                <div style="position:absolute; top:-18px; left:50%; transform:translateX(-50%); font-size:9px; color:var(--amber); white-space:nowrap; background:var(--surface); padding:1px 4px; border-radius:3px;">hoje</div>
+              </div>` : ''}
+          </div>
+
+          <!-- Legend -->
+          <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
+            ${Object.entries(statusColors).map(([s,c])=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);">
+              <div style="width:12px;height:12px;border-radius:3px;background:${c};opacity:0.88;"></div>${getStatusLabel(s)}
+            </div>`).join('')}
+            <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-left:auto;">
+              <div style="width:1px;height:14px;background:var(--amber);opacity:0.7;"></div>Hoje
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  return html;
+}
+
+function getStatusLabel(s) {
+  const m = { nao_iniciado:'Não iniciado', em_andamento:'Em andamento', concluido:'Concluído', atrasado:'Atrasado', bloqueado:'Bloqueado' };
+  return m[s] || s;
+}
+
+// ---- BY PERSON VIEW ----
+function renderActByPerson(personMap) {
+  if (!Object.keys(personMap).length) return `<div class="empty"><div class="empty-text">Nenhuma atividade alocada a pessoas</div></div>`;
+
+  const entries = Object.values(personMap).sort((a,b) => b.total - a.total);
+  const maxH = Math.max(...entries.map(e => e.total), 1);
+
+  return entries.map(entry => {
+    const col = getPersonColor(entry.idx);
+    const pct = (entry.total / maxH * 100).toFixed(0);
+    const pctDone = entry.total > 0 ? Math.round(entry.done / entry.total * 100) : 0;
+
+    const sortedActs = [...entry.acts].sort((a,b) => {
+      const o = { atrasado:0, bloqueado:1, em_andamento:2, nao_iniciado:3, concluido:4 };
+      return (o[a.effStatus]??5)-(o[b.effStatus]??5);
+    });
+
+    return `
+      <div class="card" style="margin-bottom:16px;">
+        <!-- Person header -->
+        <div style="display:flex; align-items:center; gap:14px; margin-bottom:16px;">
+          <div class="avatar" style="width:40px;height:40px;font-size:13px;background:${col}22;color:${col};">${initials(entry.person.name)}</div>
+          <div style="flex:1;">
+            <div style="font-weight:500; font-size:14px;">${esc(entry.person.name)}</div>
+            <div style="font-size:12px; color:var(--muted);">${esc(entry.person.role||'—')}</div>
+          </div>
+          <div style="display:flex; gap:20px; text-align:right;">
+            <div><div style="font-size:10px;color:var(--muted);">HORAS</div><div style="font-size:18px;font-weight:600;">${Math.round(entry.total).toLocaleString('pt-BR')}h</div></div>
+            <div><div style="font-size:10px;color:var(--muted);">CONCLUÍDO</div><div style="font-size:18px;font-weight:600;color:var(--green);">${pctDone}%</div></div>
+            <div><div style="font-size:10px;color:var(--muted);">ATRASADAS</div><div style="font-size:18px;font-weight:600;color:${entry.late>0?'var(--red)':'var(--muted)'}">${entry.late}</div></div>
+            <div><div style="font-size:10px;color:var(--muted);">ATIVIDADES</div><div style="font-size:18px;font-weight:600;">${entry.acts.length}</div></div>
+          </div>
+        </div>
+        <!-- Progress bar -->
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+            <span style="font-size:11px;color:var(--muted);">Carga relativa ao maior alocado</span>
+            <span style="font-size:11px;color:var(--muted);">${pct}%</span>
+          </div>
+          <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%;background:${col};"></div></div>
+        </div>
+        <!-- Activities mini-list -->
+        <div style="border-top:1px solid var(--border); padding-top:12px;">
+          ${sortedActs.map(a => `
+            <div style="display:grid;grid-template-columns:1fr 90px 80px 80px 90px 36px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+              <div>
+                <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(a.name)}</div>
+                <div style="font-size:11px;color:var(--accent2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(a.project?.name||'—')}</div>
+              </div>
+              <div style="font-size:12px;color:var(--muted);text-align:right;">${a.hours||0}h</div>
+              <div style="font-size:11px;color:var(--muted);">${fmtDate(a.start)}</div>
+              <div style="font-size:11px;${a.late&&a.effStatus!=='concluido'?'color:var(--red);font-weight:500;':'color:var(--muted);'}">${fmtDate(a.end)}</div>
+              <div style="display:flex;align-items:center;gap:5px;">
+                <div class="progress-wrap" style="flex:1;"><div class="progress-bar ${a.progress===100?'green':a.progress>60?'':a.progress>30?'amber':'red'}" style="width:${a.progress||0}%;"></div></div>
+                <span style="font-size:10px;color:var(--muted);">${a.progress||0}%</span>
+              </div>
+              <div>${getStatusBadge(a.effStatus)}</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ============================================================
+//  RENDER: TEAM
+// ============================================================
+function renderTeam() {
+  document.getElementById('topbar-title').textContent = 'Equipe';
+  document.getElementById('topbar-sub').textContent = `${state.team.length} pessoa(s) cadastrada(s)`;
+  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="openNewPerson()">+ Cadastrar Pessoa</button>`;
+
+  if (!state.team.length) {
+    document.getElementById('page-content').innerHTML = `<div class="empty"><div class="empty-icon">◎</div><div class="empty-text">Nenhuma pessoa cadastrada</div><div class="empty-sub">Cadastre sua equipe para alocar atividades</div></div>`;
+    return;
+  }
+
+  const cards = state.team.map((p, i) => {
+    const col = getPersonColor(i);
+    const acts = state.activities.filter(a => a.personId === p.id);
+    const totalH = acts.reduce((s,a) => s+(parseFloat(a.hours)||0),0);
+    const activeActs = acts.filter(a => a.status === 'em_andamento').length;
+    const lates = acts.filter(a => isLate(a)).length;
+
+    return `
+      <div class="card" style="display:flex; flex-direction:column; gap:14px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="avatar" style="width:44px; height:44px; font-size:14px; background:${col}22; color:${col};">${initials(p.name)}</div>
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:500; font-size:14px;">${esc(p.name)}</div>
+            <div style="font-size:12px; color:var(--muted);">${esc(p.role||'—')}</div>
+          </div>
+          <div style="display:flex; gap:5px;">
+            <button class="btn btn-ghost btn-sm" onclick="openEditPerson(${p.id})">✎</button>
+            <button class="btn btn-danger btn-sm" onclick="deletePerson(${p.id})">✕</button>
+          </div>
+        </div>
+        <hr class="sep" style="margin:0;">
+        <div class="grid-3">
+          <div><div style="font-size:10px; color:var(--muted);">HORAS ALOCADAS</div><div style="font-size:18px; font-weight:600; margin-top:2px;">${totalH.toLocaleString('pt-BR')}h</div></div>
+          <div><div style="font-size:10px; color:var(--muted);">EM ANDAMENTO</div><div style="font-size:18px; font-weight:600; margin-top:2px;">${activeActs}</div></div>
+          <div><div style="font-size:10px; color:var(--muted);">ATRASADAS</div><div style="font-size:18px; font-weight:600; margin-top:2px; color:${lates>0?'var(--red)':'inherit'}">${lates}</div></div>
+        </div>
+        ${p.email ? `<div style="font-size:12px; color:var(--muted);">✉ ${esc(p.email)}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="grid-3">${cards}</div>`;
+}
+
+// ============================================================
+//  RENDER: SETTINGS
+// ============================================================
+function renderSettings() {
+  document.getElementById('topbar-title').textContent = 'Configurações';
+  document.getElementById('topbar-sub').textContent = 'Dados e preferências';
+  document.getElementById('topbar-actions').innerHTML = '';
+
+  const clientId = localStorage.getItem('projflow_gd_client_id') || '';
+  const connected = !!gdAccessToken;
+
+  document.getElementById('page-content').innerHTML = `
+
+    <div class="section-title" style="margin-bottom:16px;">Google Drive — Sincronização</div>
+
+    <div class="card" style="margin-bottom:24px; border-color:${connected?'rgba(52,211,153,0.25)':'var(--border)'};">
+      <div style="display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:260px;">
+          <div style="font-size:14px; font-weight:500; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+            ${connected
+              ? `<div style="width:8px;height:8px;border-radius:50%;background:var(--green);"></div> Conectado ao Google Drive`
+              : `<div style="width:8px;height:8px;border-radius:50%;background:var(--muted);"></div> Não conectado`}
+          </div>
+          <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:14px;">
+            ${connected
+              ? 'Seus dados estão sendo sincronizados automaticamente. Qualquer dispositivo com essa conta terá acesso aos mesmos dados.'
+              : 'Conecte sua conta Google para sincronizar dados entre PC, tablet e celular automaticamente.'}
+          </p>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            ${connected
+              ? `<button class="btn btn-success btn-sm" onclick="gdManualSync()">↻ Sincronizar agora</button>
+                 <button class="btn btn-danger btn-sm" onclick="gdSignOut()">Desconectar</button>`
+              : `<button class="btn btn-primary btn-sm" onclick="gdSignIn()">Conectar com Google</button>`}
+          </div>
+        </div>
+        ${clientId ? `<div style="font-size:11px; color:var(--muted); background:var(--surface2); padding:8px 12px; border-radius:var(--radius-sm); font-family:var(--mono); word-break:break-all; max-width:260px;">Client ID configurado ✓</div>` : ''}
+      </div>
+    </div>
+
+    ${!clientId ? `
+    <div class="card" style="margin-bottom:24px; border-color:rgba(108,99,255,0.2);">
+      <div style="font-size:14px; font-weight:500; margin-bottom:12px; color:var(--accent2);">Como configurar o Google Drive</div>
+      <div style="font-size:13px; color:var(--muted); line-height:2;">
+        <div style="display:flex; gap:10px; margin-bottom:8px;"><span style="background:var(--accent); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">1</span><span>Acesse <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent2);">console.cloud.google.com</a> com sua conta Google</span></div>
+        <div style="display:flex; gap:10px; margin-bottom:8px;"><span style="background:var(--accent); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">2</span><span>Crie um projeto novo (ex: "ProjFlow")</span></div>
+        <div style="display:flex; gap:10px; margin-bottom:8px;"><span style="background:var(--accent); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">3</span><span>Vá em <strong style="color:var(--text);">APIs e Serviços → Credenciais → Criar credenciais → ID do cliente OAuth</strong></span></div>
+        <div style="display:flex; gap:10px; margin-bottom:8px;"><span style="background:var(--accent); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">4</span><span>Tipo: <strong style="color:var(--text);">Aplicativo da Web</strong> · Origens JS autorizadas: <code style="background:var(--surface2); padding:1px 5px; border-radius:3px; font-size:11px;">http://localhost</code> e <code style="background:var(--surface2); padding:1px 5px; border-radius:3px; font-size:11px;">file://</code></span></div>
+        <div style="display:flex; gap:10px; margin-bottom:8px;"><span style="background:var(--accent); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">5</span><span>Ative a <strong style="color:var(--text);">Google Drive API</strong> em APIs e Serviços → Biblioteca</span></div>
+        <div style="display:flex; gap:10px;"><span style="background:var(--accent); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">6</span><span>Cole o Client ID (termina em .apps.googleusercontent.com) e clique em Conectar</span></div>
+      </div>
+      <div style="margin-top:16px;">
+        <label class="form-label">Client ID (opcional — cole aqui para não precisar digitar toda vez)</label>
+        <div style="display:flex; gap:8px;">
+          <input class="form-control" id="settings-client-id" placeholder="xxxx.apps.googleusercontent.com" value="${clientId}" style="flex:1;" />
+          <button class="btn btn-primary" onclick="saveClientId()">Salvar</button>
+        </div>
+      </div>
+    </div>` : ''}
+
+    <div class="section-title" style="margin-bottom:16px;">Backup Local</div>
+    <div class="grid-2" style="margin-bottom:24px;">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px;">Exportar dados</div>
+        <p style="font-size:13px; color:var(--muted); margin-bottom:14px;">Baixe um backup completo em JSON.</p>
+        <button class="btn btn-ghost" onclick="exportData()">↓ Exportar JSON</button>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px;">Importar dados</div>
+        <p style="font-size:13px; color:var(--muted); margin-bottom:14px;">Restaure de um backup JSON anterior.</p>
+        <input type="file" id="import-file" accept=".json" onchange="importData(this)" style="display:none;">
+        <button class="btn btn-ghost" onclick="document.getElementById('import-file').click()">↑ Importar JSON</button>
+      </div>
+    </div>
+
+    <div class="card" style="border-color:rgba(248,113,113,0.2);">
+      <div class="card-title" style="margin-bottom:8px; color:var(--red);">Zona de Perigo</div>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:14px;">Apagar todos os dados locais. Esta ação não pode ser desfeita.</p>
+      <button class="btn btn-danger" onclick="clearAllData()">✕ Apagar Tudo</button>
+    </div>
+  `;
+}
+
+function saveClientId() {
+  const id = document.getElementById('settings-client-id').value.trim();
+  if (!id) return;
+  if (!id.includes('.apps.googleusercontent.com')) { alert('Client ID inválido.'); return; }
+  localStorage.setItem('projflow_gd_client_id', id);
+  showToast('Client ID salvo — recarregue a página para conectar');
+  setTimeout(() => location.reload(), 1800);
+}
+
+// ============================================================
+//  MODALS: PROJECT
+// ============================================================
+let editingProjectId = null;
+
+function openNewProject() {
+  editingProjectId = null;
+  document.getElementById('modal-project-title').textContent = 'Novo Projeto';
+  document.getElementById('p-name').value = '';
+  document.getElementById('p-start').value = '';
+  document.getElementById('p-end').value = '';
+  document.getElementById('p-client').value = '';
+  document.getElementById('p-desc').value = '';
+  openModal('modal-project');
+}
+
+function openEditProject(id) {
+  const p = state.projects.find(x => x.id === id);
+  if (!p) return;
+  editingProjectId = id;
+  document.getElementById('modal-project-title').textContent = 'Editar Projeto';
+  document.getElementById('p-name').value = p.name;
+  document.getElementById('p-start').value = p.start || '';
+  document.getElementById('p-end').value = p.end || '';
+  document.getElementById('p-client').value = p.client || '';
+  document.getElementById('p-desc').value = p.desc || '';
+  openModal('modal-project');
+}
+
+function saveProject() {
+  const name = document.getElementById('p-name').value.trim();
+  if (!name) { alert('Informe o nome do projeto.'); return; }
+  if (editingProjectId) {
+    const p = state.projects.find(x => x.id === editingProjectId);
+    p.name = name;
+    p.start = document.getElementById('p-start').value;
+    p.end = document.getElementById('p-end').value;
+    p.client = document.getElementById('p-client').value;
+    p.desc = document.getElementById('p-desc').value;
+  } else {
+    state.projects.push({
+      id: uid(), name,
+      start: document.getElementById('p-start').value,
+      end: document.getElementById('p-end').value,
+      client: document.getElementById('p-client').value,
+      desc: document.getElementById('p-desc').value,
+      status: 'ativo',
+      createdAt: new Date().toISOString()
+    });
+  }
+  closeModal('modal-project');
+  render();
+}
+
+function deleteProject(id) {
+  if (!confirm('Excluir projeto e todas suas entregas e atividades?')) return;
+  const deliveries = state.deliveries.filter(d => d.projectId === id);
+  deliveries.forEach(d => {
+    state.activities = state.activities.filter(a => a.deliveryId !== d.id);
+  });
+  state.deliveries = state.deliveries.filter(d => d.projectId !== id);
+  state.projects = state.projects.filter(p => p.id !== id);
+  render();
+}
+
+// ============================================================
+//  MODALS: DELIVERY
+// ============================================================
+function openNewDelivery(projectId) {
+  document.getElementById('d-name').value = '';
+  document.getElementById('d-start').value = '';
+  document.getElementById('d-end').value = '';
+  document.getElementById('d-desc').value = '';
+  document.getElementById('d-project-id').value = projectId;
+  openModal('modal-delivery');
+}
+
+function openEditDelivery(id) {
+  const d = state.deliveries.find(x => x.id === id);
+  if (!d) return;
+  document.getElementById('d-name').value = d.name;
+  document.getElementById('d-start').value = d.start || '';
+  document.getElementById('d-end').value = d.end || '';
+  document.getElementById('d-desc').value = d.desc || '';
+  document.getElementById('d-project-id').value = -d.id; // negative = edit
+  openModal('modal-delivery');
+}
+
+function saveDelivery() {
+  const name = document.getElementById('d-name').value.trim();
+  if (!name) { alert('Informe o nome da entrega.'); return; }
+  const pidRaw = parseInt(document.getElementById('d-project-id').value);
+
+  if (pidRaw < 0) {
+    const d = state.deliveries.find(x => x.id === -pidRaw);
+    d.name = name;
+    d.start = document.getElementById('d-start').value;
+    d.end = document.getElementById('d-end').value;
+    d.desc = document.getElementById('d-desc').value;
+  } else {
+    state.deliveries.push({
+      id: uid(), name,
+      projectId: pidRaw,
+      start: document.getElementById('d-start').value,
+      end: document.getElementById('d-end').value,
+      desc: document.getElementById('d-desc').value,
+    });
+  }
+  closeModal('modal-delivery');
+  render();
+}
+
+function deleteDelivery(id) {
+  if (!confirm('Excluir entrega e todas suas atividades?')) return;
+  state.activities = state.activities.filter(a => a.deliveryId !== id);
+  state.deliveries = state.deliveries.filter(d => d.id !== id);
+  render();
+}
+
+// ============================================================
+//  MODALS: ACTIVITY
+// ============================================================
+function openNewActivity(deliveryId) {
+  document.getElementById('modal-activity-title').textContent = 'Nova Atividade';
+  document.getElementById('a-name').value = '';
+  document.getElementById('a-hours').value = '';
+  document.getElementById('a-start').value = '';
+  document.getElementById('a-end').value = '';
+  document.getElementById('a-desc').value = '';
+  document.getElementById('a-delivery-id').value = deliveryId;
+  document.getElementById('a-activity-id').value = '';
+  populatePersonSelect();
+  openModal('modal-activity');
+}
+
+function openEditActivity(id) {
+  const a = state.activities.find(x => x.id === id);
+  if (!a) return;
+  document.getElementById('modal-activity-title').textContent = 'Editar Atividade';
+  document.getElementById('a-name').value = a.name;
+  document.getElementById('a-hours').value = a.hours || '';
+  document.getElementById('a-start').value = a.start || '';
+  document.getElementById('a-end').value = a.end || '';
+  document.getElementById('a-desc').value = a.desc || '';
+  document.getElementById('a-delivery-id').value = a.deliveryId;
+  document.getElementById('a-activity-id').value = id;
+  populatePersonSelect(a.personId);
+  openModal('modal-activity');
+}
+
+function populatePersonSelect(selectedId) {
+  const sel = document.getElementById('a-person');
+  sel.innerHTML = '<option value="">— Selecionar pessoa —</option>' +
+    state.team.map(p => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+}
+
+function saveActivity() {
+  const name = document.getElementById('a-name').value.trim();
+  if (!name) { alert('Informe o nome da atividade.'); return; }
+  const editId = parseInt(document.getElementById('a-activity-id').value) || 0;
+
+  const data = {
+    name,
+    personId: parseInt(document.getElementById('a-person').value) || null,
+    hours: parseFloat(document.getElementById('a-hours').value) || 0,
+    start: document.getElementById('a-start').value,
+    end: document.getElementById('a-end').value,
+    desc: document.getElementById('a-desc').value,
+    deliveryId: parseInt(document.getElementById('a-delivery-id').value),
+  };
+
+  if (editId) {
+    const a = state.activities.find(x => x.id === editId);
+    Object.assign(a, data);
+  } else {
+    state.activities.push({ id: uid(), status: 'nao_iniciado', progress: 0, ...data });
+  }
+  closeModal('modal-activity');
+  render();
+}
+
+function deleteActivity(id) {
+  if (!confirm('Excluir atividade?')) return;
+  state.activities = state.activities.filter(a => a.id !== id);
+  render();
+}
+
+// ============================================================
+//  MODALS: PROGRESS
+// ============================================================
+function openProgress(id) {
+  const a = state.activities.find(x => x.id === id);
+  if (!a) return;
+  const person = state.team.find(p => p.id === a.personId);
+  document.getElementById('progress-activity-info').innerHTML = `
+    <div style="font-weight:500; font-size:13px; margin-bottom:4px;">${esc(a.name)}</div>
+    <div style="font-size:12px; color:var(--muted);">${person ? person.name + ' · ' : ''}${a.hours||0}h · ${fmtDate(a.start)} → ${fmtDate(a.end)}</div>
+  `;
+  const slider = document.getElementById('progress-slider');
+  slider.value = a.progress || 0;
+  document.getElementById('progress-label').textContent = (a.progress||0) + '%';
+  document.getElementById('progress-status').value = a.status || 'nao_iniciado';
+  document.getElementById('progress-note').value = a.note || '';
+  document.getElementById('progress-activity-id').value = id;
+  openModal('modal-progress');
+}
+
+function saveProgress() {
+  const id = parseInt(document.getElementById('progress-activity-id').value);
+  const a = state.activities.find(x => x.id === id);
+  if (!a) return;
+  a.progress = parseInt(document.getElementById('progress-slider').value);
+  a.status = document.getElementById('progress-status').value;
+  a.note = document.getElementById('progress-note').value;
+  if (a.progress === 100 && a.status !== 'concluido') a.status = 'concluido';
+  closeModal('modal-progress');
+  render();
+}
+
+// ============================================================
+//  MODALS: PERSON
+// ============================================================
+let editingPersonId = null;
+
+function openNewPerson() {
+  editingPersonId = null;
+  document.getElementById('per-name').value = '';
+  document.getElementById('per-role').value = '';
+  document.getElementById('per-email').value = '';
+  document.getElementById('per-weekly').value = '40';
+  openModal('modal-person');
+}
+
+function openEditPerson(id) {
+  const p = state.team.find(x => x.id === id);
+  if (!p) return;
+  editingPersonId = id;
+  document.getElementById('per-name').value = p.name;
+  document.getElementById('per-role').value = p.role || '';
+  document.getElementById('per-email').value = p.email || '';
+  document.getElementById('per-weekly').value = p.weeklyHours || 40;
+  openModal('modal-person');
+}
+
+function savePerson() {
+  const name = document.getElementById('per-name').value.trim();
+  if (!name) { alert('Informe o nome.'); return; }
+  if (editingPersonId) {
+    const p = state.team.find(x => x.id === editingPersonId);
+    p.name = name;
+    p.role = document.getElementById('per-role').value;
+    p.email = document.getElementById('per-email').value;
+    p.weeklyHours = parseInt(document.getElementById('per-weekly').value) || 40;
+  } else {
+    state.team.push({
+      id: uid(), name,
+      role: document.getElementById('per-role').value,
+      email: document.getElementById('per-email').value,
+      weeklyHours: parseInt(document.getElementById('per-weekly').value) || 40,
+    });
+  }
+  closeModal('modal-person');
+  render();
+}
+
+function deletePerson(id) {
+  if (!confirm('Remover pessoa? As atividades alocadas para ela ficarão sem responsável.')) return;
+  state.activities.forEach(a => { if (a.personId === id) a.personId = null; });
+  state.team = state.team.filter(p => p.id !== id);
+  render();
+}
+
+// ============================================================
+//  SETTINGS
+// ============================================================
+function exportData() {
+  const json = JSON.stringify(state, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `projflow_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+
+function importData(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data.projects && data.team) {
+        if (!confirm('Isso substituirá todos os dados atuais. Continuar?')) return;
+        state = data;
+        saveState();
+        render();
+        alert('Dados importados com sucesso!');
+      } else {
+        alert('Arquivo inválido.');
+      }
+    } catch { alert('Erro ao ler o arquivo.'); }
+  };
+  reader.readAsText(file);
+}
+
+function clearAllData() {
+  if (!confirm('Tem certeza? TODOS os dados serão apagados permanentemente.')) return;
+  if (!confirm('Última confirmação: apagar tudo?')) return;
+  state = { projects: [], deliveries: [], activities: [], team: [], nextId: 1 };
+  saveState();
+  navigate('dashboard');
+}
+
+// ============================================================
+//  MS PROJECT IMPORT
+// ============================================================
+let mspParsed = null; // { projectName, start, end, tasks[] }
+
+function openMspModal() {
+  resetMspModal();
+  // Populate target project dropdown
+  const sel = document.getElementById('msp-target-project');
+  sel.innerHTML = '<option value="">— Criar novo projeto —</option>' +
+    state.projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  openModal('modal-msproject');
+}
+
+function resetMspModal() {
+  mspParsed = null;
+  document.getElementById('msp-step1').style.display = '';
+  document.getElementById('msp-step2').style.display = 'none';
+  document.getElementById('msp-btn-import').style.display = 'none';
+  document.getElementById('msp-file-info').style.display = 'none';
+  document.getElementById('msp-error').style.display = 'none';
+  document.getElementById('msp-file').value = '';
+  document.getElementById('msp-dropzone').style.borderColor = 'var(--border2)';
+}
+
+function handleMspDrop(e) {
+  e.preventDefault();
+  document.getElementById('msp-dropzone').style.borderColor = 'var(--border2)';
+  const file = e.dataTransfer.files[0];
+  if (file) parseMspFile(file);
+}
+
+function handleMspFile(input) {
+  const file = input.files[0];
+  if (file) parseMspFile(file);
+}
+
+function parseMspFile(file) {
+  const info = document.getElementById('msp-file-info');
+  info.style.display = 'block';
+  info.innerHTML = `Lendo <strong>${esc(file.name)}</strong> (${(file.size/1024).toFixed(1)} KB)…`;
+  document.getElementById('msp-error').style.display = 'none';
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const xml = e.target.result;
+      const result = parseMspXml(xml);
+      if (!result || !result.tasks.length) {
+        showMspError('Nenhuma tarefa encontrada no arquivo. Certifique-se de exportar como XML do MS Project (não .mpp binário).');
+        return;
+      }
+      mspParsed = result;
+      info.innerHTML = `✓ <strong>${esc(file.name)}</strong> — ${result.tasks.length} tarefa(s) encontrada(s)`;
+      showMspPreview(result);
+    } catch(err) {
+      showMspError('Erro ao processar o arquivo: ' + err.message + '. Exporte como XML (Arquivo → Salvar Como → *.xml).');
+    }
+  };
+  reader.onerror = () => showMspError('Não foi possível ler o arquivo.');
+  reader.readAsText(file, 'UTF-8');
+}
+
+function showMspError(msg) {
+  const el = document.getElementById('msp-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function parseMspXml(xmlStr) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlStr, 'text/xml');
+
+  // Detect parse error
+  if (doc.querySelector('parsererror')) throw new Error('XML inválido ou corrompido');
+
+  // MS Project XML namespace handling — try both with and without namespace
+  const getText = (parent, tag) => {
+    let el = parent.querySelector(tag);
+    if (!el) el = parent.getElementsByTagName(tag)[0];
+    return el ? el.textContent.trim() : '';
+  };
+
+  // Project-level info
+  const projEl = doc.querySelector('Project') || doc.documentElement;
+  const projectName = getText(projEl, 'Name') || 'Projeto Importado';
+  const projStart   = parseMspDate(getText(projEl, 'StartDate') || getText(projEl, 'CreationDate'));
+  const projFinish  = parseMspDate(getText(projEl, 'FinishDate'));
+
+  // Tasks — MS Project XML uses <Tasks><Task>...</Task></Tasks>
+  const taskEls = doc.querySelectorAll('Task');
+  if (!taskEls.length) {
+    // Try alternate structure
+    const tasks2 = doc.getElementsByTagName('Task');
+    if (!tasks2.length) throw new Error('Elemento <Task> não encontrado no XML');
+  }
+
+  // Build UID→task map and outline level tree
+  const rawTasks = [];
+  taskEls.forEach(t => {
+    const uid      = getText(t, 'UID');
+    const id       = getText(t, 'ID');
+    const name     = getText(t, 'Name');
+    const level    = parseInt(getText(t, 'OutlineLevel')) || 0;
+    const start    = parseMspDate(getText(t, 'Start'));
+    const finish   = parseMspDate(getText(t, 'Finish'));
+    const duration = getText(t, 'Duration'); // e.g. "PT40H0M0S"
+    const work     = getText(t, 'Work');     // e.g. "PT40H0M0S"
+    const isSummary = getText(t, 'Summary') === '1';
+    const isMilestone = getText(t, 'Milestone') === '1';
+    const percentComplete = parseInt(getText(t, 'PercentComplete')) || 0;
+    const resourceNames = [];
+    // Resource assignments come separately; collect here for display
+    t.querySelectorAll('ResourceName, AssignmentOwner').forEach(r => { if(r.textContent.trim()) resourceNames.push(r.textContent.trim()); });
+
+    // Skip row 0 (project summary) and null names
+    if (!name || uid === '0' || id === '0') return;
+
+    rawTasks.push({
+      uid, id, name, level, start, finish, duration,
+      work: parsePtDuration(work || duration),
+      isSummary, isMilestone, percentComplete,
+      resourceNames
+    });
+  });
+
+  // Also parse resource assignments to enrich tasks with work hours
+  const assignments = {};
+  doc.querySelectorAll('Assignment').forEach(a => {
+    const taskUid = getText(a, 'TaskUID');
+    const work    = parsePtDuration(getText(a, 'Work'));
+    const resName = getText(a, 'ResourceUID'); // we'll use UID for now
+    if (taskUid && work > 0) {
+      assignments[taskUid] = (assignments[taskUid] || 0) + work;
+    }
+  });
+
+  // Enrich tasks with assignment work
+  rawTasks.forEach(t => {
+    if (assignments[t.uid]) t.work = Math.max(t.work, assignments[t.uid]);
+  });
+
+  return { projectName, projStart, projFinish, tasks: rawTasks };
+}
+
+function parseMspDate(str) {
+  // MS Project dates: "2024-03-15T08:00:00" or "2024-03-15T08:00:00Z" or "2024-03-15"
+  if (!str) return '';
+  const m = str.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : '';
+}
+
+function parsePtDuration(pt) {
+  // ISO 8601 duration like PT40H0M0S or P5DT0H0M0S
+  if (!pt) return 0;
+  let h = 0;
+  const hoursM = pt.match(/(\d+(?:\.\d+)?)H/);
+  const daysM  = pt.match(/(\d+(?:\.\d+)?)D/);
+  if (hoursM) h += parseFloat(hoursM[1]);
+  if (daysM)  h += parseFloat(daysM[1]) * 8; // assume 8h/day
+  return Math.round(h);
+}
+
+function showMspPreview(result) {
+  document.getElementById('msp-step1').style.display = 'none';
+  document.getElementById('msp-step2').style.display = 'block';
+  document.getElementById('msp-btn-import').style.display = 'inline-flex';
+
+  const summaryTasks = result.tasks.filter(t => t.isSummary);
+  const leafTasks    = result.tasks.filter(t => !t.isSummary && !t.isMilestone);
+
+  document.getElementById('msp-summary').innerHTML = `
+    <div style="display:flex; gap:24px; flex-wrap:wrap;">
+      <div><div style="font-size:10px; color:var(--muted);">PROJETO</div><div style="font-weight:500;">${esc(result.projectName)}</div></div>
+      <div><div style="font-size:10px; color:var(--muted);">PERÍODO</div><div style="font-weight:500;">${fmtDate(result.projStart)||'—'} → ${fmtDate(result.projFinish)||'—'}</div></div>
+      <div><div style="font-size:10px; color:var(--muted);">SUBTÍTULOS (→ Entregas)</div><div style="font-weight:500;">${summaryTasks.length}</div></div>
+      <div><div style="font-size:10px; color:var(--muted);">TAREFAS (→ Atividades)</div><div style="font-weight:500;">${leafTasks.length}</div></div>
+    </div>`;
+
+  // Build preview table
+  const rows = result.tasks.slice(0, 200).map(t => {
+    const indent = t.level > 1 ? `padding-left:${(t.level-1)*16}px` : '';
+    const badge = t.isSummary
+      ? `<span class="badge badge-purple" style="font-size:10px;">Entrega</span>`
+      : t.isMilestone
+        ? `<span class="badge badge-amber" style="font-size:10px;">Marco</span>`
+        : `<span class="badge badge-blue" style="font-size:10px;">Atividade</span>`;
+    return `<div style="display:grid; grid-template-columns:1fr 80px 90px 90px 60px; gap:8px; align-items:center; padding:7px 12px; border-bottom:1px solid var(--border); font-size:12px; ${t.isSummary?'background:var(--surface2);':''}">
+      <div style="${indent}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(t.name)}">${esc(t.name)}</div>
+      <div>${badge}</div>
+      <div style="color:var(--muted);">${fmtDate(t.start)||'—'}</div>
+      <div style="color:var(--muted);">${fmtDate(t.finish)||'—'}</div>
+      <div style="font-family:var(--mono); color:var(--muted);">${t.work>0?t.work+'h':'—'}</div>
+    </div>`;
+  });
+
+  document.getElementById('msp-preview').innerHTML = `
+    <div style="display:grid; grid-template-columns:1fr 80px 90px 90px 60px; gap:8px; padding:7px 12px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); border-bottom:1px solid var(--border);">
+      <div>Nome</div><div>Tipo</div><div>Início</div><div>Término</div><div>Horas</div>
+    </div>
+    ${rows.join('')}
+    ${result.tasks.length > 200 ? `<div style="padding:8px 12px; font-size:11px; color:var(--muted);">… e mais ${result.tasks.length-200} tarefas</div>` : ''}
+  `;
+}
+
+function executeMspImport() {
+  if (!mspParsed) return;
+
+  const targetProjectId = parseInt(document.getElementById('msp-target-project').value) || 0;
+  const { projectName, projStart, projFinish, tasks } = mspParsed;
+
+  let projectId;
+
+  if (targetProjectId) {
+    projectId = targetProjectId;
+  } else {
+    // Create new project
+    const newProj = {
+      id: uid(), name: projectName,
+      start: projStart, end: projFinish,
+      client: '', desc: 'Importado do Microsoft Project',
+      status: 'ativo', createdAt: new Date().toISOString()
+    };
+    state.projects.push(newProj);
+    projectId = newProj.id;
+  }
+
+  // Identify summary tasks (level 1 or isSummary) as deliveries
+  // and leaf tasks as activities
+  // Strategy: each summary task → delivery; leaves under it → activities
+  // If no summary tasks, create one default delivery
+
+  const summaries = tasks.filter(t => t.isSummary);
+  const hasSummaries = summaries.length > 0;
+
+  let deliveryMap = {}; // task outline index → deliveryId
+
+  if (!hasSummaries) {
+    // One default delivery for everything
+    const d = {
+      id: uid(), name: projectName,
+      projectId,
+      start: projStart, end: projFinish, desc: ''
+    };
+    state.deliveries.push(d);
+    tasks.forEach((_, i) => deliveryMap[i] = d.id);
+  } else {
+    // Build outline: assign each task to its nearest parent summary
+    let currentDeliveryId = null;
+    tasks.forEach((t, i) => {
+      if (t.isSummary) {
+        const d = {
+          id: uid(), name: t.name,
+          projectId,
+          start: t.start, end: t.finish, desc: ''
+        };
+        state.deliveries.push(d);
+        currentDeliveryId = d.id;
+        deliveryMap[i] = d.id;
+      } else {
+        // Find closest parent delivery above
+        let parentDelivId = currentDeliveryId;
+        if (!parentDelivId) {
+          // No summary yet, create a fallback delivery
+          const d = { id: uid(), name: 'Atividades Gerais', projectId, start: projStart, end: projFinish, desc: '' };
+          state.deliveries.push(d);
+          currentDeliveryId = d.id;
+          parentDelivId = d.id;
+        }
+        deliveryMap[i] = parentDelivId;
+      }
+    });
+  }
+
+  // Create activities from leaf + milestone tasks
+  let created = 0;
+  tasks.forEach((t, i) => {
+    if (t.isSummary) return; // already became deliveries
+
+    const delivId = deliveryMap[i];
+    if (!delivId) return;
+
+    // Map percentComplete → status
+    let status = 'nao_iniciado';
+    if (t.percentComplete === 100) status = 'concluido';
+    else if (t.percentComplete > 0) status = 'em_andamento';
+
+    state.activities.push({
+      id: uid(),
+      name: t.name,
+      deliveryId: delivId,
+      personId: null, // no auto-assign (names not resolved)
+      hours: t.work || 0,
+      start: t.start,
+      end: t.finish,
+      desc: t.isMilestone ? 'Marco' : '',
+      status,
+      progress: t.percentComplete || 0,
+      note: ''
+    });
+    created++;
+  });
+
+  saveState();
+  closeModal('modal-msproject');
+  resetMspModal();
+
+  // Navigate to the imported project
+  currentProjectId = projectId;
+  navigate('project_detail', projectId);
+
+  // Show success toast
+  showToast(`✓ Importação concluída — ${created} atividade(s) criada(s)`);
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = `position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--surface3);color:var(--green);border:1px solid rgba(52,211,153,0.3);padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;z-index:999;box-shadow:0 4px 20px rgba(0,0,0,0.4);`;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ============================================================
+//  GOOGLE DRIVE SYNC
+// ============================================================
+
+function gdInit() {
+  const clientId = GD_CLIENT_ID || localStorage.getItem('projflow_gd_client_id');
+  if (!clientId) { gdUpdatePanel(false); return; }
+
+  // Wait for GIS library
+  if (!window.google?.accounts?.oauth2) {
+    setTimeout(gdInit, 600);
+    return;
+  }
+
+  gdTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: GD_SCOPE,
+    callback: async (resp) => {
+      if (resp.error) { gdUpdatePanel(false, 'Erro: ' + resp.error); return; }
+      gdAccessToken = resp.access_token;
+      localStorage.setItem('projflow_gd_token_hint', '1');
+      gdUpdatePanel(true);
+      await gdLoad();
+    }
+  });
+
+  // Auto sign-in if user connected before
+  if (localStorage.getItem('projflow_gd_token_hint')) {
+    gdTokenClient.requestAccessToken({ prompt: '' });
+  } else {
+    gdUpdatePanel(false);
+  }
+}
+
+function gdSignIn() {
+  const clientId = GD_CLIENT_ID || localStorage.getItem('projflow_gd_client_id');
+  if (!clientId) {
+    // Ask for client ID first
+    const id = prompt('Cole aqui o seu Google OAuth Client ID:\n(veja as instruções em Configurações → Google Drive)');
+    if (!id || !id.includes('.apps.googleusercontent.com')) {
+      alert('Client ID inválido. Deve terminar em .apps.googleusercontent.com');
+      return;
+    }
+    localStorage.setItem('projflow_gd_client_id', id);
+    location.reload();
+    return;
+  }
+  if (!gdTokenClient) { gdInit(); setTimeout(()=>gdTokenClient?.requestAccessToken({ prompt: 'consent' }), 800); return; }
+  gdTokenClient.requestAccessToken({ prompt: '' });
+}
+
+function gdSignOut() {
+  if (gdAccessToken) google.accounts.oauth2.revoke(gdAccessToken);
+  gdAccessToken = null;
+  gdFileId = null;
+  localStorage.removeItem('projflow_gd_token_hint');
+  gdUpdatePanel(false);
+  showToast('Desconectado do Google Drive');
+}
+
+function gdUpdatePanel(connected, extra) {
+  const panel = document.getElementById('gd-status-panel');
+  if (!panel) return;
+  if (connected) {
+    panel.innerHTML = `
+      <div style="display:flex;align-items:center;gap:7px;padding:4px 2px;">
+        <div style="width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;"></div>
+        <span style="font-size:11px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="gd-user-label">Google Drive</span>
+        <button class="btn btn-ghost btn-sm" style="padding:2px 7px;font-size:10px;" onclick="gdSignOut()">Sair</button>
+      </div>
+      <div style="font-size:10px;color:var(--muted);padding:2px 2px 0;" id="gd-sync-label">Sincronizando…</div>`;
+  } else {
+    panel.innerHTML = `
+      <button class="btn btn-ghost" style="width:100%;font-size:12px;justify-content:center;gap:7px;" onclick="gdSignIn()">
+        <svg width="14" height="14" viewBox="0 0 24 24" style="flex-shrink:0"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        <span>Conectar Google Drive</span>
+      </button>
+      ${extra ? `<div style="font-size:10px;color:var(--red);padding:4px 2px;">${extra}</div>` : ''}`;
+  }
+}
+
+function gdSetSyncLabel(msg) {
+  const el = document.getElementById('gd-sync-label');
+  if (el) el.textContent = msg;
+}
+
+async function gdLoad() {
+  gdSetSyncLabel('Carregando dados…');
+  try {
+    // Find or create the app data file
+    const listResp = await fetch(
+      `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${GD_FILENAME}'&fields=files(id,name,modifiedTime)`,
+      { headers: { Authorization: `Bearer ${gdAccessToken}` } }
+    );
+    const list = await listResp.json();
+
+    if (list.files && list.files.length > 0) {
+      gdFileId = list.files[0].id;
+      // Download content
+      const dlResp = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${gdFileId}?alt=media`,
+        { headers: { Authorization: `Bearer ${gdAccessToken}` } }
+      );
+      const remote = await dlResp.json();
+
+      if (remote && remote.projects) {
+        // Merge: use whichever has more data (higher nextId = more recent)
+        const local = loadState();
+        if ((remote.nextId || 0) >= (local.nextId || 0)) {
+          state = remote;
+          localStorage.setItem('projflow_v2', JSON.stringify(state));
+        }
+      }
+      gdSetSyncLabel('✓ Sincronizado com Drive');
+    } else {
+      // First time — upload local data
+      await gdSave(true);
+    }
+
+    // Get user info for display
+    gdFetchUserInfo();
+    render();
+  } catch(e) {
+    gdSetSyncLabel('Erro ao carregar: ' + e.message);
+  }
+}
+
+async function gdSave(isNew) {
+  if (!gdAccessToken || gdSyncing) return;
+  gdSyncing = true;
+  gdSetSyncLabel('Salvando…');
+  try {
+    const body = JSON.stringify(state);
+    const blob = new Blob([body], { type: 'application/json' });
+
+    if (isNew || !gdFileId) {
+      // Create new file in appDataFolder
+      const meta = JSON.stringify({ name: GD_FILENAME, parents: ['appDataFolder'] });
+      const form = new FormData();
+      form.append('metadata', new Blob([meta], { type: 'application/json' }));
+      form.append('file', blob);
+      const resp = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+        { method: 'POST', headers: { Authorization: `Bearer ${gdAccessToken}` }, body: form }
+      );
+      const data = await resp.json();
+      gdFileId = data.id;
+    } else {
+      // Update existing
+      await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${gdFileId}?uploadType=media`,
+        { method: 'PATCH', headers: { Authorization: `Bearer ${gdAccessToken}`, 'Content-Type': 'application/json' }, body }
+      );
+    }
+    const t = new Date();
+    gdSetSyncLabel(`✓ Salvo às ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`);
+  } catch(e) {
+    gdSetSyncLabel('Erro ao salvar: ' + e.message);
+  } finally {
+    gdSyncing = false;
+  }
+}
+
+async function gdFetchUserInfo() {
+  try {
+    const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
+      { headers: { Authorization: `Bearer ${gdAccessToken}` } });
+    const info = await resp.json();
+    const el = document.getElementById('gd-user-label');
+    if (el && info.name) el.textContent = info.name.split(' ')[0];
+  } catch(e) {}
+}
+
+function gdManualSync() {
+  if (!gdAccessToken) { gdSignIn(); return; }
+  gdLoad();
+}
+
+// ============================================================
+//  HELPERS
+// ============================================================
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', function(e) {
+    if (e.target === el) el.classList.remove('open');
+  });
+});
+
+function initials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(' ');
+  if (parts.length === 1) return parts[0].slice(0,2).toUpperCase();
+  return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+}
+
+function fmtDate(str) {
+  if (!str) return '—';
+  const [y, m, d] = str.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Init
+render();
+gdInit();
+</script>
+</body>
+</html>
