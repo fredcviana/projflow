@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Proj·Flow — Gestão de Projetos</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// Proxy seguro — evita ReferenceError se usuário clicar antes do script principal carregar
+window.sbSignIn = function() { console.log('carregando...'); };
+window.sbSignOut = function() { console.log('carregando...'); };
+window.openModal = function(id) { document.getElementById(id)?.classList.add('open'); };
+window.closeModal = function(id) { document.getElementById(id)?.classList.remove('open'); };
+window.navigate = function() {};
+</script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 
@@ -698,46 +706,6 @@
   </div>
 </div>
 
-<!-- Modal Token Manual (mobile) -->
-<div class="modal-overlay" id="modal-gdtoken">
-  <div class="modal">
-    <div class="modal-title">Conectar Google Drive</div>
-    <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:20px;">
-      No tablet, a conexão automática não funciona. Siga os 2 passos abaixo — leva menos de 1 minuto.
-    </p>
-
-    <!-- Step 1 -->
-    <div style="display:flex; gap:12px; margin-bottom:20px; align-items:flex-start;">
-      <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; flex-shrink:0;">1</div>
-      <div style="flex:1;">
-        <div style="font-size:13px; font-weight:500; margin-bottom:6px;">Abra a página de autorização do Google</div>
-        <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Vai abrir numa nova aba. Faça login e autorize o acesso.</div>
-        <button class="btn btn-primary" id="gd-token-step1-btn" onclick="gdOpenAuthPage()">Abrir página do Google →</button>
-      </div>
-    </div>
-
-    <!-- Step 2 (hidden until step 1 done) -->
-    <div id="gd-token-step2" style="display:none;">
-      <div style="display:flex; gap:12px; margin-bottom:16px; align-items:flex-start;">
-        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; flex-shrink:0;">2</div>
-        <div style="flex:1;">
-          <div style="font-size:13px; font-weight:500; margin-bottom:6px;">Copie a URL da barra de endereços e cole aqui</div>
-          <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">Após autorizar, o Google vai redirecionar para o sistema. Copie a URL completa da barra de endereços (mesmo que a página pareça carregando) e cole abaixo.</div>
-          <textarea class="form-control" id="gd-token-input" rows="3" placeholder="Cole aqui a URL completa — ex: https://fredcviana.github.io/projflow/#access_token=ya29.xxx..."></textarea>
-          <div id="gd-token-error" style="color:var(--red); font-size:12px; margin-top:6px;"></div>
-        </div>
-      </div>
-      <div style="display:flex; gap:10px; justify-content:flex-end;">
-        <button class="btn btn-ghost" onclick="closeModal('modal-gdtoken')">Cancelar</button>
-        <button class="btn btn-primary" onclick="gdSubmitToken()">Conectar</button>
-      </div>
-    </div>
-
-    <div style="display:flex; justify-content:flex-end; margin-top:8px;" id="gd-token-cancel-row">
-      <button class="btn btn-ghost" onclick="closeModal('modal-gdtoken')">Cancelar</button>
-    </div>
-  </div>
-</div>
 
 <!-- Modal Login -->
 <div class="modal-overlay" id="modal-login">
@@ -2112,11 +2080,7 @@ function renderSettings() {
       <button class="btn btn-danger" onclick="clearAllData()">✕ Apagar Tudo</button>
     </div>
   `;
-
-  document.getElementById('page-content').innerHTML = `
-
-    <div class="section-title" style="margin-bottom:16px;">Google Drive — Sincronização</div>
-
+}
 
 // ============================================================
 //  MODALS: PROJECT
