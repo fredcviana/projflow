@@ -590,7 +590,7 @@ window.navigate = function() {};
 
 <!-- Modal Atividade -->
 <div class="modal-overlay" id="modal-activity">
-  <div class="modal modal-wide">
+  <div class="modal modal-wide" style="width:680px;">
     <div class="modal-title" id="modal-activity-title">Nova Atividade</div>
     <div class="form-group">
       <label class="form-label">Nome da Atividade *</label>
@@ -598,21 +598,11 @@ window.navigate = function() {};
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Responsável *</label>
-        <select class="form-control" id="a-person"></select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Carga Horária (h) *</label>
-        <input class="form-control" id="a-hours" type="number" min="1" max="9999" placeholder="Ex: 40" />
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Data de Início *</label>
+        <label class="form-label">Data de Início da Atividade</label>
         <input class="form-control" id="a-start" type="date" />
       </div>
       <div class="form-group">
-        <label class="form-label">Data de Término *</label>
+        <label class="form-label">Data de Término da Atividade</label>
         <input class="form-control" id="a-end" type="date" />
       </div>
     </div>
@@ -620,10 +610,20 @@ window.navigate = function() {};
       <label class="form-label">Descrição</label>
       <textarea class="form-control" id="a-desc" rows="2" placeholder="Detalhes da atividade..."></textarea>
     </div>
+
+    <!-- Alocações -->
+    <div style="border-top:1px solid var(--border); padding-top:14px; margin-top:4px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+        <div style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted);">Alocações de Pessoas</div>
+        <button class="btn btn-ghost btn-sm" onclick="addAllocationRow()">+ Adicionar pessoa</button>
+      </div>
+      <div id="a-allocations-list"></div>
+    </div>
+
     <input type="hidden" id="a-delivery-id" />
     <input type="hidden" id="a-activity-id" />
     <input type="hidden" id="a-package-id" />
-    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
       <button class="btn btn-ghost" onclick="closeModal('modal-activity')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveActivity()">Salvar Atividade</button>
     </div>
@@ -933,6 +933,15 @@ function loadState() {
       const s = JSON.parse(raw);
       if (!s.packages) s.packages = [];
       if (!s.templates) s.templates = [];
+      // Migrate old single-person activities to allocations array
+      s.activities = (s.activities || []).map(a => {
+        if (!a.allocations) {
+          a.allocations = a.personId
+            ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }]
+            : [];
+        }
+        return a;
+      });
       return s;
     }
   } catch(e) {}
@@ -1144,8 +1153,38 @@ function heatmapUpdateFromInputs() {
 }
 
 function isLate(a) {
-  if (!a.end || a.status === 'concluido') return false;
-  return new Date(a.end) < new Date();
+  if (a.status === 'concluido') return false;
+  // Late if any allocation end date is past, or activity end date
+  const end = a.end || (a.allocations||[]).map(al=>al.end).filter(Boolean).sort().pop();
+  if (!end) return false;
+  return new Date(end) < new Date();
+}
+
+// Total hours across all allocations
+function actTotalHours(a) {
+  if (a.allocations && a.allocations.length) {
+    return a.allocations.reduce((s, al) => s + (parseFloat(al.hours)||0), 0);
+  }
+  return parseFloat(a.hours) || 0;
+}
+
+// All persons in an activity (for filtering/display)
+function actPersonIds(a) {
+  if (a.allocations && a.allocations.length) return a.allocations.map(al => al.personId).filter(Boolean);
+  return a.personId ? [a.personId] : [];
+}
+
+// Effective date range for activity (union of all allocations)
+function actDateRange(a) {
+  const starts = [], ends = [];
+  if (a.start) starts.push(a.start);
+  if (a.end) ends.push(a.end);
+  (a.allocations||[]).forEach(al => {
+    if (al.start) starts.push(al.start);
+    if (al.end) ends.push(al.end);
+  });
+  starts.sort(); ends.sort();
+  return { start: starts[0]||'', end: ends[ends.length-1]||'' };
 }
 
 function getStatusBadge(status) {
@@ -1170,7 +1209,12 @@ function renderHoursByPerson() {
   const hoursMap = {};
   state.team.forEach(p => hoursMap[p.id] = 0);
   state.activities.forEach(a => {
-    if (a.personId) hoursMap[a.personId] = (hoursMap[a.personId] || 0) + (parseFloat(a.hours)||0);
+    const allocs = a.allocations && a.allocations.length
+      ? a.allocations
+      : (a.personId ? [{ personId: a.personId, hours: a.hours||0 }] : []);
+    allocs.forEach(al => {
+      if (al.personId) hoursMap[al.personId] = (hoursMap[al.personId]||0) + (parseFloat(al.hours)||0);
+    });
   });
   const max = Math.max(...Object.values(hoursMap), 1);
   return state.team.map((p, i) => {
@@ -1252,22 +1296,30 @@ function renderHeatmap(overrideStart, overrideEnd) {
   state.team.forEach(p => data[p.id] = {});
 
   state.activities.forEach(a => {
-    if (!a.personId || !a.start || !a.end) return;
-    const start = new Date(a.start);
-    const end = new Date(a.end);
-    // distribute hours across months
-    const daysTotal = Math.max(1, (end - start) / 86400000);
-    months.forEach(m => {
-      const mStart = new Date(m);
-      const mEnd = new Date(m.getFullYear(), m.getMonth()+1, 0);
-      const overlapStart = start > mStart ? start : mStart;
-      const overlapEnd = end < mEnd ? end : mEnd;
-      if (overlapStart <= overlapEnd) {
-        const days = (overlapEnd - overlapStart) / 86400000 + 1;
-        const h = (parseFloat(a.hours)||0) * days / daysTotal;
-        const key = `${m.getFullYear()}-${m.getMonth()}`;
-        data[a.personId][key] = (data[a.personId][key] || 0) + h;
-      }
+    const allocs = a.allocations && a.allocations.length
+      ? a.allocations
+      : (a.personId ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }] : []);
+
+    allocs.forEach(al => {
+      if (!al.personId) return;
+      const start = new Date(al.start || a.start);
+      const end   = new Date(al.end   || a.end);
+      if (!al.start && !a.start) return;
+      if (!al.end   && !a.end)   return;
+      const daysTotal = Math.max(1, (end - start) / 86400000);
+      months.forEach(m => {
+        const mStart = new Date(m);
+        const mEnd   = new Date(m.getFullYear(), m.getMonth()+1, 0);
+        const overlapStart = start > mStart ? start : mStart;
+        const overlapEnd   = end < mEnd ? end : mEnd;
+        if (overlapStart <= overlapEnd) {
+          const days = (overlapEnd - overlapStart) / 86400000 + 1;
+          const h = (parseFloat(al.hours)||0) * days / daysTotal;
+          const key = `${m.getFullYear()}-${m.getMonth()}`;
+          if (!data[al.personId]) data[al.personId] = {};
+          data[al.personId][key] = (data[al.personId][key] || 0) + h;
+        }
+      });
     });
   });
 
@@ -1358,8 +1410,8 @@ function renderProjects() {
   const rows = state.projects.map(p => {
     const deliveries = state.deliveries.filter(d => d.projectId === p.id);
     const activities = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
-    const totalH = activities.reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
-    const doneH = activities.filter(a => a.status === 'concluido').reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+    const totalH = activities.reduce((s,a) => s+actTotalHours(a), 0);
+    const doneH = activities.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
     const pct = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
     const lates = activities.filter(a => isLate(a)).length;
 
@@ -1411,8 +1463,8 @@ function renderProjectDetail() {
 
   const deliveries = state.deliveries.filter(d => d.projectId === p.id);
   const allActs = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
-  const totalH = allActs.reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
-  const doneH = allActs.filter(a => a.status === 'concluido').reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+  const totalH = allActs.reduce((s,a) => s+actTotalHours(a), 0);
+  const doneH = allActs.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
   const pct = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
 
   let deliveriesHTML = '';
@@ -1473,8 +1525,8 @@ function renderDeliveryCard(d, p) {
     a.deliveryId === d.id || pkgs.some(pkg => pkg.id === a.packageId)
   );
 
-  const totalH = allActsUniq.reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
-  const doneH  = allActsUniq.filter(a => a.status === 'concluido').reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+  const totalH = allActsUniq.reduce((s,a) => s+actTotalHours(a), 0);
+  const doneH  = allActsUniq.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
   const pct    = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
   const lates  = allActsUniq.filter(a => isLate(a)).length;
   const totalItems = pkgs.length + directActs.length;
@@ -1538,8 +1590,8 @@ function renderDeliveryCard(d, p) {
 function renderPackageCard(pkg, d) {
   const acts = state.activities.filter(a => a.packageId === pkg.id)
     .sort((a,b) => (a.seqOrder||0) - (b.seqOrder||0));
-  const totalH = acts.reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
-  const doneH  = acts.filter(a => a.status === 'concluido').reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+  const totalH = acts.reduce((s,a) => s+actTotalHours(a), 0);
+  const doneH  = acts.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
   const pct    = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
   const lates  = acts.filter(a => isLate(a)).length;
 
@@ -1607,32 +1659,43 @@ function renderPackageCard(pkg, d) {
 }
 
 function renderActivityRowInPackage(a, idx, allActs) {
-  const person  = state.team.find(p => p.id === a.personId);
-  const pIdx    = state.team.findIndex(p => p.id === a.personId);
-  const col     = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
-  const prog    = a.progress || 0;
-  const late    = isLate(a);
+  const allocs = a.allocations && a.allocations.length ? a.allocations
+    : (a.personId ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }] : []);
+  const totalH = actTotalHours(a);
+  const range  = actDateRange(a);
+  const prog   = a.progress || 0;
+  const late   = isLate(a);
   const statusBadge = late && a.status !== 'concluido' ? `<span class="badge badge-red">Atrasado</span>` : getStatusBadge(a.status);
-
-  // Sequence indicator
-  const isFirst = idx === 0;
   const prevDone = idx === 0 || allActs[idx-1].status === 'concluido';
-  const seqColor = isFirst ? 'var(--muted)' : prevDone ? 'var(--green)' : 'var(--amber)';
+  const seqColor = idx === 0 ? 'var(--muted)' : prevDone ? 'var(--green)' : 'var(--amber)';
+
+  const personHTML = allocs.length === 0
+    ? '<span style="color:var(--muted);">—</span>'
+    : allocs.map(al => {
+        const p = state.team.find(x => x.id === al.personId);
+        const pIdx = state.team.findIndex(x => x.id === al.personId);
+        const col = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+        return p ? `<div style="display:inline-flex;align-items:center;gap:4px;margin-right:4px;">
+          <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(p.name)}</div>
+          <span style="font-size:11px;">${p.name.split(' ')[0]}</span>
+          <span style="font-size:10px;color:var(--muted);font-family:var(--mono);">${al.hours||0}h</span>
+        </div>` : '';
+      }).join('');
 
   return `
     <div class="activity-row" style="grid-template-columns:24px 2fr 1fr 80px 110px 110px 120px 100px;">
       <div style="font-size:11px; font-weight:600; color:${seqColor}; text-align:center;">${idx+1}</div>
       <div style="min-width:0;">
         <div style="display:flex; align-items:center; gap:6px;">
-          ${idx > 0 ? `<span style="font-size:10px; color:var(--muted);" title="Depende da atividade anterior">→</span>` : ''}
+          ${idx > 0 ? `<span style="font-size:10px; color:var(--muted);">→</span>` : ''}
           <div style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.name)}</div>
         </div>
         ${a.note ? `<div style="font-size:11px; color:var(--muted);">${esc(a.note)}</div>` : ''}
       </div>
-      <div>${person ? `<div style="display:flex;align-items:center;gap:6px;"><div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(person.name)}</div><span style="font-size:12px;">${person.name.split(' ')[0]}</span></div>` : '<span style="color:var(--muted);">—</span>'}</div>
-      <div style="font-family:var(--mono);font-size:12px;">${a.hours||'—'}h</div>
-      <div style="font-size:12px;color:var(--muted);">${fmtDate(a.start)}</div>
-      <div style="font-size:12px;color:var(--muted);">${fmtDate(a.end)}</div>
+      <div><div style="display:flex;flex-wrap:wrap;">${personHTML}</div></div>
+      <div style="font-family:var(--mono);font-size:12px;">${totalH||'—'}h</div>
+      <div style="font-size:12px;color:var(--muted);">${fmtDate(range.start)}</div>
+      <div style="font-size:12px;color:var(--muted);">${fmtDate(range.end)}</div>
       <div>
         <div style="display:flex;align-items:center;gap:6px;">
           <div class="progress-wrap" style="flex:1;width:60px;"><div class="progress-bar ${prog===100?'green':prog>60?'':prog>30?'amber':'red'}" style="width:${prog}%;"></div></div>
@@ -1649,12 +1712,28 @@ function renderActivityRowInPackage(a, idx, allActs) {
 }
 
 function renderActivityRow(a) {
-  const person = state.team.find(p => p.id === a.personId);
-  const pIdx = state.team.findIndex(p => p.id === a.personId);
-  const col = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
-  const prog = a.progress || 0;
-  const late = isLate(a);
+  const allocs = a.allocations && a.allocations.length ? a.allocations
+    : (a.personId ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }] : []);
+  const totalH = actTotalHours(a);
+  const prog   = a.progress || 0;
+  const late   = isLate(a);
+  const range  = actDateRange(a);
   const statusBadge = late && a.status !== 'concluido' ? `<span class="badge badge-red">Atrasado</span>` : getStatusBadge(a.status);
+
+  // Build compact person list
+  const personHTML = allocs.length === 0
+    ? '<span style="color:var(--muted);">—</span>'
+    : allocs.map(al => {
+        const p    = state.team.find(x => x.id === al.personId);
+        const pIdx = state.team.findIndex(x => x.id === al.personId);
+        const col  = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+        return p ? `<div class="tooltip-wrap" style="display:inline-flex; align-items:center; gap:4px; margin-right:4px; margin-bottom:2px;">
+          <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(p.name)}</div>
+          <span style="font-size:11px; white-space:nowrap;">${p.name.split(' ')[0]}</span>
+          <span style="font-size:10px; color:var(--muted); font-family:var(--mono);">${al.hours||0}h</span>
+          <div class="tooltip">${p.name}<br>${fmtDate(al.start)||'—'} → ${fmtDate(al.end)||'—'}<br>${al.hours||0}h</div>
+        </div>` : '';
+      }).join('');
 
   return `
     <div class="activity-row">
@@ -1662,15 +1741,10 @@ function renderActivityRow(a) {
         <div style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.name)}</div>
         ${a.note ? `<div style="font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.note)}</div>` : ''}
       </div>
-      <div>
-        ${person ? `<div style="display:flex; align-items:center; gap:6px;">
-          <div class="avatar avatar-sm" style="background:${col}22; color:${col};">${initials(person.name)}</div>
-          <span style="font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${person.name.split(' ')[0]}</span>
-        </div>` : '<span style="color:var(--muted);">—</span>'}
-      </div>
-      <div style="font-family:var(--mono); font-size:12px;">${a.hours || '—'}h</div>
-      <div style="font-size:12px; color:var(--muted);">${fmtDate(a.start)}</div>
-      <div style="font-size:12px; color:var(--muted);">${fmtDate(a.end)}</div>
+      <div style="min-width:0;"><div style="display:flex; flex-wrap:wrap;">${personHTML}</div></div>
+      <div style="font-family:var(--mono); font-size:12px;">${totalH||'—'}h</div>
+      <div style="font-size:12px; color:var(--muted);">${fmtDate(range.start)}</div>
+      <div style="font-size:12px; color:var(--muted);">${fmtDate(range.end)}</div>
       <div>
         <div style="display:flex; align-items:center; gap:6px;">
           <div class="progress-wrap" style="flex:1; width:60px;">
@@ -1746,7 +1820,7 @@ function renderActivitiesDashboard() {
 
   // Apply filters
   if (fProject) acts = acts.filter(a => a.project && String(a.project.id) === fProject);
-  if (fPerson)  acts = acts.filter(a => a.personId && String(a.personId) === fPerson);
+  if (fPerson)  acts = acts.filter(a => actPersonIds(a).map(String).includes(fPerson));
   if (fStatus)  acts = acts.filter(a => a.effStatus === fStatus);
 
   // ---- KPIs ----
@@ -1754,8 +1828,8 @@ function renderActivitiesDashboard() {
   const done    = acts.filter(a => a.effStatus === 'concluido').length;
   const late    = acts.filter(a => a.effStatus === 'atrasado').length;
   const ongoing = acts.filter(a => a.effStatus === 'em_andamento').length;
-  const totalH  = acts.reduce((s,a) => s+(parseFloat(a.hours)||0), 0);
-  const doneH   = acts.filter(a=>a.effStatus==='concluido').reduce((s,a)=>s+(parseFloat(a.hours)||0),0);
+  const totalH  = acts.reduce((s,a) => s+actTotalHours(a), 0);
+  const doneH   = acts.filter(a=>a.effStatus==='concluido').reduce((s,a)=>s+actTotalHours(a),0);
   const avgProg = total ? Math.round(acts.reduce((s,a)=>s+(a.progress||0),0)/total) : 0;
 
   // ---- Timeline data ----
@@ -2145,7 +2219,7 @@ function renderMyActivities(personId) {
   const col = getPersonColor(pIdx);
 
   const myActs = state.activities
-    .filter(a => a.personId === personId)
+    .filter(a => actPersonIds(a).includes(personId))
     .map(a => {
       const delivery = state.deliveries.find(d => d.id === a.deliveryId);
       const project  = delivery ? state.projects.find(p => p.id === delivery.projectId) : null;
@@ -2161,7 +2235,7 @@ function renderMyActivities(personId) {
   const done   = myActs.filter(a => a.effStatus === 'concluido').length;
   const late   = myActs.filter(a => a.effStatus === 'atrasado').length;
   const active = myActs.filter(a => a.effStatus === 'em_andamento').length;
-  const totalH = myActs.reduce((s,a) => s+(parseFloat(a.hours)||0), 0);
+  const totalH = myActs.reduce((s,a) => s+actTotalHours(a), 0);
   const avgProg = total ? Math.round(myActs.reduce((s,a)=>s+(a.progress||0),0)/total) : 0;
 
   const el = document.getElementById('myview-content');
@@ -2292,8 +2366,8 @@ function _doExportXlsx() {
   state.projects.forEach(p => {
     const deliveries = state.deliveries.filter(d => d.projectId === p.id);
     const acts = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
-    const totalH = acts.reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
-    const doneH  = acts.filter(a => a.status === 'concluido').reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+    const totalH = acts.reduce((s,a) => s+actTotalHours(a), 0);
+    const doneH  = acts.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
     const pct    = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
     summaryRows.push([
       p.name    || '',
@@ -2820,8 +2894,11 @@ function renderTeam() {
 
   const cards = state.team.map((p, i) => {
     const col = getPersonColor(i);
-    const acts = state.activities.filter(a => a.personId === p.id);
-    const totalH = acts.reduce((s,a) => s+(parseFloat(a.hours)||0),0);
+    const acts = state.activities.filter(a => actPersonIds(a).includes(p.id));
+    const totalH = acts.reduce((s,a) => {
+      const al = (a.allocations||[]).find(x=>x.personId===p.id);
+      return s + (al ? parseFloat(al.hours)||0 : actTotalHours(a));
+    }, 0);
     const activeActs = acts.filter(a => a.status === 'em_andamento').length;
     const lates = acts.filter(a => isLate(a)).length;
 
@@ -3179,19 +3256,6 @@ function deletePackage(id) {
   render();
 }
 
-function openNewActivityInPackage(packageId, deliveryId) {
-  document.getElementById('modal-activity-title').textContent = 'Nova Atividade no Pacote';
-  document.getElementById('a-name').value = '';
-  document.getElementById('a-hours').value = '';
-  document.getElementById('a-start').value = '';
-  document.getElementById('a-end').value = '';
-  document.getElementById('a-desc').value = '';
-  document.getElementById('a-delivery-id').value = deliveryId;
-  document.getElementById('a-activity-id').value = '';
-  document.getElementById('a-package-id').value = packageId;
-  populatePersonSelect();
-  openModal('modal-activity');
-}
 
 // ============================================================
 //  MODALS: DELIVERY
@@ -3252,17 +3316,75 @@ function deleteDelivery(id) {
 // ============================================================
 //  MODALS: ACTIVITY
 // ============================================================
+// Working copy of allocations while editing
+let _editingAllocations = [];
+
+function renderAllocationList() {
+  const el = document.getElementById('a-allocations-list');
+  if (!el) return;
+  if (!_editingAllocations.length) {
+    el.innerHTML = `<div style="font-size:12px; color:var(--muted); padding:8px 0;">Nenhuma pessoa alocada ainda. Clique em "+ Adicionar pessoa".</div>`;
+    return;
+  }
+  el.innerHTML = _editingAllocations.map((al, i) => `
+    <div style="display:grid; grid-template-columns:1fr 80px 1fr 1fr auto; gap:8px; align-items:center; margin-bottom:8px; padding:10px 12px; background:var(--surface2); border-radius:var(--radius-sm);">
+      <select onchange="_editingAllocations[${i}].personId=parseInt(this.value)||null"
+        style="background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:13px;padding:6px 8px;font-family:var(--font);">
+        <option value="">— Pessoa —</option>
+        ${state.team.map(p => `<option value="${p.id}" ${p.id===al.personId?'selected':''}>${esc(p.name)}</option>`).join('')}
+      </select>
+      <div>
+        <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px;">HORAS</label>
+        <input type="number" min="0" value="${al.hours||''}" placeholder="h"
+          onchange="_editingAllocations[${i}].hours=parseFloat(this.value)||0"
+          style="width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:13px;padding:6px 8px;font-family:var(--font);" />
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px;">INÍCIO</label>
+        <input type="date" value="${al.start||''}"
+          onchange="_editingAllocations[${i}].start=this.value"
+          style="width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:12px;padding:6px 8px;font-family:var(--font);" />
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px;">TÉRMINO</label>
+        <input type="date" value="${al.end||''}"
+          onchange="_editingAllocations[${i}].end=this.value"
+          style="width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:12px;padding:6px 8px;font-family:var(--font);" />
+      </div>
+      <button class="btn btn-danger btn-sm" style="padding:4px 8px;align-self:flex-end;" onclick="_editingAllocations.splice(${i},1); renderAllocationList()">✕</button>
+    </div>`).join('');
+}
+
+function addAllocationRow() {
+  _editingAllocations.push({ personId: null, hours: 0, start: '', end: '' });
+  renderAllocationList();
+}
+
 function openNewActivity(deliveryId) {
   document.getElementById('modal-activity-title').textContent = 'Nova Atividade';
   document.getElementById('a-name').value = '';
-  document.getElementById('a-hours').value = '';
   document.getElementById('a-start').value = '';
   document.getElementById('a-end').value = '';
   document.getElementById('a-desc').value = '';
   document.getElementById('a-delivery-id').value = deliveryId;
   document.getElementById('a-activity-id').value = '';
   document.getElementById('a-package-id').value = '';
-  populatePersonSelect();
+  _editingAllocations = [];
+  renderAllocationList();
+  openModal('modal-activity');
+}
+
+function openNewActivityInPackage(packageId, deliveryId) {
+  document.getElementById('modal-activity-title').textContent = 'Nova Atividade no Pacote';
+  document.getElementById('a-name').value = '';
+  document.getElementById('a-start').value = '';
+  document.getElementById('a-end').value = '';
+  document.getElementById('a-desc').value = '';
+  document.getElementById('a-delivery-id').value = deliveryId;
+  document.getElementById('a-activity-id').value = '';
+  document.getElementById('a-package-id').value = packageId;
+  _editingAllocations = [];
+  renderAllocationList();
   openModal('modal-activity');
 }
 
@@ -3271,36 +3393,53 @@ function openEditActivity(id) {
   if (!a) return;
   document.getElementById('modal-activity-title').textContent = 'Editar Atividade';
   document.getElementById('a-name').value = a.name;
-  document.getElementById('a-hours').value = a.hours || '';
   document.getElementById('a-start').value = a.start || '';
   document.getElementById('a-end').value = a.end || '';
   document.getElementById('a-desc').value = a.desc || '';
   document.getElementById('a-delivery-id').value = a.deliveryId || '';
   document.getElementById('a-activity-id').value = id;
   document.getElementById('a-package-id').value = a.packageId || '';
-  populatePersonSelect(a.personId);
+  // Load existing allocations (migrate if needed)
+  _editingAllocations = a.allocations && a.allocations.length
+    ? JSON.parse(JSON.stringify(a.allocations))
+    : (a.personId ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }] : []);
+  renderAllocationList();
   openModal('modal-activity');
 }
 
 function populatePersonSelect(selectedId) {
-  const sel = document.getElementById('a-person');
-  sel.innerHTML = '<option value="">— Selecionar pessoa —</option>' +
-    state.team.map(p => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+  // Legacy — kept for compatibility with package activity opener
+  _editingAllocations = selectedId
+    ? [{ personId: selectedId, hours: 0, start: '', end: '' }]
+    : [];
+  renderAllocationList();
 }
 
 function saveActivity() {
   const name = document.getElementById('a-name').value.trim();
   if (!name) { alert('Informe o nome da atividade.'); return; }
-  const editId = parseInt(document.getElementById('a-activity-id').value) || 0;
-  const packageId = parseInt(document.getElementById('a-package-id').value) || null;
+  const editId     = parseInt(document.getElementById('a-activity-id').value) || 0;
+  const packageId  = parseInt(document.getElementById('a-package-id').value) || null;
   const deliveryId = parseInt(document.getElementById('a-delivery-id').value) || null;
+
+  // Filter out empty allocations
+  const allocations = _editingAllocations.filter(al => al.personId);
+
+  // Compute aggregate hours and date range for backward-compat fields
+  const totalHours = allocations.reduce((s,al) => s+(parseFloat(al.hours)||0), 0);
+  const starts = allocations.map(al=>al.start).filter(Boolean).sort();
+  const ends   = allocations.map(al=>al.end).filter(Boolean).sort();
+  const mainStart = document.getElementById('a-start').value || starts[0] || '';
+  const mainEnd   = document.getElementById('a-end').value || ends[ends.length-1] || '';
 
   const data = {
     name,
-    personId: parseInt(document.getElementById('a-person').value) || null,
-    hours: parseFloat(document.getElementById('a-hours').value) || 0,
-    start: document.getElementById('a-start').value,
-    end: document.getElementById('a-end').value,
+    allocations,
+    // Keep legacy fields for backward compat / filtering
+    personId: allocations[0]?.personId || null,
+    hours: totalHours,
+    start: mainStart,
+    end: mainEnd,
     desc: document.getElementById('a-desc').value,
     deliveryId: packageId ? null : deliveryId,
     packageId: packageId || null,
@@ -3310,12 +3449,11 @@ function saveActivity() {
     const a = state.activities.find(x => x.id === editId);
     Object.assign(a, data);
   } else {
-    // Auto seqOrder within package
     if (packageId) {
       const pkgActs = state.activities.filter(a => a.packageId === packageId);
       data.seqOrder = pkgActs.length;
     }
-    state.activities.push({ id: uid(), status: 'nao_iniciado', progress: 0, ...data });
+    state.activities.push({ id: uid(), status: 'nao_iniciado', progress: 0, note: '', ...data });
   }
   closeModal('modal-activity');
   render();
@@ -3333,10 +3471,17 @@ function deleteActivity(id) {
 function openProgress(id) {
   const a = state.activities.find(x => x.id === id);
   if (!a) return;
-  const person = state.team.find(p => p.id === a.personId);
+  const allocs = a.allocations && a.allocations.length
+    ? a.allocations
+    : (a.personId ? [{ personId: a.personId, hours: a.hours||0 }] : []);
+  const range = actDateRange(a);
+  const peopleStr = allocs.map(al => {
+    const p = state.team.find(x => x.id === al.personId);
+    return p ? `${p.name} (${al.hours||0}h)` : '';
+  }).filter(Boolean).join(', ');
   document.getElementById('progress-activity-info').innerHTML = `
     <div style="font-weight:500; font-size:13px; margin-bottom:4px;">${esc(a.name)}</div>
-    <div style="font-size:12px; color:var(--muted);">${person ? person.name + ' · ' : ''}${a.hours||0}h · ${fmtDate(a.start)} → ${fmtDate(a.end)}</div>
+    <div style="font-size:12px; color:var(--muted);">${peopleStr || '—'} · ${actTotalHours(a)}h · ${fmtDate(range.start)} → ${fmtDate(range.end)}</div>
   `;
   const slider = document.getElementById('progress-slider');
   slider.value = a.progress || 0;
