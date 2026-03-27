@@ -4,9 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Proj·Flow — Gestão de Projetos</title>
-<!-- Google Identity & Drive API -->
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://apis.google.com/js/api.js" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 
@@ -489,12 +487,12 @@
     <div class="nav-item" onclick="navigate('settings')">
       <span class="nav-icon">◻</span><span>Configurações</span>
     </div>
-    <!-- Google Drive sync status -->
-    <div style="margin-top:auto; padding:16px 14px 8px; border-top:1px solid var(--border);">
-      <div id="gd-status-panel">
-        <button class="btn btn-ghost" style="width:100%; font-size:12px; justify-content:center;" onclick="gdSignIn()">
-          <svg width="14" height="14" viewBox="0 0 24 24" style="flex-shrink:0"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-          <span>Conectar Google Drive</span>
+    <!-- Supabase auth status -->
+    <div style="margin-top:auto; padding:12px 14px 8px; border-top:1px solid var(--border);">
+      <div id="sb-status-panel">
+        <button class="btn btn-ghost" style="width:100%; font-size:12px; justify-content:center; gap:7px;" onclick="openModal('modal-login')">
+          <span style="font-size:14px;">◎</span>
+          <span>Fazer Login</span>
         </button>
       </div>
     </div>
@@ -741,6 +739,37 @@
   </div>
 </div>
 
+<!-- Modal Login -->
+<div class="modal-overlay" id="modal-login">
+  <div class="modal" style="width:400px;">
+    <div style="text-align:center; margin-bottom:24px;">
+      <svg width="140" height="36" viewBox="0 0 140 36" fill="none" style="margin-bottom:8px;">
+        <polygon points="16,2 27,8 27,20 16,26 5,20 5,8" fill="#6c63ff" opacity="0.15"/>
+        <polygon points="16,2 27,8 27,20 16,26 5,20 5,8" fill="none" stroke="#6c63ff" stroke-width="1.5"/>
+        <text x="16" y="18" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="11" font-weight="600" fill="#9d97ff">P</text>
+        <text x="36" y="20" font-family="DM Sans,sans-serif" font-size="15" font-weight="600" fill="#e8e8ec" letter-spacing="-0.3">Proj</text>
+        <circle cx="71" cy="17" r="2.5" fill="#6c63ff"/>
+        <text x="77" y="20" font-family="DM Sans,sans-serif" font-size="15" font-weight="600" fill="#9d97ff" letter-spacing="-0.3">Flow</text>
+      </svg>
+      <div style="font-size:13px; color:var(--muted);">Entre com seu e-mail e senha</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">E-mail</label>
+      <input class="form-control" id="login-email" type="email" placeholder="seu@email.com" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Senha</label>
+      <input class="form-control" id="login-password" type="password" placeholder="••••••••"
+        onkeydown="if(event.key==='Enter') sbSignIn()" />
+    </div>
+    <div id="login-error" style="display:none; color:var(--red); font-size:12px; margin-bottom:12px; padding:8px 12px; background:rgba(248,113,113,0.1); border-radius:var(--radius-sm);"></div>
+    <button class="btn btn-primary" style="width:100%; justify-content:center;" id="login-btn" onclick="sbSignIn()">Entrar</button>
+    <div style="text-align:center; margin-top:12px; font-size:11px; color:var(--muted);">
+      Não tem acesso? Fale com o administrador do sistema.
+    </div>
+  </div>
+</div>
+
 <!-- Modal Pessoa -->
 <div class="modal-overlay" id="modal-person">
   <div class="modal">
@@ -774,21 +803,20 @@
 
 <script>
 // ============================================================
-//  GOOGLE DRIVE SYNC CONFIG
-//  → Paste your OAuth Client ID below (see setup instructions)
+//  SUPABASE CONFIG
 // ============================================================
-const GD_CLIENT_ID = '695739031961-4hvv6qr0aclmg9qvcer0s5ssprbaimnb.apps.googleusercontent.com';
-const GD_SCOPE     = 'https://www.googleapis.com/auth/drive.appdata';
-const GD_FILENAME  = 'projflow_data.json';
+const SB_URL  = 'https://ydfytofjbpoqpsbryhyg.supabase.co';
+const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlkZnl0b2ZqYnBvcXBzYnJ5aHlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NzAxMjUsImV4cCI6MjA5MDE0NjEyNX0.C2EmgZUxO3x0vNpqtw0uzL4U4YGRBaL0XeIK7INjVzM';
+const ADMIN_EMAIL = 'fredcviana@gmail.com'; // gestor principal
 
-let gdTokenClient  = null;
-let gdAccessToken  = null;
-let gdFileId       = null;
-let gdSyncing      = false;
-let gdSyncTimer    = null;
+let sb = null;        // Supabase client
+let sbUser = null;    // logged in user
+let sbDataId = null;  // row id in projflow_data
+let sbSyncTimer = null;
+let sbChannel = null; // realtime channel
 
 // ============================================================
-//  DATA STORE  (localStorage primary, Drive secondary)
+//  DATA STORE
 // ============================================================
 let state = loadState();
 
@@ -802,10 +830,15 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem('projflow_v2', JSON.stringify(state));
-  // Debounce Drive sync — write 2s after last change
-  if (gdAccessToken) {
-    clearTimeout(gdSyncTimer);
-    gdSyncTimer = setTimeout(gdSave, 2000);
+  // Debounce Supabase sync — only admin writes main data
+  if (sb && sbUser && sbUser.email === ADMIN_EMAIL) {
+    clearTimeout(sbSyncTimer);
+    sbSyncTimer = setTimeout(sbSaveData, 1500);
+  }
+  // Team members save their activity updates
+  if (sb && sbUser && sbUser.email !== ADMIN_EMAIL) {
+    clearTimeout(sbSyncTimer);
+    sbSyncTimer = setTimeout(() => {}, 0); // updates handled per-activity
   }
 }
 
@@ -1717,7 +1750,7 @@ function renderMyView() {
   document.getElementById('topbar-title').textContent = 'Minha Visão';
   document.getElementById('topbar-sub').textContent = 'Suas atividades do sprint atual';
   document.getElementById('topbar-actions').innerHTML = `
-    <button class="btn btn-ghost btn-sm" onclick="gdManualSync()">↻ Atualizar</button>
+    <button class="btn btn-ghost btn-sm" onclick="sbManualSync()">↻ Atualizar</button>
     <button class="btn btn-primary btn-sm" onclick="exportExcel()">↓ Exportar Excel</button>
   `;
 
@@ -1736,7 +1769,7 @@ function renderMyView() {
         <option value="">— Selecione seu nome —</option>
         ${state.team.map(p => `<option value="${p.id}" ${String(p.id)===savedPerson?'selected':''}>${esc(p.name)}</option>`).join('')}
       </select>
-      ${savedPerson ? `<button class="btn btn-ghost btn-sm" onclick="gdManualSync(); setTimeout(renderMyView,1500)">↻ Buscar atualizações</button>` : ''}
+      ${savedPerson ? `<button class="btn btn-ghost btn-sm" onclick="sbManualSync(); setTimeout(renderMyView,1500)">↻ Buscar atualizações</button>` : ''}
     </div>
     <div id="myview-content"></div>
   `;
@@ -2025,54 +2058,36 @@ function renderSettings() {
   document.getElementById('topbar-sub').textContent = 'Dados e preferências';
   document.getElementById('topbar-actions').innerHTML = '';
 
-  const clientId = localStorage.getItem('projflow_gd_client_id') || '';
-  const connected = !!gdAccessToken;
+  const connected = !!sbUser;
+  const isAdmin = sbUser?.email === ADMIN_EMAIL;
 
   document.getElementById('page-content').innerHTML = `
 
-    <div class="section-title" style="margin-bottom:16px;">Google Drive — Sincronização</div>
-
+    <div class="section-title" style="margin-bottom:16px;">Conta</div>
     <div class="card" style="margin-bottom:24px; border-color:${connected?'rgba(52,211,153,0.25)':'var(--border)'};">
-      <div style="display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap;">
-        <div style="flex:1; min-width:260px;">
-          <div style="font-size:14px; font-weight:500; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
-            ${connected
-              ? `<div style="width:8px;height:8px;border-radius:50%;background:var(--green);"></div> Conectado ao Google Drive`
-              : `<div style="width:8px;height:8px;border-radius:50%;background:var(--muted);"></div> Não conectado`}
+      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:200px;">
+          <div style="font-size:14px; font-weight:500; margin-bottom:4px; display:flex; align-items:center; gap:8px;">
+            ${connected ? `<div style="width:8px;height:8px;border-radius:50%;background:var(--green);"></div> Conectado` : `<div style="width:8px;height:8px;border-radius:50%;background:var(--muted);"></div> Não conectado`}
           </div>
-          <p style="font-size:13px; color:var(--muted); line-height:1.7; margin-bottom:14px;">
-            ${connected
-              ? 'Seus dados estão sendo sincronizados automaticamente. Qualquer dispositivo com essa conta terá acesso aos mesmos dados.'
-              : 'Conecte sua conta Google para sincronizar dados entre PC, tablet e celular automaticamente.'}
-          </p>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            ${connected
-              ? `<button class="btn btn-success btn-sm" onclick="gdManualSync()">↻ Sincronizar agora</button>
-                 <button class="btn btn-danger btn-sm" onclick="gdSignOut()">Desconectar</button>`
-              : `<button class="btn btn-primary btn-sm" onclick="gdSignIn()">Conectar com Google</button>`}
-          </div>
+          <div style="font-size:13px; color:var(--muted);">${sbUser ? sbUser.email : 'Faça login para sincronizar os dados'}</div>
         </div>
-        ${clientId ? `<div style="font-size:11px; color:var(--muted); background:var(--surface2); padding:8px 12px; border-radius:var(--radius-sm); font-family:var(--mono); word-break:break-all; max-width:260px;">Client ID configurado ✓</div>` : ''}
+        ${connected
+          ? `<button class="btn btn-danger btn-sm" onclick="sbSignOut()">Sair</button>`
+          : `<button class="btn btn-primary btn-sm" onclick="openModal('modal-login')">Fazer Login</button>`}
       </div>
     </div>
 
-    ${!clientId ? `
-    <div class="card" style="margin-bottom:24px; border-color:rgba(108,99,255,0.2);">
-      <div style="font-size:14px; font-weight:500; margin-bottom:12px; color:var(--accent2);">Como configurar o Google Drive</div>
-      <div style="font-size:13px; color:var(--muted); line-height:2;">
-        <div style="display:flex; gap:10px; margin-bottom:8px;"><span style="background:var(--accent); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">1</span><span>Acesse <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent2);">console.cloud.google.com</a> com sua conta Google</span></div>
-        <div style="display:flex; gap:10px; margin-bottom:8px;"><span style="background:var(--accent); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">2</span><span>Crie um projeto novo (ex: "ProjFlow")</span></div>
-        <div style="display:flex; gap:10px; margin-bottom:8px;"><span style="background:var(--accent); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">3</span><span>Vá em <strong style="color:var(--text);">APIs e Serviços → Credenciais → Criar credenciais → ID do cliente OAuth</strong></span></div>
-        <div style="display:flex; gap:10px; margin-bottom:8px;"><span style="background:var(--accent); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">4</span><span>Tipo: <strong style="color:var(--text);">Aplicativo da Web</strong><br>· Origens JS autorizadas: <code style="background:var(--surface2); padding:1px 5px; border-radius:3px; font-size:11px;">https://fredcviana.github.io</code><br>· URIs de redirecionamento autorizados: <code style="background:var(--surface2); padding:1px 5px; border-radius:3px; font-size:11px;">https://fredcviana.github.io/projflow/</code></span></div>
-        <div style="display:flex; gap:10px; margin-bottom:8px;"><span style="background:var(--accent); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">5</span><span>Ative a <strong style="color:var(--text);">Google Drive API</strong> em APIs e Serviços → Biblioteca</span></div>
-        <div style="display:flex; gap:10px;"><span style="background:var(--accent); color:#fff; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0;">6</span><span>Cole o Client ID (termina em .apps.googleusercontent.com) e clique em Conectar</span></div>
-      </div>
-      <div style="margin-top:16px;">
-        <label class="form-label">Client ID (opcional — cole aqui para não precisar digitar toda vez)</label>
-        <div style="display:flex; gap:8px;">
-          <input class="form-control" id="settings-client-id" placeholder="xxxx.apps.googleusercontent.com" value="${clientId}" style="flex:1;" />
-          <button class="btn btn-primary" onclick="saveClientId()">Salvar</button>
-        </div>
+    ${isAdmin ? `
+    <div class="section-title" style="margin-bottom:16px;">Gerenciar Usuários da Equipe</div>
+    <div class="card" style="margin-bottom:24px;">
+      <p style="font-size:13px; color:var(--muted); margin-bottom:16px; line-height:1.7;">
+        Para dar acesso a um membro da equipe, crie o usuário no painel do Supabase com o e-mail dele e uma senha temporária.
+        Depois cadastre esse mesmo e-mail no perfil da pessoa em <strong style="color:var(--text);">Equipe</strong> — o sistema vai reconhecê-lo automaticamente no login.
+      </p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a href="https://supabase.com/dashboard/project/ydfytofjbpoqpsbryhyg/auth/users" target="_blank" class="btn btn-primary btn-sm">Gerenciar usuários no Supabase →</a>
+        <button class="btn btn-ghost btn-sm" onclick="sbManualSync()">↻ Sincronizar dados</button>
       </div>
     </div>` : ''}
 
@@ -2097,16 +2112,11 @@ function renderSettings() {
       <button class="btn btn-danger" onclick="clearAllData()">✕ Apagar Tudo</button>
     </div>
   `;
-}
 
-function saveClientId() {
-  const id = document.getElementById('settings-client-id').value.trim();
-  if (!id) return;
-  if (!id.includes('.apps.googleusercontent.com')) { alert('Client ID inválido.'); return; }
-  localStorage.setItem('projflow_gd_client_id', id);
-  showToast('Client ID salvo — recarregue a página para conectar');
-  setTimeout(() => location.reload(), 1800);
-}
+  document.getElementById('page-content').innerHTML = `
+
+    <div class="section-title" style="margin-bottom:16px;">Google Drive — Sincronização</div>
+
 
 // ============================================================
 //  MODALS: PROJECT
@@ -2324,6 +2334,10 @@ function saveProgress() {
   a.note = document.getElementById('progress-note').value;
   if (a.progress === 100 && a.status !== 'concluido') a.status = 'concluido';
   closeModal('modal-progress');
+  // Team member: push update to Supabase realtime
+  if (sb && sbUser && sbUser.email !== ADMIN_EMAIL) {
+    sbSaveActivityUpdate(a.id, a.progress, a.status, a.note);
+  }
   render();
 }
 
@@ -2746,268 +2760,183 @@ function showToast(msg) {
 }
 
 // ============================================================
-//  GOOGLE DRIVE SYNC — Fluxo universal (desktop popup + mobile manual token)
+//  SUPABASE SYNC
 // ============================================================
 
-function gdIsMobile() {
-  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || window.innerWidth < 900;
-}
+async function sbInit() {
+  sb = supabase.createClient(SB_URL, SB_KEY);
 
-function gdInit() {
-  // Check if returning from hash redirect
-  if (window.location.hash.includes('access_token')) {
-    const params = new URLSearchParams(window.location.hash.slice(1));
-    const token = params.get('access_token');
-    if (token) {
-      gdAccessToken = token;
-      localStorage.setItem('projflow_gd_token_hint', '1');
-      history.replaceState(null, '', window.location.pathname);
-      gdUpdatePanel(true);
-      gdLoad();
-      return;
-    }
-  }
-
-  if (gdIsMobile()) {
-    gdUpdatePanel(false);
-    return;
-  }
-
-  if (!window.google?.accounts?.oauth2) {
-    setTimeout(gdInit, 600);
-    return;
-  }
-  gdTokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GD_CLIENT_ID,
-    scope: GD_SCOPE,
-    callback: async (resp) => {
-      if (resp.error) { gdUpdatePanel(false, 'Erro: ' + resp.error); return; }
-      gdAccessToken = resp.access_token;
-      localStorage.setItem('projflow_gd_token_hint', '1');
-      gdUpdatePanel(true);
-      await gdLoad();
-    }
-  });
-  if (localStorage.getItem('projflow_gd_token_hint')) {
-    gdTokenClient.requestAccessToken({ prompt: '' });
+  // Check existing session
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    sbUser = session.user;
+    await sbLoadData();
+    sbUpdatePanel();
+    sbSubscribeRealtime();
   } else {
-    gdUpdatePanel(false);
+    sbUpdatePanel();
   }
 }
 
-function gdSignIn() {
-  if (gdIsMobile()) {
-    // Reset modal state
-    document.getElementById('gd-token-step2').style.display = 'none';
-    document.getElementById('gd-token-step1-btn').style.display = 'inline-flex';
-    document.getElementById('gd-token-input').value = '';
-    document.getElementById('gd-token-error').textContent = '';
-    openModal('modal-gdtoken');
+async function sbSignIn() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-password').value;
+  const btn   = document.getElementById('login-btn');
+  const err   = document.getElementById('login-error');
+
+  err.style.display = 'none';
+  btn.textContent = 'Entrando…';
+  btn.disabled = true;
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+
+  btn.textContent = 'Entrar';
+  btn.disabled = false;
+
+  if (error) {
+    err.textContent = 'E-mail ou senha incorretos.';
+    err.style.display = 'block';
     return;
   }
-  if (!gdTokenClient) { gdInit(); setTimeout(() => gdTokenClient?.requestAccessToken({ prompt: 'consent' }), 800); return; }
-  gdTokenClient.requestAccessToken({ prompt: '' });
-}
 
-function gdOpenAuthPage() {
-  const url = 'https://accounts.google.com/o/oauth2/v2/auth'
-    + '?client_id=' + encodeURIComponent(GD_CLIENT_ID)
-    + '&redirect_uri=' + encodeURIComponent('https://fredcviana.github.io/projflow/')
-    + '&response_type=token'
-    + '&scope=' + encodeURIComponent(GD_SCOPE)
-    + '&prompt=consent';
-  window.open(url, '_blank');
-  document.getElementById('gd-token-step2').style.display = 'block';
-  document.getElementById('gd-token-step1-btn').style.display = 'none';
-  document.getElementById('gd-token-cancel-row').style.display = 'none';
-}
+  sbUser = data.user;
+  closeModal('modal-login');
+  await sbLoadData();
+  sbUpdatePanel();
+  sbSubscribeRealtime();
 
-function gdSubmitToken() {
-  const raw = document.getElementById('gd-token-input').value.trim();
-  // Accept full URL or just the token
-  let token = raw;
-  if (raw.includes('access_token=')) {
-    const m = raw.match(/access_token=([^&]+)/);
-    token = m ? m[1] : raw;
+  // Link user to team member by email
+  const person = state.team.find(p => p.email === sbUser.email);
+  if (person) {
+    localStorage.setItem('projflow_my_person', String(person.id));
+    showToast(`✓ Bem-vindo(a), ${person.name.split(' ')[0]}!`);
+    if (sbUser.email !== ADMIN_EMAIL) navigate('myview');
+  } else {
+    showToast(`✓ Login realizado!`);
   }
-  if (!token || token.length < 20) {
-    document.getElementById('gd-token-error').textContent = 'Token inválido. Copie a URL completa da barra de endereços após autorizar.';
-    return;
+}
+
+async function sbSignOut() {
+  await sb.auth.signOut();
+  sbUser = null;
+  if (sbChannel) { sb.removeChannel(sbChannel); sbChannel = null; }
+  sbUpdatePanel();
+  showToast('Sessão encerrada');
+}
+
+async function sbLoadData() {
+  try {
+    const { data, error } = await sb
+      .from('projflow_data')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (data && data.data) {
+      const remote = data.data;
+      sbDataId = data.id;
+      const local = loadState();
+      if ((remote.nextId || 0) >= (local.nextId || 0)) {
+        state = remote;
+        localStorage.setItem('projflow_v2', JSON.stringify(state));
+      }
+      render();
+      sbSetSyncLabel('✓ Sincronizado');
+    }
+  } catch(e) {
+    // No data yet — will create on first save
   }
-  gdAccessToken = token;
-  localStorage.setItem('projflow_gd_token_hint', '1');
-  closeModal('modal-gdtoken');
-  document.getElementById('gd-token-input').value = '';
-  gdUpdatePanel(true);
-  gdLoad();
 }
 
-function gdSignOut() {
-  try { if (gdAccessToken && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(gdAccessToken); } catch(e) {}
-  gdAccessToken = null;
-  gdFileId = null;
-  localStorage.removeItem('projflow_gd_token_hint');
-  gdUpdatePanel(false);
-  showToast('Desconectado do Google Drive');
+async function sbSaveData() {
+  if (!sb || !sbUser) return;
+  sbSetSyncLabel('Salvando…');
+  try {
+    if (sbDataId) {
+      await sb.from('projflow_data').update({ data: state, updated_at: new Date().toISOString() }).eq('id', sbDataId);
+    } else {
+      const { data } = await sb.from('projflow_data').insert({ data: state }).select().single();
+      if (data) sbDataId = data.id;
+    }
+    const t = new Date();
+    sbSetSyncLabel(`✓ Salvo às ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`);
+  } catch(e) {
+    sbSetSyncLabel('Erro ao salvar');
+  }
 }
 
-function gdUpdatePanel(connected, extra) {
-  const panel = document.getElementById('gd-status-panel');
+// Team members save only their activity updates
+async function sbSaveActivityUpdate(activityId, progress, status, note) {
+  if (!sb || !sbUser) return;
+  const person = state.team.find(p => p.email === sbUser.email);
+  if (!person) return;
+  await sb.from('projflow_updates').insert({
+    activity_id: activityId,
+    person_id: person.id,
+    progress, status, note
+  });
+}
+
+// Subscribe to realtime changes
+function sbSubscribeRealtime() {
+  if (sbChannel) sb.removeChannel(sbChannel);
+  sbChannel = sb.channel('projflow_realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'projflow_data' }, async () => {
+      await sbLoadData();
+      sbSetSyncLabel('✓ Atualizado em tempo real');
+    })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'projflow_updates' }, async (payload) => {
+      // Apply team member update to state
+      const u = payload.new;
+      const act = state.activities.find(a => a.id === u.activity_id);
+      if (act) {
+        act.progress = u.progress;
+        act.status   = u.status;
+        act.note     = u.note;
+        localStorage.setItem('projflow_v2', JSON.stringify(state));
+        // Admin saves merged data
+        if (sbUser?.email === ADMIN_EMAIL) {
+          clearTimeout(sbSyncTimer);
+          sbSyncTimer = setTimeout(sbSaveData, 1000);
+        }
+        render();
+        sbSetSyncLabel('✓ Atividade atualizada pela equipe');
+      }
+    })
+    .subscribe();
+}
+
+function sbUpdatePanel() {
+  const panel = document.getElementById('sb-status-panel');
   if (!panel) return;
-  if (connected) {
+  if (sbUser) {
+    const person = state.team.find(p => p.email === sbUser.email);
+    const name = person?.name?.split(' ')[0] || sbUser.email.split('@')[0];
+    const isAdmin = sbUser.email === ADMIN_EMAIL;
     panel.innerHTML = `
       <div style="display:flex;align-items:center;gap:7px;padding:4px 2px;">
         <div style="width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;"></div>
-        <span style="font-size:11px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="gd-user-label">Google Drive</span>
-        <button class="btn btn-ghost btn-sm" style="padding:2px 7px;font-size:10px;" onclick="gdSignOut()">Sair</button>
+        <span style="font-size:11px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}${isAdmin?' (admin)':''}</span>
+        <button class="btn btn-ghost btn-sm" style="padding:2px 7px;font-size:10px;" onclick="sbSignOut()">Sair</button>
       </div>
-      <div style="font-size:10px;color:var(--muted);padding:2px 2px 0;" id="gd-sync-label">Sincronizando…</div>`;
+      <div style="font-size:10px;color:var(--muted);padding:2px 2px 0;" id="sb-sync-label">Conectado</div>`;
   } else {
     panel.innerHTML = `
-      <button class="btn btn-ghost" style="width:100%;font-size:12px;justify-content:center;gap:7px;" onclick="gdSignIn()">
-        <svg width="14" height="14" viewBox="0 0 24 24" style="flex-shrink:0"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-        <span>Conectar Google Drive</span>
-      </button>
-      ${extra ? `<div style="font-size:10px;color:var(--red);padding:4px 2px;">${extra}</div>` : ''}
-      <button class="btn btn-ghost btn-sm" style="width:100%;font-size:11px;margin-top:6px;justify-content:center;" onclick="gdLoadPublic().then(ok=>showToast(ok?'✓ Dados atualizados':'Sem dados compartilhados ainda'))">↻ Buscar dados da equipe</button>`;
+      <button class="btn btn-ghost" style="width:100%;font-size:12px;justify-content:center;gap:7px;" onclick="openModal('modal-login')">
+        <span style="font-size:13px;">◎</span>
+        <span>Fazer Login</span>
+      </button>`;
   }
 }
 
-function gdSetSyncLabel(msg) {
-  const el = document.getElementById('gd-sync-label');
+function sbSetSyncLabel(msg) {
+  const el = document.getElementById('sb-sync-label');
   if (el) el.textContent = msg;
 }
 
-// PUBLIC SHARED FILE ID — set after first save by admin
-// The admin saves to Drive, shares the file publicly, pastes the ID here
-// For team members: data is fetched from this public file (read) and
-// updates are pushed back via the admin's token (write)
-
-let gdSharedFileId = localStorage.getItem('projflow_gd_shared_file_id') || null;
-
-async function gdLoad() {
-  gdSetSyncLabel('Carregando dados…');
-  try {
-    const listResp = await fetch(
-      `https://www.googleapis.com/drive/v3/files?spaces=drive&q=name='${GD_FILENAME}'+and+trashed=false&fields=files(id,name,modifiedTime)`,
-      { headers: { Authorization: `Bearer ${gdAccessToken}` } }
-    );
-    const list = await listResp.json();
-
-    if (list.files && list.files.length > 0) {
-      gdFileId = list.files[0].id;
-      gdSharedFileId = gdFileId;
-      localStorage.setItem('projflow_gd_shared_file_id', gdFileId);
-
-      // Make file publicly readable so team can fetch without login
-      await gdMakePublic(gdFileId);
-
-      const dlResp = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${gdFileId}?alt=media`,
-        { headers: { Authorization: `Bearer ${gdAccessToken}` } }
-      );
-      const remote = await dlResp.json();
-      if (remote && remote.projects) {
-        const local = loadState();
-        if ((remote.nextId || 0) >= (local.nextId || 0)) {
-          state = remote;
-          localStorage.setItem('projflow_v2', JSON.stringify(state));
-        }
-      }
-      gdSetSyncLabel('✓ Sincronizado com Drive');
-    } else {
-      await gdSave(true);
-    }
-
-    gdFetchUserInfo();
-    render();
-  } catch(e) {
-    gdSetSyncLabel('Erro: ' + e.message);
-  }
-}
-
-async function gdMakePublic(fileId) {
-  try {
-    await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${gdAccessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'reader', type: 'anyone' })
-    });
-  } catch(e) {}
-}
-
-async function gdSave(isNew) {
-  if (!gdAccessToken || gdSyncing) return;
-  gdSyncing = true;
-  gdSetSyncLabel('Salvando…');
-  try {
-    const body = JSON.stringify(state);
-    const blob = new Blob([body], { type: 'application/json' });
-
-    if (isNew || !gdFileId) {
-      const meta = JSON.stringify({ name: GD_FILENAME });
-      const form = new FormData();
-      form.append('metadata', new Blob([meta], { type: 'application/json' }));
-      form.append('file', blob);
-      const resp = await fetch(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-        { method: 'POST', headers: { Authorization: `Bearer ${gdAccessToken}` }, body: form }
-      );
-      const data = await resp.json();
-      gdFileId = data.id;
-      gdSharedFileId = data.id;
-      localStorage.setItem('projflow_gd_shared_file_id', data.id);
-      await gdMakePublic(data.id);
-    } else {
-      await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files/${gdFileId}?uploadType=media`,
-        { method: 'PATCH', headers: { Authorization: `Bearer ${gdAccessToken}`, 'Content-Type': 'application/json' }, body }
-      );
-    }
-    const t = new Date();
-    gdSetSyncLabel(`✓ Salvo às ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`);
-  } catch(e) {
-    gdSetSyncLabel('Erro ao salvar: ' + e.message);
-  } finally {
-    gdSyncing = false;
-  }
-}
-
-// Load data for team members (no login needed — public file)
-async function gdLoadPublic() {
-  const fileId = localStorage.getItem('projflow_gd_shared_file_id');
-  if (!fileId) return false;
-  try {
-    const resp = await fetch(`https://drive.google.com/uc?export=download&id=${fileId}`);
-    if (!resp.ok) return false;
-    const remote = await resp.json();
-    if (remote && remote.projects) {
-      state = remote;
-      localStorage.setItem('projflow_v2', JSON.stringify(state));
-      render();
-      return true;
-    }
-  } catch(e) {}
-  return false;
-}
-
-async function gdFetchUserInfo() {
-  try {
-    const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
-      { headers: { Authorization: `Bearer ${gdAccessToken}` } });
-    const info = await resp.json();
-    const el = document.getElementById('gd-user-label');
-    if (el && info.name) el.textContent = info.name.split(' ')[0];
-  } catch(e) {}
-}
-
-function gdManualSync() {
-  if (gdAccessToken) { gdLoad(); return; }
-  // Team member: reload public data
-  gdLoadPublic().then(ok => {
-    if (ok) showToast('✓ Dados atualizados');
-    else showToast('Não foi possível sincronizar');
-  });
+function sbManualSync() {
+  if (sb) sbLoadData();
 }
 
 // ============================================================
@@ -3025,6 +2954,7 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
 function initials(name) {
   if (!name) return '?';
   const parts = name.trim().split(' ');
+
   if (parts.length === 1) return parts[0].slice(0,2).toUpperCase();
   return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
 }
@@ -3041,11 +2971,7 @@ function esc(s) {
 
 // Init
 render();
-gdInit();
-// Auto-load shared data for team members (no login needed)
-if (!gdAccessToken) {
-  gdLoadPublic();
-}
+sbInit();
 </script>
 </body>
 </html>
