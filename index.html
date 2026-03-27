@@ -739,6 +739,30 @@ window.navigate = function() {};
   </div>
 </div>
 
+<!-- Modal Converter Entrega em Pacote -->
+<div class="modal-overlay" id="modal-convert-delivery">
+  <div class="modal">
+    <div class="modal-title">Converter Entrega em Pacote</div>
+    <div id="convert-delivery-info" style="padding:12px 14px; background:var(--surface2); border-radius:var(--radius-sm); margin-bottom:16px; font-size:13px;"></div>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:16px; line-height:1.7;">
+      Esta entrega será convertida em um <strong style="color:var(--teal);">Pacote de Atividades</strong> dentro de outra entrega. 
+      Todas as atividades serão mantidas dentro do pacote.
+    </p>
+    <div class="form-group">
+      <label class="form-label">Mover para qual Entrega? *</label>
+      <select class="form-control" id="convert-target-delivery">
+        <option value="">— Selecione a entrega de destino —</option>
+      </select>
+    </div>
+    <div id="convert-warning" style="display:none; padding:10px 12px; background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.2); border-radius:var(--radius-sm); font-size:12px; color:var(--amber); margin-bottom:12px;"></div>
+    <input type="hidden" id="convert-delivery-id" />
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-convert-delivery')">Cancelar</button>
+      <button class="btn btn-primary" style="background:var(--teal); border-color:var(--teal);" onclick="executeConvertDelivery()">⇄ Converter</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Pacote de Atividades -->
 <div class="modal-overlay" id="modal-package">
   <div class="modal">
@@ -1322,6 +1346,7 @@ function renderDeliveryCard(d, p) {
         <div style="display:flex; gap:6px;" onclick="event.stopPropagation()">
           <button class="btn btn-ghost btn-sm" onclick="openNewPackage(${d.id})">+ Pacote</button>
           <button class="btn btn-ghost btn-sm" onclick="openNewActivity(${d.id})">+ Atividade</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--teal);" onclick="openConvertDelivery(${d.id})" title="Converter em Pacote de Atividades">⇄ Converter</button>
           <button class="btn btn-ghost btn-sm" onclick="openEditDelivery(${d.id})">✎</button>
           <button class="btn btn-danger btn-sm" onclick="deleteDelivery(${d.id})">✕</button>
         </div>
@@ -2371,6 +2396,96 @@ function deleteProject(id) {
   state.packages = (state.packages||[]).filter(p => !delIds.includes(p.deliveryId));
   state.deliveries = state.deliveries.filter(d => d.projectId !== id);
   state.projects = state.projects.filter(p => p.id !== id);
+  render();
+}
+
+// ============================================================
+//  CONVERT DELIVERY → PACKAGE
+// ============================================================
+function openConvertDelivery(deliveryId) {
+  const d = state.deliveries.find(x => x.id === deliveryId);
+  if (!d) return;
+
+  // Info about what will be converted
+  const acts = state.activities.filter(a => a.deliveryId === deliveryId);
+  const pkgs = (state.packages||[]).filter(p => p.deliveryId === deliveryId);
+  document.getElementById('convert-delivery-info').innerHTML = `
+    <div style="font-weight:500; margin-bottom:4px;">${esc(d.name)}</div>
+    <div style="color:var(--muted); font-size:12px;">
+      ${acts.length} atividade${acts.length!==1?'s':''} diretas · 
+      ${pkgs.length} pacote${pkgs.length!==1?'s':''} internos · 
+      ${fmtDate(d.start)} → ${fmtDate(d.end)}
+    </div>`;
+
+  // Populate target deliveries — all deliveries in same project except this one
+  const projectId = d.projectId;
+  const otherDeliveries = state.deliveries.filter(x => x.projectId === projectId && x.id !== deliveryId);
+  const sel = document.getElementById('convert-target-delivery');
+  sel.innerHTML = '<option value="">— Selecione a entrega de destino —</option>' +
+    otherDeliveries.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+
+  // Warning if delivery has sub-packages
+  const warn = document.getElementById('convert-warning');
+  if (pkgs.length > 0) {
+    warn.style.display = 'block';
+    warn.textContent = `Atenção: esta entrega contém ${pkgs.length} pacote(s) interno(s). Eles serão convertidos em atividades simples dentro do novo pacote.`;
+  } else {
+    warn.style.display = 'none';
+  }
+
+  document.getElementById('convert-delivery-id').value = deliveryId;
+  openModal('modal-convert-delivery');
+}
+
+function executeConvertDelivery() {
+  const deliveryId = parseInt(document.getElementById('convert-delivery-id').value);
+  const targetDeliveryId = parseInt(document.getElementById('convert-target-delivery').value);
+
+  if (!targetDeliveryId) { alert('Selecione a entrega de destino.'); return; }
+
+  const d = state.deliveries.find(x => x.id === deliveryId);
+  if (!d) return;
+
+  // 1. Create new package in target delivery based on this delivery
+  const newPkg = {
+    id: uid(),
+    name: d.name,
+    deliveryId: targetDeliveryId,
+    personId: null,
+    start: d.start,
+    end: d.end,
+    desc: d.desc || '',
+  };
+  if (!state.packages) state.packages = [];
+  state.packages.push(newPkg);
+
+  // 2. Move all direct activities from this delivery into the new package
+  let seqOrder = 0;
+  state.activities.forEach(a => {
+    if (a.deliveryId === deliveryId && !a.packageId) {
+      a.packageId  = newPkg.id;
+      a.deliveryId = null;
+      a.seqOrder   = seqOrder++;
+    }
+  });
+
+  // 3. Flatten sub-packages: their activities become direct activities in new package
+  const subPkgs = state.packages.filter(p => p.deliveryId === deliveryId);
+  subPkgs.forEach(subPkg => {
+    state.activities.forEach(a => {
+      if (a.packageId === subPkg.id) {
+        a.packageId  = newPkg.id;
+        a.seqOrder   = seqOrder++;
+      }
+    });
+  });
+
+  // 4. Remove sub-packages and the original delivery
+  state.packages = state.packages.filter(p => p.deliveryId !== deliveryId);
+  state.deliveries = state.deliveries.filter(x => x.id !== deliveryId);
+
+  closeModal('modal-convert-delivery');
+  showToast(`✓ "${d.name}" convertida em pacote com sucesso!`);
   render();
 }
 
