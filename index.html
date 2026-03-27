@@ -3630,37 +3630,78 @@ function showMspPreview(result) {
   const leafTasks    = result.tasks.filter(t => !t.isSummary && !t.isMilestone);
 
   document.getElementById('msp-summary').innerHTML = `
-    <div style="display:flex; gap:24px; flex-wrap:wrap;">
+    <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:center;">
       <div><div style="font-size:10px; color:var(--muted);">PROJETO</div><div style="font-weight:500;">${esc(result.projectName)}</div></div>
       <div><div style="font-size:10px; color:var(--muted);">PERÍODO</div><div style="font-weight:500;">${fmtDate(result.projStart)||'—'} → ${fmtDate(result.projFinish)||'—'}</div></div>
-      <div><div style="font-size:10px; color:var(--muted);">SUBTÍTULOS (→ Entregas)</div><div style="font-weight:500;">${summaryTasks.length}</div></div>
-      <div><div style="font-size:10px; color:var(--muted);">TAREFAS (→ Atividades)</div><div style="font-weight:500;">${leafTasks.length}</div></div>
+      <div><div style="font-size:10px; color:var(--muted);">TAREFAS</div><div style="font-weight:500;">${result.tasks.length}</div></div>
+      <div style="font-size:11px; color:var(--muted); margin-left:auto;">Edite o tipo de cada tarefa antes de importar.</div>
     </div>`;
 
-  // Build preview table
-  const rows = result.tasks.slice(0, 200).map(t => {
-    const indent = t.level > 1 ? `padding-left:${(t.level-1)*16}px` : '';
-    const badge = t.isSummary
-      ? `<span class="badge badge-purple" style="font-size:10px;">Entrega</span>`
-      : t.isMilestone
-        ? `<span class="badge badge-amber" style="font-size:10px;">Marco</span>`
-        : `<span class="badge badge-blue" style="font-size:10px;">Atividade</span>`;
-    return `<div style="display:grid; grid-template-columns:1fr 80px 90px 90px 60px; gap:8px; align-items:center; padding:7px 12px; border-bottom:1px solid var(--border); font-size:12px; ${t.isSummary?'background:var(--surface2);':''}">
-      <div style="${indent}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(t.name)}">${esc(t.name)}</div>
-      <div>${badge}</div>
-      <div style="color:var(--muted);">${fmtDate(t.start)||'—'}</div>
-      <div style="color:var(--muted);">${fmtDate(t.finish)||'—'}</div>
-      <div style="font-family:var(--mono); color:var(--muted);">${t.work>0?t.work+'h':'—'}</div>
-    </div>`;
+  // Build editable preview rows — store override types in mspTypeOverrides
+  window.mspTypeOverrides = {}; // uid → 'delivery' | 'package' | 'activity' | 'ignore'
+
+  // Set default types based on isSummary / isMilestone
+  result.tasks.forEach(t => {
+    window.mspTypeOverrides[t.uid] = t.isSummary ? 'delivery' : t.isMilestone ? 'ignore' : 'activity';
   });
 
-  document.getElementById('msp-preview').innerHTML = `
-    <div style="display:grid; grid-template-columns:1fr 80px 90px 90px 60px; gap:8px; padding:7px 12px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); border-bottom:1px solid var(--border);">
-      <div>Nome</div><div>Tipo</div><div>Início</div><div>Término</div><div>Horas</div>
-    </div>
-    ${rows.join('')}
-    ${result.tasks.length > 200 ? `<div style="padding:8px 12px; font-size:11px; color:var(--muted);">… e mais ${result.tasks.length-200} tarefas</div>` : ''}
-  `;
+  const renderRows = () => {
+    const rows = result.tasks.slice(0, 200).map((t, idx) => {
+      const indent = t.level > 1 ? `${(t.level-1)*14}px` : '0px';
+      const currentType = window.mspTypeOverrides[t.uid] || 'activity';
+      const rowBg = currentType === 'delivery' ? 'background:var(--surface2);'
+        : currentType === 'ignore' ? 'opacity:0.4;' : '';
+
+      const typeSelect = `
+        <select onchange="mspSetType('${t.uid}', this.value)"
+          style="background:var(--surface3); border:1px solid var(--border2); border-radius:4px; color:var(--text); font-size:11px; padding:2px 4px; font-family:var(--font); cursor:pointer; width:100%;">
+          <option value="delivery"   ${currentType==='delivery'   ? 'selected':''}>📁 Entrega</option>
+          <option value="package"    ${currentType==='package'    ? 'selected':''}>▣ Pacote</option>
+          <option value="activity"   ${currentType==='activity'   ? 'selected':''}>◆ Atividade</option>
+          <option value="ignore"     ${currentType==='ignore'     ? 'selected':''}>— Ignorar</option>
+        </select>`;
+
+      return `<div style="display:grid; grid-template-columns:1fr 120px 85px 85px 55px; gap:6px; align-items:center; padding:6px 12px; border-bottom:1px solid var(--border); font-size:12px; ${rowBg}">
+        <div style="padding-left:${indent}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(t.name)}">${esc(t.name)}</div>
+        <div>${typeSelect}</div>
+        <div style="color:var(--muted); font-size:11px;">${fmtDate(t.start)||'—'}</div>
+        <div style="color:var(--muted); font-size:11px;">${fmtDate(t.finish)||'—'}</div>
+        <div style="font-family:var(--mono); color:var(--muted); font-size:11px;">${t.work>0?t.work+'h':'—'}</div>
+      </div>`;
+    });
+
+    document.getElementById('msp-preview').innerHTML = `
+      <div style="display:grid; grid-template-columns:1fr 120px 85px 85px 55px; gap:6px; padding:6px 12px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); border-bottom:1px solid var(--border); background:var(--surface2); position:sticky; top:0;">
+        <div>Nome</div><div>Tipo</div><div>Início</div><div>Término</div><div>Horas</div>
+      </div>
+      ${rows.join('')}
+      ${result.tasks.length > 200 ? `<div style="padding:8px 12px; font-size:11px; color:var(--muted);">… e mais ${result.tasks.length-200} tarefas</div>` : ''}
+      <div style="padding:10px 12px; display:flex; gap:8px; border-top:1px solid var(--border); flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="mspSetAllType('delivery')">Todos → Entrega</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="mspSetAllType('package')">Todos → Pacote</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="mspSetAllType('activity')">Todos → Atividade</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="mspAutoDetect()">↺ Auto-detectar</button>
+      </div>`;
+  };
+
+  window.mspSetType = (uid, type) => {
+    window.mspTypeOverrides[uid] = type;
+    renderRows();
+  };
+
+  window.mspSetAllType = (type) => {
+    result.tasks.forEach(t => { window.mspTypeOverrides[t.uid] = type; });
+    renderRows();
+  };
+
+  window.mspAutoDetect = () => {
+    result.tasks.forEach(t => {
+      window.mspTypeOverrides[t.uid] = t.isSummary ? 'delivery' : t.isMilestone ? 'ignore' : 'activity';
+    });
+    renderRows();
+  };
+
+  renderRows();
 }
 
 function executeMspImport() {
@@ -3668,13 +3709,12 @@ function executeMspImport() {
 
   const targetProjectId = parseInt(document.getElementById('msp-target-project').value) || 0;
   const { projectName, projStart, projFinish, tasks } = mspParsed;
+  const overrides = window.mspTypeOverrides || {};
 
   let projectId;
-
   if (targetProjectId) {
     projectId = targetProjectId;
   } else {
-    // Create new project
     const newProj = {
       id: uid(), name: projectName,
       start: projStart, end: projFinish,
@@ -3685,92 +3725,101 @@ function executeMspImport() {
     projectId = newProj.id;
   }
 
-  // Identify summary tasks (level 1 or isSummary) as deliveries
-  // and leaf tasks as activities
-  // Strategy: each summary task → delivery; leaves under it → activities
-  // If no summary tasks, create one default delivery
+  if (!state.packages) state.packages = [];
 
-  const summaries = tasks.filter(t => t.isSummary);
-  const hasSummaries = summaries.length > 0;
+  // Build a context stack to know the parent delivery/package for each task
+  let currentDeliveryId = null;
+  let currentPackageId  = null;
+  let fallbackDelivId   = null;
+  let seqCounter        = {};
+  let created = 0;
 
-  let deliveryMap = {}; // task outline index → deliveryId
+  // First pass: ensure we have at least one delivery
+  const hasDelivery = tasks.some(t => (overrides[t.uid] || 'activity') === 'delivery');
 
-  if (!hasSummaries) {
-    // One default delivery for everything
-    const d = {
-      id: uid(), name: projectName,
-      projectId,
-      start: projStart, end: projFinish, desc: ''
-    };
+  if (!hasDelivery) {
+    const d = { id: uid(), name: projectName, projectId, start: projStart, end: projFinish, desc: '' };
     state.deliveries.push(d);
-    tasks.forEach((_, i) => deliveryMap[i] = d.id);
-  } else {
-    // Build outline: assign each task to its nearest parent summary
-    let currentDeliveryId = null;
-    tasks.forEach((t, i) => {
-      if (t.isSummary) {
-        const d = {
-          id: uid(), name: t.name,
-          projectId,
-          start: t.start, end: t.finish, desc: ''
-        };
-        state.deliveries.push(d);
-        currentDeliveryId = d.id;
-        deliveryMap[i] = d.id;
-      } else {
-        // Find closest parent delivery above
-        let parentDelivId = currentDeliveryId;
-        if (!parentDelivId) {
-          // No summary yet, create a fallback delivery
-          const d = { id: uid(), name: 'Atividades Gerais', projectId, start: projStart, end: projFinish, desc: '' };
-          state.deliveries.push(d);
-          currentDeliveryId = d.id;
-          parentDelivId = d.id;
-        }
-        deliveryMap[i] = parentDelivId;
-      }
-    });
+    fallbackDelivId = d.id;
+    currentDeliveryId = d.id;
   }
 
-  // Create activities from leaf + milestone tasks
-  let created = 0;
   tasks.forEach((t, i) => {
-    if (t.isSummary) return; // already became deliveries
+    const type = overrides[t.uid] || 'activity';
+    if (type === 'ignore') return;
 
-    const delivId = deliveryMap[i];
-    if (!delivId) return;
+    if (type === 'delivery') {
+      const d = { id: uid(), name: t.name, projectId, start: t.start, end: t.finish, desc: '' };
+      state.deliveries.push(d);
+      currentDeliveryId = d.id;
+      currentPackageId  = null; // reset package context
+      seqCounter[d.id]  = 0;
+      created++;
 
-    // Map percentComplete → status
-    let status = 'nao_iniciado';
-    if (t.percentComplete === 100) status = 'concluido';
-    else if (t.percentComplete > 0) status = 'em_andamento';
+    } else if (type === 'package') {
+      const parentDelivId = currentDeliveryId || fallbackDelivId;
+      if (!parentDelivId) {
+        // auto-create fallback delivery
+        const d = { id: uid(), name: 'Atividades Gerais', projectId, start: projStart, end: projFinish, desc: '' };
+        state.deliveries.push(d);
+        fallbackDelivId   = d.id;
+        currentDeliveryId = d.id;
+      }
+      const pkg = {
+        id: uid(), name: t.name,
+        deliveryId: currentDeliveryId || fallbackDelivId,
+        personId: null, start: t.start, end: t.finish, desc: ''
+      };
+      state.packages.push(pkg);
+      currentPackageId = pkg.id;
+      seqCounter[pkg.id] = 0;
+      created++;
 
-    state.activities.push({
-      id: uid(),
-      name: t.name,
-      deliveryId: delivId,
-      personId: null, // no auto-assign (names not resolved)
-      hours: t.work || 0,
-      start: t.start,
-      end: t.finish,
-      desc: t.isMilestone ? 'Marco' : '',
-      status,
-      progress: t.percentComplete || 0,
-      note: ''
-    });
-    created++;
+    } else { // activity
+      let status = 'nao_iniciado';
+      if (t.percentComplete === 100) status = 'concluido';
+      else if (t.percentComplete > 0) status = 'em_andamento';
+
+      const parentDelivId = currentDeliveryId || fallbackDelivId;
+      const parentPkgId   = currentPackageId || null;
+
+      // If no delivery exists yet, create fallback
+      if (!parentDelivId && !parentPkgId) {
+        const d = { id: uid(), name: 'Atividades Gerais', projectId, start: projStart, end: projFinish, desc: '' };
+        state.deliveries.push(d);
+        fallbackDelivId   = d.id;
+        currentDeliveryId = d.id;
+      }
+
+      const seqKey = parentPkgId || parentDelivId;
+      const seqOrder = seqCounter[seqKey] || 0;
+      seqCounter[seqKey] = seqOrder + 1;
+
+      state.activities.push({
+        id: uid(),
+        name: t.name,
+        deliveryId: parentPkgId ? null : (parentDelivId || fallbackDelivId),
+        packageId:  parentPkgId || null,
+        personId: null,
+        hours: t.work || 0,
+        start: t.start,
+        end: t.finish,
+        desc: t.isMilestone ? 'Marco' : '',
+        status,
+        progress: t.percentComplete || 0,
+        note: '',
+        seqOrder,
+      });
+      created++;
+    }
   });
 
   saveState();
   closeModal('modal-msproject');
   resetMspModal();
-
-  // Navigate to the imported project
   currentProjectId = projectId;
   navigate('project_detail', projectId);
-
-  // Show success toast
-  showToast(`✓ Importação concluída — ${created} atividade(s) criada(s)`);
+  showToast(`✓ Importação concluída — ${created} item(ns) criado(s)`);
 }
 
 function showToast(msg) {
