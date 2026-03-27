@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gestão de Projetos</title>
+<title>Proj·Flow — Gestão de Projetos</title>
 <!-- Google Identity & Drive API -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
@@ -456,7 +456,20 @@
 
   <!-- Sidebar -->
   <nav class="sidebar">
-    <div class="logo">Proj<span>·</span>Flow</div>
+    <div class="logo">
+      <svg width="110" height="28" viewBox="0 0 110 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- P hexagon icon -->
+        <polygon points="13,2 22,7 22,17 13,22 4,17 4,7" fill="#6c63ff" opacity="0.15"/>
+        <polygon points="13,2 22,7 22,17 13,22 4,17 4,7" fill="none" stroke="#6c63ff" stroke-width="1.5"/>
+        <text x="13" y="16" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="11" font-weight="600" fill="#9d97ff">P</text>
+        <!-- Proj text -->
+        <text x="28" y="17" font-family="DM Sans, sans-serif" font-size="13" font-weight="600" fill="#e8e8ec" letter-spacing="-0.3">Proj</text>
+        <!-- dot -->
+        <circle cx="57" cy="14" r="2" fill="#6c63ff"/>
+        <!-- Flow text -->
+        <text x="62" y="17" font-family="DM Sans, sans-serif" font-size="13" font-weight="600" fill="#9d97ff" letter-spacing="-0.3">Flow</text>
+      </svg>
+    </div>
     <div class="nav-item active" onclick="navigate('dashboard')">
       <span class="nav-icon">◈</span><span>Dashboard</span>
     </div>
@@ -465,6 +478,9 @@
     </div>
     <div class="nav-item" onclick="navigate('activities')">
       <span class="nav-icon">▦</span><span>Atividades</span>
+    </div>
+    <div class="nav-item" onclick="navigate('myview')">
+      <span class="nav-icon">◉</span><span>Minha Visão</span>
     </div>
     <div class="nav-item" onclick="navigate('team')">
       <span class="nav-icon">◎</span><span>Equipe</span>
@@ -804,7 +820,7 @@ let currentProjectId = null;
 function navigate(page, id) {
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  const map = { dashboard: 0, projects: 1, activities: 2, team: 3, settings: 4 };
+  const map = { dashboard: 0, projects: 1, activities: 2, myview: 3, team: 4, settings: 5 };
   if (map[page] !== undefined) {
     document.querySelectorAll('.nav-item')[map[page]]?.classList.add('active');
   }
@@ -818,6 +834,7 @@ function render() {
     projects: renderProjects,
     project_detail: renderProjectDetail,
     activities: renderActivitiesDashboard,
+    myview: renderMyView,
     team: renderTeam,
     settings: renderSettings,
   };
@@ -1691,6 +1708,266 @@ function renderActByPerson(personMap) {
         </div>
       </div>`;
   }).join('');
+}
+
+// ============================================================
+//  RENDER: MINHA VISÃO (visão pessoal para a equipe)
+// ============================================================
+function renderMyView() {
+  document.getElementById('topbar-title').textContent = 'Minha Visão';
+  document.getElementById('topbar-sub').textContent = 'Suas atividades do sprint atual';
+  document.getElementById('topbar-actions').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="gdManualSync()">↻ Atualizar</button>
+    <button class="btn btn-primary btn-sm" onclick="exportExcel()">↓ Exportar Excel</button>
+  `;
+
+  if (!state.team.length) {
+    document.getElementById('page-content').innerHTML = `<div class="empty"><div class="empty-icon">◉</div><div class="empty-text">Nenhuma pessoa cadastrada</div><div class="empty-sub">O gestor precisa cadastrar a equipe primeiro</div></div>`;
+    return;
+  }
+
+  // Person selector
+  const savedPerson = localStorage.getItem('projflow_my_person') || '';
+
+  document.getElementById('page-content').innerHTML = `
+    <div style="margin-bottom:24px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div style="font-size:13px; color:var(--muted);">Quem é você?</div>
+      <select class="form-control" id="myview-person" style="width:220px;" onchange="setMyPerson(this.value)">
+        <option value="">— Selecione seu nome —</option>
+        ${state.team.map(p => `<option value="${p.id}" ${String(p.id)===savedPerson?'selected':''}>${esc(p.name)}</option>`).join('')}
+      </select>
+      ${savedPerson ? `<button class="btn btn-ghost btn-sm" onclick="gdManualSync(); setTimeout(renderMyView,1500)">↻ Buscar atualizações</button>` : ''}
+    </div>
+    <div id="myview-content"></div>
+  `;
+
+  if (savedPerson) renderMyActivities(parseInt(savedPerson));
+}
+
+function setMyPerson(val) {
+  localStorage.setItem('projflow_my_person', val);
+  if (val) renderMyActivities(parseInt(val));
+  else document.getElementById('myview-content').innerHTML = '';
+}
+
+function renderMyActivities(personId) {
+  const person = state.team.find(p => p.id === personId);
+  if (!person) return;
+  const pIdx = state.team.findIndex(p => p.id === personId);
+  const col = getPersonColor(pIdx);
+
+  const myActs = state.activities
+    .filter(a => a.personId === personId)
+    .map(a => {
+      const delivery = state.deliveries.find(d => d.id === a.deliveryId);
+      const project  = delivery ? state.projects.find(p => p.id === delivery.projectId) : null;
+      const effStatus = isLate(a) && a.status !== 'concluido' ? 'atrasado' : (a.status || 'nao_iniciado');
+      return { ...a, delivery, project, effStatus };
+    })
+    .sort((a,b) => {
+      const o = { atrasado:0, bloqueado:1, em_andamento:2, nao_iniciado:3, concluido:4 };
+      return (o[a.effStatus]??5)-(o[b.effStatus]??5);
+    });
+
+  const total  = myActs.length;
+  const done   = myActs.filter(a => a.effStatus === 'concluido').length;
+  const late   = myActs.filter(a => a.effStatus === 'atrasado').length;
+  const active = myActs.filter(a => a.effStatus === 'em_andamento').length;
+  const totalH = myActs.reduce((s,a) => s+(parseFloat(a.hours)||0), 0);
+  const avgProg = total ? Math.round(myActs.reduce((s,a)=>s+(a.progress||0),0)/total) : 0;
+
+  const el = document.getElementById('myview-content');
+  if (!el) return;
+
+  if (!total) {
+    el.innerHTML = `<div class="empty"><div class="empty-text">Nenhuma atividade atribuída a ${esc(person.name)}</div></div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <!-- Header pessoa -->
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:24px; padding:16px 20px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);">
+      <div class="avatar" style="width:48px;height:48px;font-size:16px;background:${col}22;color:${col};">${initials(person.name)}</div>
+      <div style="flex:1;">
+        <div style="font-size:16px; font-weight:600;">${esc(person.name)}</div>
+        <div style="font-size:12px; color:var(--muted);">${esc(person.role||'')}</div>
+      </div>
+      <div style="display:flex; gap:20px; flex-wrap:wrap;">
+        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">ATIVIDADES</div><div style="font-size:22px;font-weight:600;">${total}</div></div>
+        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">PROGRESSO</div><div style="font-size:22px;font-weight:600;">${avgProg}%</div></div>
+        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">EM ANDAMENTO</div><div style="font-size:22px;font-weight:600;color:var(--blue);">${active}</div></div>
+        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">ATRASADAS</div><div style="font-size:22px;font-weight:600;color:${late>0?'var(--red)':'var(--muted)'};">${late}</div></div>
+        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">HORAS</div><div style="font-size:22px;font-weight:600;">${totalH}h</div></div>
+      </div>
+    </div>
+
+    <!-- Atividades -->
+    ${myActs.map(a => `
+      <div style="background:var(--surface); border:1px solid ${a.effStatus==='atrasado'?'rgba(248,113,113,0.3)':a.effStatus==='em_andamento'?'rgba(96,165,250,0.2)':'var(--border)'}; border-radius:var(--radius); padding:16px 20px; margin-bottom:12px;">
+        <div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:200px;">
+            <div style="font-size:14px; font-weight:500; margin-bottom:4px;">${esc(a.name)}</div>
+            <div style="font-size:11px; color:var(--accent2); margin-bottom:8px;">${esc(a.project?.name||'—')} › ${esc(a.delivery?.name||'—')}</div>
+            <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--muted);">
+              <span>📅 ${fmtDate(a.start)} → ${fmtDate(a.end)}</span>
+              <span>⏱ ${a.hours||0}h</span>
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px; min-width:140px;">
+            ${getStatusBadge(a.effStatus)}
+            <div style="display:flex; align-items:center; gap:8px; width:100%;">
+              <div class="progress-wrap" style="flex:1;"><div class="progress-bar ${a.progress===100?'green':a.progress>60?'':a.progress>30?'amber':'red'}" style="width:${a.progress||0}%;"></div></div>
+              <span style="font-size:12px; color:var(--muted); min-width:32px;">${a.progress||0}%</span>
+            </div>
+            <button class="btn btn-primary btn-sm" style="width:100%;" onclick="openProgress(${a.id}); document.getElementById('progress-save-cb') && (document.getElementById('progress-save-cb').checked=true)">↻ Atualizar andamento</button>
+          </div>
+        </div>
+        ${a.note ? `<div style="margin-top:10px; padding:8px 12px; background:var(--surface2); border-radius:var(--radius-sm); font-size:12px; color:var(--muted);">${esc(a.note)}</div>` : ''}
+      </div>`).join('')}
+  `;
+}
+
+// ============================================================
+//  EXPORT EXCEL (XLSX via SheetJS)
+// ============================================================
+function exportExcel() {
+  // Load SheetJS if not already loaded
+  if (!window.XLSX) {
+    showToast('Carregando biblioteca…');
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => _doExportXlsx();
+    s.onerror = () => showToast('Erro ao carregar biblioteca XLSX');
+    document.head.appendChild(s);
+  } else {
+    _doExportXlsx();
+  }
+}
+
+function _doExportXlsx() {
+  const WB = XLSX.utils.book_new();
+  const statusMap = { nao_iniciado:'Não iniciado', em_andamento:'Em andamento', concluido:'Concluído', atrasado:'Atrasado', bloqueado:'Bloqueado' };
+
+  // ── Aba 1: Todas as Atividades ──────────────────────────────
+  const allRows = [['Projeto','Entrega','Atividade','Responsável','Cargo','Horas','Início','Término','Progresso (%)','Status','Observação']];
+  state.activities.forEach(a => {
+    const delivery = state.deliveries.find(d => d.id === a.deliveryId);
+    const project  = delivery ? state.projects.find(p => p.id === delivery.projectId) : null;
+    const person   = state.team.find(p => p.id === a.personId);
+    allRows.push([
+      project?.name   || '',
+      delivery?.name  || '',
+      a.name          || '',
+      person?.name    || '',
+      person?.role    || '',
+      parseFloat(a.hours) || 0,
+      a.start || '',
+      a.end   || '',
+      a.progress || 0,
+      statusMap[a.status] || 'Não iniciado',
+      a.note  || ''
+    ]);
+  });
+  const wsAll = XLSX.utils.aoa_to_sheet(allRows);
+  _styleSheet(wsAll, allRows[0].length, allRows.length);
+  XLSX.utils.book_append_sheet(WB, wsAll, 'Todas as Atividades');
+
+  // ── Aba 2: Por Pessoa ───────────────────────────────────────
+  state.team.forEach(person => {
+    const myActs = state.activities.filter(a => a.personId === person.id);
+    if (!myActs.length) return;
+    const rows = [['Projeto','Entrega','Atividade','Horas','Início','Término','Progresso (%)','Status','Observação']];
+    myActs.forEach(a => {
+      const delivery = state.deliveries.find(d => d.id === a.deliveryId);
+      const project  = delivery ? state.projects.find(p => p.id === delivery.projectId) : null;
+      rows.push([
+        project?.name  || '',
+        delivery?.name || '',
+        a.name         || '',
+        parseFloat(a.hours) || 0,
+        a.start || '',
+        a.end   || '',
+        a.progress || 0,
+        statusMap[a.status] || 'Não iniciado',
+        a.note  || ''
+      ]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    _styleSheet(ws, rows[0].length, rows.length);
+    // Sheet name max 31 chars
+    const sheetName = person.name.slice(0, 31).replace(/[\\\/\?\*\[\]:]/g, '');
+    XLSX.utils.book_append_sheet(WB, ws, sheetName);
+  });
+
+  // ── Aba 3: Resumo por Projeto ───────────────────────────────
+  const summaryRows = [['Projeto','Cliente','Entregas','Atividades','Horas Totais','Horas Concluídas','Progresso (%)','Início','Término']];
+  state.projects.forEach(p => {
+    const deliveries = state.deliveries.filter(d => d.projectId === p.id);
+    const acts = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
+    const totalH = acts.reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+    const doneH  = acts.filter(a => a.status === 'concluido').reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+    const pct    = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
+    summaryRows.push([
+      p.name    || '',
+      p.client  || '',
+      deliveries.length,
+      acts.length,
+      totalH,
+      Math.round(doneH),
+      pct,
+      p.start   || '',
+      p.end     || ''
+    ]);
+  });
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+  _styleSheet(wsSummary, summaryRows[0].length, summaryRows.length);
+  XLSX.utils.book_append_sheet(WB, wsSummary, 'Resumo por Projeto');
+
+  // ── Download ─────────────────────────────────────────────────
+  const date = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(WB, `ProjFlow_${date}.xlsx`);
+  showToast('✓ XLSX exportado com sucesso!');
+}
+
+function _styleSheet(ws, nCols, nRows) {
+  // Column widths
+  const widths = [];
+  for (let i = 0; i < nCols; i++) widths.push({ wch: i === 2 ? 36 : i === 0 || i === 1 ? 28 : 14 });
+  ws['!cols'] = widths;
+
+  // Freeze header row
+  ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activeCell: 'A2', sqref: 'A2' };
+
+  // Bold header row styling via cell styles
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  for (let C = range.s.c; C <= range.e.c; C++) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c: C });
+    if (!ws[addr]) continue;
+    ws[addr].s = {
+      font: { bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '6C63FF' } },
+      alignment: { horizontal: 'center', vertical: 'center' }
+    };
+  }
+
+  // Date columns: format as dd/mm/yyyy
+  for (let R = 1; R <= nRows - 1; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      if (!ws[addr]) continue;
+      const val = ws[addr].v;
+      // Detect ISO date strings
+      if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        const [y, m, d] = val.split('-');
+        ws[addr].v = `${d}/${m}/${y}`;
+        ws[addr].t = 's';
+      }
+      // Alternate row shading
+      if (R % 2 === 0) {
+        ws[addr].s = { ...(ws[addr].s || {}), fill: { fgColor: { rgb: 'F4F3FF' } } };
+      }
+    }
+  }
 }
 
 // ============================================================
@@ -2591,7 +2868,8 @@ function gdUpdatePanel(connected, extra) {
         <svg width="14" height="14" viewBox="0 0 24 24" style="flex-shrink:0"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
         <span>Conectar Google Drive</span>
       </button>
-      ${extra ? `<div style="font-size:10px;color:var(--red);padding:4px 2px;">${extra}</div>` : ''}`;
+      ${extra ? `<div style="font-size:10px;color:var(--red);padding:4px 2px;">${extra}</div>` : ''}
+      <button class="btn btn-ghost btn-sm" style="width:100%;font-size:11px;margin-top:6px;justify-content:center;" onclick="gdLoadPublic().then(ok=>showToast(ok?'✓ Dados atualizados':'Sem dados compartilhados ainda'))">↻ Buscar dados da equipe</button>`;
   }
 }
 
@@ -2600,27 +2878,36 @@ function gdSetSyncLabel(msg) {
   if (el) el.textContent = msg;
 }
 
+// PUBLIC SHARED FILE ID — set after first save by admin
+// The admin saves to Drive, shares the file publicly, pastes the ID here
+// For team members: data is fetched from this public file (read) and
+// updates are pushed back via the admin's token (write)
+
+let gdSharedFileId = localStorage.getItem('projflow_gd_shared_file_id') || null;
+
 async function gdLoad() {
   gdSetSyncLabel('Carregando dados…');
   try {
-    // Find or create the app data file
     const listResp = await fetch(
-      `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${GD_FILENAME}'&fields=files(id,name,modifiedTime)`,
+      `https://www.googleapis.com/drive/v3/files?spaces=drive&q=name='${GD_FILENAME}'+and+trashed=false&fields=files(id,name,modifiedTime)`,
       { headers: { Authorization: `Bearer ${gdAccessToken}` } }
     );
     const list = await listResp.json();
 
     if (list.files && list.files.length > 0) {
       gdFileId = list.files[0].id;
-      // Download content
+      gdSharedFileId = gdFileId;
+      localStorage.setItem('projflow_gd_shared_file_id', gdFileId);
+
+      // Make file publicly readable so team can fetch without login
+      await gdMakePublic(gdFileId);
+
       const dlResp = await fetch(
         `https://www.googleapis.com/drive/v3/files/${gdFileId}?alt=media`,
         { headers: { Authorization: `Bearer ${gdAccessToken}` } }
       );
       const remote = await dlResp.json();
-
       if (remote && remote.projects) {
-        // Merge: use whichever has more data (higher nextId = more recent)
         const local = loadState();
         if ((remote.nextId || 0) >= (local.nextId || 0)) {
           state = remote;
@@ -2629,16 +2916,24 @@ async function gdLoad() {
       }
       gdSetSyncLabel('✓ Sincronizado com Drive');
     } else {
-      // First time — upload local data
       await gdSave(true);
     }
 
-    // Get user info for display
     gdFetchUserInfo();
     render();
   } catch(e) {
-    gdSetSyncLabel('Erro ao carregar: ' + e.message);
+    gdSetSyncLabel('Erro: ' + e.message);
   }
+}
+
+async function gdMakePublic(fileId) {
+  try {
+    await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${gdAccessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' })
+    });
+  } catch(e) {}
 }
 
 async function gdSave(isNew) {
@@ -2650,8 +2945,7 @@ async function gdSave(isNew) {
     const blob = new Blob([body], { type: 'application/json' });
 
     if (isNew || !gdFileId) {
-      // Create new file in appDataFolder
-      const meta = JSON.stringify({ name: GD_FILENAME, parents: ['appDataFolder'] });
+      const meta = JSON.stringify({ name: GD_FILENAME });
       const form = new FormData();
       form.append('metadata', new Blob([meta], { type: 'application/json' }));
       form.append('file', blob);
@@ -2661,8 +2955,10 @@ async function gdSave(isNew) {
       );
       const data = await resp.json();
       gdFileId = data.id;
+      gdSharedFileId = data.id;
+      localStorage.setItem('projflow_gd_shared_file_id', data.id);
+      await gdMakePublic(data.id);
     } else {
-      // Update existing
       await fetch(
         `https://www.googleapis.com/upload/drive/v3/files/${gdFileId}?uploadType=media`,
         { method: 'PATCH', headers: { Authorization: `Bearer ${gdAccessToken}`, 'Content-Type': 'application/json' }, body }
@@ -2677,6 +2973,24 @@ async function gdSave(isNew) {
   }
 }
 
+// Load data for team members (no login needed — public file)
+async function gdLoadPublic() {
+  const fileId = localStorage.getItem('projflow_gd_shared_file_id');
+  if (!fileId) return false;
+  try {
+    const resp = await fetch(`https://drive.google.com/uc?export=download&id=${fileId}`);
+    if (!resp.ok) return false;
+    const remote = await resp.json();
+    if (remote && remote.projects) {
+      state = remote;
+      localStorage.setItem('projflow_v2', JSON.stringify(state));
+      render();
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
 async function gdFetchUserInfo() {
   try {
     const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
@@ -2688,8 +3002,12 @@ async function gdFetchUserInfo() {
 }
 
 function gdManualSync() {
-  if (!gdAccessToken) { gdSignIn(); return; }
-  gdLoad();
+  if (gdAccessToken) { gdLoad(); return; }
+  // Team member: reload public data
+  gdLoadPublic().then(ok => {
+    if (ok) showToast('✓ Dados atualizados');
+    else showToast('Não foi possível sincronizar');
+  });
 }
 
 // ============================================================
@@ -2724,6 +3042,10 @@ function esc(s) {
 // Init
 render();
 gdInit();
+// Auto-load shared data for team members (no login needed)
+if (!gdAccessToken) {
+  gdLoadPublic();
+}
 </script>
 </body>
 </html>
