@@ -2050,11 +2050,53 @@ function renderSettings() {
     <div class="section-title" style="margin-bottom:16px;">Gerenciar Usuários da Equipe</div>
     <div class="card" style="margin-bottom:24px;">
       <p style="font-size:13px; color:var(--muted); margin-bottom:16px; line-height:1.7;">
-        Para dar acesso a um membro da equipe, crie o usuário no painel do Supabase com o e-mail dele e uma senha temporária.
-        Depois cadastre esse mesmo e-mail no perfil da pessoa em <strong style="color:var(--text);">Equipe</strong> — o sistema vai reconhecê-lo automaticamente no login.
+        Crie logins para toda a equipe de uma vez. Cada pessoa receberá acesso com o e-mail cadastrado no perfil dela.
+        Certifique-se de que todos os membros da equipe têm um <strong style="color:var(--text);">e-mail cadastrado</strong> antes de continuar.
       </p>
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <a href="https://supabase.com/dashboard/project/ydfytofjbpoqpsbryhyg/auth/users" target="_blank" class="btn btn-primary btn-sm">Gerenciar usuários no Supabase →</a>
+
+      ${(() => {
+        const semEmail = state.team.filter(p => !p.email);
+        const comEmail = state.team.filter(p => p.email);
+        return `
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+            <div style="padding:12px; background:var(--surface2); border-radius:var(--radius-sm);">
+              <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">COM E-MAIL (prontos)</div>
+              <div style="font-size:22px; font-weight:600; color:var(--green);">${comEmail.length}</div>
+            </div>
+            <div style="padding:12px; background:var(--surface2); border-radius:var(--radius-sm);">
+              <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">SEM E-MAIL</div>
+              <div style="font-size:22px; font-weight:600; color:${semEmail.length > 0 ? 'var(--amber)' : 'var(--muted)'};">${semEmail.length}</div>
+            </div>
+          </div>
+          ${semEmail.length > 0 ? `<div style="padding:10px 12px; background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.2); border-radius:var(--radius-sm); font-size:12px; color:var(--amber); margin-bottom:16px;">
+            Sem e-mail cadastrado: ${semEmail.map(p => p.name).join(', ')}. Vá em <strong>Equipe</strong> e adicione o e-mail antes de criar os logins.
+          </div>` : ''}
+          ${comEmail.length > 0 ? `
+          <div style="margin-bottom:16px;">
+            <div style="font-size:12px; font-weight:500; color:var(--muted); margin-bottom:8px;">SENHA TEMPORÁRIA PARA TODOS</div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input class="form-control" id="bulk-password" type="text" placeholder="Ex: Equipe@2025" style="max-width:220px;" value="Projflow@2025" />
+              <span style="font-size:11px; color:var(--muted);">Cada pessoa troca depois do primeiro login</span>
+            </div>
+          </div>
+          <div style="border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; margin-bottom:16px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr 120px; gap:8px; padding:8px 12px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); background:var(--surface2);">
+              <div>Nome</div><div>E-mail</div><div>Status</div>
+            </div>
+            ${comEmail.map(p => `
+            <div style="display:grid; grid-template-columns:1fr 1fr 120px; gap:8px; padding:10px 12px; border-top:1px solid var(--border); font-size:13px; align-items:center;">
+              <div style="font-weight:500;">${esc(p.name)}</div>
+              <div style="color:var(--muted); font-size:12px;">${esc(p.email)}</div>
+              <div id="user-status-${p.id}"><span class="badge badge-gray">Pendente</span></div>
+            </div>`).join('')}
+          </div>
+          <button class="btn btn-primary" onclick="sbBulkCreateUsers()">⚡ Criar logins para ${comEmail.length} pessoa${comEmail.length > 1 ? 's' : ''}</button>
+          ` : ''}
+        `;
+      })()}
+
+      <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+        <a href="https://supabase.com/dashboard/project/ydfytofjbpoqpsbryhyg/auth/users" target="_blank" class="btn btn-ghost btn-sm">Ver usuários no Supabase →</a>
         <button class="btn btn-ghost btn-sm" onclick="sbManualSync()">↻ Sincronizar dados</button>
       </div>
     </div>` : ''}
@@ -2897,6 +2939,73 @@ function sbUpdatePanel() {
 function sbSetSyncLabel(msg) {
   const el = document.getElementById('sb-sync-label');
   if (el) el.textContent = msg;
+}
+
+async function sbBulkCreateUsers() {
+  const password = document.getElementById('bulk-password')?.value?.trim();
+  if (!password || password.length < 6) {
+    showToast('A senha deve ter pelo menos 6 caracteres');
+    return;
+  }
+
+  const team = state.team.filter(p => p.email);
+  if (!team.length) { showToast('Nenhum membro com e-mail cadastrado'); return; }
+
+  const btn = document.querySelector('[onclick="sbBulkCreateUsers()"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Criando usuários…'; }
+
+  let created = 0, skipped = 0, errors = 0;
+
+  for (const person of team) {
+    const statusEl = document.getElementById(`user-status-${person.id}`);
+    if (statusEl) statusEl.innerHTML = `<span class="badge badge-blue">Criando…</span>`;
+
+    try {
+      // Use Supabase Admin API via service role — signUp works with auto-confirm
+      const { data, error } = await sb.auth.admin.createUser({
+        email: person.email,
+        password: password,
+        email_confirm: true,
+        user_metadata: { name: person.name, role: person.role || '' }
+      });
+
+      if (error) {
+        if (error.message?.includes('already') || error.message?.includes('exists')) {
+          if (statusEl) statusEl.innerHTML = `<span class="badge badge-amber">Já existe</span>`;
+          skipped++;
+        } else {
+          if (statusEl) statusEl.innerHTML = `<span class="badge badge-red" title="${error.message}">Erro</span>`;
+          errors++;
+        }
+      } else {
+        if (statusEl) statusEl.innerHTML = `<span class="badge badge-green">✓ Criado</span>`;
+        created++;
+      }
+    } catch(e) {
+      // Fallback: try signUp (works if email confirm is off)
+      const { error: signUpError } = await sb.auth.signUp({
+        email: person.email,
+        password: password,
+        options: { data: { name: person.name } }
+      });
+      if (signUpError && (signUpError.message?.includes('already') || signUpError.message?.includes('exists'))) {
+        if (statusEl) statusEl.innerHTML = `<span class="badge badge-amber">Já existe</span>`;
+        skipped++;
+      } else if (signUpError) {
+        if (statusEl) statusEl.innerHTML = `<span class="badge badge-red">Erro</span>`;
+        errors++;
+      } else {
+        if (statusEl) statusEl.innerHTML = `<span class="badge badge-green">✓ Criado</span>`;
+        created++;
+      }
+    }
+
+    // Small delay to avoid rate limiting
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = `⚡ Criar logins`; }
+  showToast(`✓ ${created} criado(s) · ${skipped} já existiam · ${errors} erro(s)`);
 }
 
 function sbManualSync() {
