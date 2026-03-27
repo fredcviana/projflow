@@ -491,6 +491,9 @@ window.navigate = function() {};
     <div class="nav-item" onclick="navigate('team')">
       <span class="nav-icon">◎</span><span>Equipe</span>
     </div>
+    <div class="nav-item" onclick="navigate('library')">
+      <span class="nav-icon">▣</span><span>Biblioteca</span>
+    </div>
     <div class="nav-section">Configurações</div>
     <div class="nav-item" onclick="navigate('settings')">
       <span class="nav-icon">◻</span><span>Configurações</span>
@@ -708,6 +711,81 @@ window.navigate = function() {};
 </div>
 
 
+<!-- Modal Template Editor -->
+<div class="modal-overlay" id="modal-template">
+  <div class="modal modal-wide" style="width:680px; max-height:90vh; display:flex; flex-direction:column;">
+    <div class="modal-title" style="flex-shrink:0;" id="tmpl-modal-title">Novo Template</div>
+    <div style="overflow-y:auto; flex:1;">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Nome do Template *</label>
+          <input class="form-control" id="tmpl-name" placeholder="Ex: Levantamento Hidrológico" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Categoria</label>
+          <input class="form-control" id="tmpl-category" placeholder="Ex: Ambiental, Hídrico, Mining" list="tmpl-cat-list" />
+          <datalist id="tmpl-cat-list"></datalist>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Tipo *</label>
+          <select class="form-control" id="tmpl-type" onchange="renderTemplateEditor()">
+            <option value="package">Pacote de atividades</option>
+            <option value="delivery">Entrega completa (com pacotes)</option>
+            <option value="activity">Atividade avulsa</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Descrição</label>
+          <input class="form-control" id="tmpl-desc" placeholder="Breve descrição..." />
+        </div>
+      </div>
+      <div id="tmpl-items-editor" style="margin-top:4px;"></div>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px; padding-top:16px; border-top:1px solid var(--border); flex-shrink:0;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-template')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveTemplate()">Salvar Template</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Biblioteca — Aplicar em Entrega -->
+<div class="modal-overlay" id="modal-library-picker">
+  <div class="modal modal-wide" style="width:760px; max-height:88vh; display:flex; flex-direction:column;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-shrink:0;">
+      <div class="modal-title" style="margin-bottom:0;">Biblioteca de Templates</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-library-picker')">✕</button>
+    </div>
+    <!-- Filters -->
+    <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; flex-shrink:0;">
+      <select class="form-control" id="lib-filter-cat" onchange="renderLibraryPicker()" style="width:180px; font-size:12px; padding:6px 10px;">
+        <option value="">Todas as categorias</option>
+      </select>
+      <select class="form-control" id="lib-filter-type" onchange="renderLibraryPicker()" style="width:160px; font-size:12px; padding:6px 10px;">
+        <option value="">Todos os tipos</option>
+        <option value="delivery">Entrega completa</option>
+        <option value="package">Pacote de atividades</option>
+        <option value="activity">Atividade avulsa</option>
+      </select>
+      <input class="form-control" id="lib-filter-search" oninput="renderLibraryPicker()" placeholder="Buscar..." style="width:160px; font-size:12px; padding:6px 10px;" />
+    </div>
+    <!-- Selection info -->
+    <div id="lib-selection-info" style="display:none; padding:8px 12px; background:rgba(108,99,255,0.1); border:1px solid rgba(108,99,255,0.2); border-radius:var(--radius-sm); font-size:12px; color:var(--accent2); margin-bottom:12px; flex-shrink:0;"></div>
+    <!-- Template list -->
+    <div id="lib-picker-list" style="flex:1; overflow-y:auto; border:1px solid var(--border); border-radius:var(--radius-sm);"></div>
+    <!-- Footer -->
+    <div style="display:flex; gap:10px; justify-content:space-between; align-items:center; margin-top:16px; flex-shrink:0;">
+      <div style="font-size:12px; color:var(--muted);" id="lib-target-info"></div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-ghost" onclick="closeModal('modal-library-picker')">Cancelar</button>
+        <button class="btn btn-primary" id="lib-apply-btn" onclick="applyLibrarySelection()" disabled>Aplicar selecionados</button>
+      </div>
+    </div>
+    <input type="hidden" id="lib-target-delivery-id" />
+  </div>
+</div>
+
 <!-- Modal Login -->
 <div class="modal-overlay" id="modal-login">
   <div class="modal" style="width:400px;">
@@ -853,11 +931,12 @@ function loadState() {
     const raw = localStorage.getItem('projflow_v2');
     if (raw) {
       const s = JSON.parse(raw);
-      if (!s.packages) s.packages = []; // migrate old data
+      if (!s.packages) s.packages = [];
+      if (!s.templates) s.templates = [];
       return s;
     }
   } catch(e) {}
-  return { projects: [], deliveries: [], packages: [], activities: [], team: [], nextId: 1 };
+  return { projects: [], deliveries: [], packages: [], activities: [], team: [], templates: [], nextId: 1 };
 }
 
 function saveState() {
@@ -885,7 +964,7 @@ let currentProjectId = null;
 function navigate(page, id) {
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  const map = { dashboard: 0, projects: 1, activities: 2, myview: 3, team: 4, settings: 5 };
+  const map = { dashboard: 0, projects: 1, activities: 2, myview: 3, team: 4, library: 5, settings: 6 };
   if (map[page] !== undefined) {
     document.querySelectorAll('.nav-item')[map[page]]?.classList.add('active');
   }
@@ -901,6 +980,7 @@ function render() {
     activities: renderActivitiesDashboard,
     myview: renderMyView,
     team: renderTeam,
+    library: renderLibrary,
     settings: renderSettings,
   };
   (pages[currentPage] || renderDashboard)();
@@ -1344,6 +1424,7 @@ function renderDeliveryCard(d, p) {
           </div>
         </div>
         <div style="display:flex; gap:6px;" onclick="event.stopPropagation()">
+          <button class="btn btn-ghost btn-sm" style="color:var(--accent2);" onclick="openLibraryPicker(${d.id})">▣ Biblioteca</button>
           <button class="btn btn-ghost btn-sm" onclick="openNewPackage(${d.id})">+ Pacote</button>
           <button class="btn btn-ghost btn-sm" onclick="openNewActivity(${d.id})">+ Atividade</button>
           <button class="btn btn-ghost btn-sm" style="color:var(--teal);" onclick="openConvertDelivery(${d.id})" title="Converter em Pacote de Atividades">⇄ Converter</button>
@@ -2178,6 +2259,453 @@ function _styleSheet(ws, nCols, nRows) {
       }
     }
   }
+}
+
+// ============================================================
+//  RENDER: LIBRARY
+// ============================================================
+function renderLibrary() {
+  document.getElementById('topbar-title').textContent = 'Biblioteca de Templates';
+  document.getElementById('topbar-sub').textContent = 'Templates reutilizáveis de entregas, pacotes e atividades';
+  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="openNewTemplate()">+ Novo Template</button>`;
+
+  if (!state.templates) state.templates = [];
+
+  const cats = [...new Set(state.templates.map(t => t.category).filter(Boolean))];
+
+  if (!state.templates.length) {
+    document.getElementById('page-content').innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">▣</div>
+        <div class="empty-text">Nenhum template cadastrado</div>
+        <div class="empty-sub">Crie templates de entregas, pacotes e atividades para reutilizar nos projetos</div>
+      </div>`;
+    return;
+  }
+
+  // Group by category
+  const grouped = {};
+  state.templates.forEach(t => {
+    const cat = t.category || 'Geral';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(t);
+  });
+
+  const typeLabel = { delivery: 'Entrega', package: 'Pacote', activity: 'Atividade' };
+  const typeColor = { delivery: 'badge-purple', package: 'badge-blue', activity: 'badge-green' };
+
+  let html = '';
+  Object.entries(grouped).forEach(([cat, tmps]) => {
+    html += `
+      <div style="margin-bottom:28px;">
+        <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+          ${esc(cat)}
+          <span style="background:var(--surface2); color:var(--muted); padding:2px 8px; border-radius:10px; font-size:10px;">${tmps.length}</span>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:12px;">
+          ${tmps.map(t => {
+            const childCount = (t.items||[]).length;
+            const totalHours = libTotalHours(t);
+            return `
+              <div class="card" style="position:relative;">
+                <div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:10px;">
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-size:14px; font-weight:500; margin-bottom:4px;">${esc(t.name)}</div>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                      <span class="badge ${typeColor[t.type]||'badge-gray'}">${typeLabel[t.type]||t.type}</span>
+                      ${childCount > 0 ? `<span class="badge badge-gray">${childCount} item${childCount!==1?'s':''}</span>` : ''}
+                      ${totalHours > 0 ? `<span class="badge badge-gray">${totalHours}h est.</span>` : ''}
+                    </div>
+                  </div>
+                  <div style="display:flex; gap:4px; flex-shrink:0;">
+                    <button class="btn btn-ghost btn-sm" style="padding:3px 8px;" onclick="openEditTemplate(${t.id})">✎</button>
+                    <button class="btn btn-danger btn-sm" style="padding:3px 7px;" onclick="deleteTemplate(${t.id})">✕</button>
+                  </div>
+                </div>
+                ${t.desc ? `<div style="font-size:12px; color:var(--muted); margin-bottom:10px;">${esc(t.desc)}</div>` : ''}
+                ${renderTemplateItems(t)}
+              </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  });
+
+  document.getElementById('page-content').innerHTML = html;
+}
+
+function libTotalHours(t) {
+  if (!t.items) return 0;
+  let h = 0;
+  t.items.forEach(item => {
+    if (item.type === 'activity') h += parseFloat(item.hours||0);
+    else if (item.items) item.items.forEach(a => { h += parseFloat(a.hours||0); });
+  });
+  return h;
+}
+
+function renderTemplateItems(t) {
+  if (!t.items || !t.items.length) return '';
+  const items = t.items;
+  if (t.type === 'activity') return '';
+
+  return `<div style="border-top:1px solid var(--border); padding-top:10px;">
+    ${items.slice(0,6).map((item, i) => {
+      if (item.type === 'activity') {
+        return `<div style="display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12px;">
+          <span style="color:var(--muted); min-width:16px;">${i+1}</span>
+          <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(item.name)}</span>
+          ${item.hours ? `<span style="color:var(--muted); font-family:var(--mono); font-size:11px;">${item.hours}h</span>` : ''}
+        </div>`;
+      } else {
+        return `<div style="padding:4px 0; font-size:12px;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+            <span style="color:var(--teal); font-size:10px;">▣</span>
+            <span style="font-weight:500;">${esc(item.name)}</span>
+            <span style="color:var(--muted); font-size:10px;">${(item.items||[]).length} atividade${(item.items||[]).length!==1?'s':''}</span>
+          </div>
+          ${(item.items||[]).slice(0,3).map((a,j) => `
+            <div style="display:flex; align-items:center; gap:8px; padding:2px 0 2px 16px; font-size:11px; color:var(--muted);">
+              <span>${j+1}</span>
+              <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(a.name)}</span>
+              ${a.hours ? `<span style="font-family:var(--mono); font-size:10px;">${a.hours}h</span>` : ''}
+            </div>`).join('')}
+          ${(item.items||[]).length > 3 ? `<div style="font-size:10px; color:var(--muted); padding-left:16px;">+${(item.items||[]).length-3} mais</div>` : ''}
+        </div>`;
+      }
+    }).join('')}
+    ${items.length > 6 ? `<div style="font-size:11px; color:var(--muted); padding-top:4px;">+${items.length-6} mais itens</div>` : ''}
+  </div>`;
+}
+
+// ---- Template CRUD ----
+let editingTemplateId = null;
+let templateItems = []; // working copy while editing
+
+function openNewTemplate() {
+  editingTemplateId = null;
+  templateItems = [];
+  document.getElementById('tmpl-name').value = '';
+  document.getElementById('tmpl-category').value = '';
+  document.getElementById('tmpl-type').value = 'package';
+  document.getElementById('tmpl-desc').value = '';
+  populateCatDatalist();
+  renderTemplateEditor();
+  openModal('modal-template');
+}
+
+function populateCatDatalist() {
+  const cats = [...new Set((state.templates||[]).map(t => t.category).filter(Boolean))];
+  const dl = document.getElementById('tmpl-cat-list');
+  if (dl) dl.innerHTML = cats.map(c => `<option value="${esc(c)}">`).join('');
+}
+
+function openEditTemplate(id) {
+  const t = (state.templates||[]).find(x => x.id === id);
+  if (!t) return;
+  editingTemplateId = id;
+  templateItems = JSON.parse(JSON.stringify(t.items||[]));
+  document.getElementById('tmpl-name').value = t.name;
+  document.getElementById('tmpl-category').value = t.category || '';
+  document.getElementById('tmpl-type').value = t.type;
+  document.getElementById('tmpl-desc').value = t.desc || '';
+  populateCatDatalist();
+  renderTemplateEditor();
+  openModal('modal-template');
+}
+
+function renderTemplateEditor() {
+  const type = document.getElementById('tmpl-type')?.value || 'package';
+  const el = document.getElementById('tmpl-items-editor');
+  if (!el) return;
+
+  if (type === 'activity') {
+    el.innerHTML = `<div style="font-size:12px; color:var(--muted); padding:8px 0;">Uma atividade avulsa não tem subitens — apenas defina nome, horas e descrição acima.</div>`;
+    return;
+  }
+
+  let html = `
+    <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); margin-bottom:10px;">
+      ${type === 'delivery' ? 'Pacotes e Atividades desta Entrega' : 'Atividades deste Pacote'}
+    </div>`;
+
+  if (!templateItems.length) {
+    html += `<div style="color:var(--muted); font-size:13px; padding:8px 0;">Nenhum item ainda.</div>`;
+  } else {
+    templateItems.forEach((item, i) => {
+      if (item.type === 'activity') {
+        html += `<div style="display:grid; grid-template-columns:1fr 70px auto; gap:8px; align-items:center; padding:8px 10px; background:var(--surface2); border-radius:6px; margin-bottom:6px;">
+          <div style="font-size:13px; font-weight:500;">${esc(item.name)}</div>
+          <div style="font-size:12px; color:var(--muted); font-family:var(--mono);">${item.hours||0}h</div>
+          <button class="btn btn-danger btn-sm" style="padding:2px 7px;" onclick="removeTemplateItem(${i})">✕</button>
+        </div>`;
+      } else {
+        html += `<div style="border:1px solid rgba(45,212,191,0.2); border-radius:7px; margin-bottom:8px; overflow:hidden;">
+          <div style="background:rgba(45,212,191,0.06); padding:8px 12px; display:flex; align-items:center; gap:8px;">
+            <span style="font-size:10px; color:var(--teal);">▣</span>
+            <span style="font-size:13px; font-weight:500; color:var(--teal); flex:1;">${esc(item.name)}</span>
+            <button class="btn btn-danger btn-sm" style="padding:2px 7px; font-size:11px;" onclick="removeTemplateItem(${i})">✕</button>
+          </div>
+          <div style="padding:8px 12px;">
+            ${(item.items||[]).map((a,j) => `
+              <div style="display:grid; grid-template-columns:20px 1fr 60px auto; gap:6px; align-items:center; padding:4px 0;">
+                <span style="font-size:11px; color:var(--muted); text-align:center;">${j+1}</span>
+                <span style="font-size:12px;">${esc(a.name)}</span>
+                <span style="font-size:11px; color:var(--muted); font-family:var(--mono);">${a.hours||0}h</span>
+                <button class="btn btn-danger btn-sm" style="padding:1px 5px; font-size:10px;" onclick="removeTemplateSubItem(${i},${j})">✕</button>
+              </div>`).join('')}
+            <div style="margin-top:8px; display:flex; gap:8px;">
+              <input class="form-control" placeholder="Nome da atividade" id="sub-act-name-${i}" style="flex:1; font-size:12px; padding:5px 8px;" />
+              <input class="form-control" type="number" placeholder="h" id="sub-act-hours-${i}" style="width:60px; font-size:12px; padding:5px 8px;" />
+              <button class="btn btn-ghost btn-sm" onclick="addTemplateSubItem(${i})">+ Adicionar</button>
+            </div>
+          </div>
+        </div>`;
+      }
+    });
+  }
+
+  // Add buttons
+  html += `<div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">`;
+  if (type === 'delivery') {
+    html += `<button class="btn btn-ghost btn-sm" style="color:var(--teal);" onclick="addTemplatePkg()">+ Pacote</button>`;
+  }
+  html += `<button class="btn btn-ghost btn-sm" onclick="addTemplateAct()">+ Atividade</button></div>`;
+
+  el.innerHTML = html;
+}
+
+function addTemplateAct() {
+  const name = prompt('Nome da atividade:');
+  if (!name) return;
+  const hours = prompt('Horas estimadas (opcional):') || 0;
+  templateItems.push({ type: 'activity', name: name.trim(), hours: parseFloat(hours)||0 });
+  renderTemplateEditor();
+}
+
+function addTemplatePkg() {
+  const name = prompt('Nome do pacote:');
+  if (!name) return;
+  templateItems.push({ type: 'package', name: name.trim(), items: [] });
+  renderTemplateEditor();
+}
+
+function addTemplateSubItem(pkgIdx) {
+  const nameEl = document.getElementById(`sub-act-name-${pkgIdx}`);
+  const hoursEl = document.getElementById(`sub-act-hours-${pkgIdx}`);
+  const name = nameEl?.value?.trim();
+  if (!name) return;
+  const hours = parseFloat(hoursEl?.value)||0;
+  if (!templateItems[pkgIdx].items) templateItems[pkgIdx].items = [];
+  templateItems[pkgIdx].items.push({ type:'activity', name, hours });
+  renderTemplateEditor();
+}
+
+function removeTemplateItem(i) {
+  templateItems.splice(i, 1);
+  renderTemplateEditor();
+}
+
+function removeTemplateSubItem(pkgIdx, actIdx) {
+  templateItems[pkgIdx].items.splice(actIdx, 1);
+  renderTemplateEditor();
+}
+
+function saveTemplate() {
+  const name = document.getElementById('tmpl-name').value.trim();
+  if (!name) { alert('Informe o nome do template.'); return; }
+  if (!state.templates) state.templates = [];
+
+  const data = {
+    name,
+    category: document.getElementById('tmpl-category').value.trim() || 'Geral',
+    type: document.getElementById('tmpl-type').value,
+    desc: document.getElementById('tmpl-desc').value.trim(),
+    items: JSON.parse(JSON.stringify(templateItems)),
+  };
+
+  if (editingTemplateId) {
+    const t = state.templates.find(x => x.id === editingTemplateId);
+    Object.assign(t, data);
+  } else {
+    state.templates.push({ id: uid(), ...data });
+  }
+  closeModal('modal-template');
+  render();
+}
+
+function deleteTemplate(id) {
+  if (!confirm('Excluir este template?')) return;
+  state.templates = state.templates.filter(t => t.id !== id);
+  render();
+}
+
+// ---- Library Picker (apply to delivery) ----
+let libSelected = new Set(); // set of template ids
+
+function openLibraryPicker(deliveryId) {
+  const d = state.deliveries.find(x => x.id === deliveryId);
+  if (!d) return;
+  libSelected = new Set();
+  document.getElementById('lib-target-delivery-id').value = deliveryId;
+  document.getElementById('lib-target-info').textContent = `Aplicar em: ${d.name}`;
+  document.getElementById('lib-filter-cat').value = '';
+  document.getElementById('lib-filter-type').value = '';
+  document.getElementById('lib-filter-search').value = '';
+
+  // Populate category filter
+  if (!state.templates) state.templates = [];
+  const cats = [...new Set(state.templates.map(t => t.category).filter(Boolean))];
+  const catSel = document.getElementById('lib-filter-cat');
+  catSel.innerHTML = '<option value="">Todas as categorias</option>' +
+    cats.map(c => `<option value="${c}">${esc(c)}</option>`).join('');
+
+  renderLibraryPicker();
+  openModal('modal-library-picker');
+}
+
+function renderLibraryPicker() {
+  const cat    = document.getElementById('lib-filter-cat')?.value || '';
+  const type   = document.getElementById('lib-filter-type')?.value || '';
+  const search = (document.getElementById('lib-filter-search')?.value || '').toLowerCase();
+
+  let tmps = (state.templates||[]).filter(t => {
+    if (cat && t.category !== cat) return false;
+    if (type && t.type !== type) return false;
+    if (search && !t.name.toLowerCase().includes(search) && !(t.desc||'').toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  const typeLabel = { delivery:'Entrega', package:'Pacote', activity:'Atividade' };
+  const typeColor = { delivery:'badge-purple', package:'badge-blue', activity:'badge-green' };
+  const el = document.getElementById('lib-picker-list');
+
+  if (!tmps.length) {
+    el.innerHTML = `<div class="empty" style="padding:40px;"><div class="empty-text">Nenhum template encontrado</div></div>`;
+    return;
+  }
+
+  el.innerHTML = tmps.map(t => {
+    const selected = libSelected.has(t.id);
+    const totalH = libTotalHours(t);
+    const childCount = (t.items||[]).length;
+    return `
+      <div onclick="toggleLibSelect(${t.id})" style="display:flex; align-items:flex-start; gap:12px; padding:14px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.1s; ${selected?'background:rgba(108,99,255,0.08);':''}">
+        <div style="width:20px; height:20px; border-radius:4px; border:2px solid ${selected?'var(--accent)':'var(--border2)'}; background:${selected?'var(--accent)':'transparent'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; transition:all 0.15s;">
+          ${selected ? '<span style="color:#fff; font-size:11px; font-weight:700;">✓</span>' : ''}
+        </div>
+        <div style="flex:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+            <span style="font-size:13px; font-weight:500;">${esc(t.name)}</span>
+            <span class="badge ${typeColor[t.type]||'badge-gray'}" style="font-size:10px;">${typeLabel[t.type]||t.type}</span>
+            <span class="badge badge-gray" style="font-size:10px;">${esc(t.category||'Geral')}</span>
+            ${childCount > 0 ? `<span class="badge badge-gray" style="font-size:10px;">${childCount} item${childCount!==1?'s':''}</span>` : ''}
+            ${totalH > 0 ? `<span class="badge badge-gray" style="font-size:10px;">${totalH}h</span>` : ''}
+          </div>
+          ${t.desc ? `<div style="font-size:12px; color:var(--muted);">${esc(t.desc)}</div>` : ''}
+          ${renderTemplateItemsPreview(t)}
+        </div>
+      </div>`;
+  }).join('');
+
+  // Update selection info
+  updateLibSelectionInfo();
+}
+
+function renderTemplateItemsPreview(t) {
+  if (!t.items || !t.items.length || t.type === 'activity') return '';
+  return `<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px;">
+    ${t.items.slice(0,5).map(item => `
+      <span style="font-size:10px; background:var(--surface2); color:var(--muted); padding:2px 8px; border-radius:10px;">
+        ${item.type==='package'?'▣ ':''}${esc(item.name)}${item.hours?` · ${item.hours}h`:''}
+      </span>`).join('')}
+    ${t.items.length > 5 ? `<span style="font-size:10px; color:var(--muted);">+${t.items.length-5} mais</span>` : ''}
+  </div>`;
+}
+
+function toggleLibSelect(id) {
+  if (libSelected.has(id)) libSelected.delete(id);
+  else libSelected.add(id);
+  renderLibraryPicker();
+}
+
+function updateLibSelectionInfo() {
+  const info = document.getElementById('lib-selection-info');
+  const btn  = document.getElementById('lib-apply-btn');
+  if (libSelected.size === 0) {
+    info.style.display = 'none';
+    btn.disabled = true;
+  } else {
+    info.style.display = 'block';
+    info.textContent = `${libSelected.size} template${libSelected.size>1?'s':''} selecionado${libSelected.size>1?'s':''}`;
+    btn.disabled = false;
+  }
+}
+
+function applyLibrarySelection() {
+  const deliveryId = parseInt(document.getElementById('lib-target-delivery-id').value);
+  if (!deliveryId || !libSelected.size) return;
+
+  let created = 0;
+  libSelected.forEach(tmplId => {
+    const t = (state.templates||[]).find(x => x.id === tmplId);
+    if (!t) return;
+
+    if (t.type === 'activity') {
+      // Add as direct activity in delivery
+      state.activities.push({
+        id: uid(), name: t.name, deliveryId, packageId: null,
+        hours: t.hours||0, desc: t.desc||'',
+        status: 'nao_iniciado', progress: 0, note: '',
+        start: '', end: '', personId: null,
+      });
+      created++;
+
+    } else if (t.type === 'package') {
+      // Create package + its activities
+      const pkg = { id: uid(), name: t.name, deliveryId, personId: null, start: '', end: '', desc: t.desc||'' };
+      if (!state.packages) state.packages = [];
+      state.packages.push(pkg);
+      (t.items||[]).forEach((a, idx) => {
+        state.activities.push({
+          id: uid(), name: a.name, packageId: pkg.id, deliveryId: null,
+          hours: a.hours||0, desc: a.desc||'', seqOrder: idx,
+          status: 'nao_iniciado', progress: 0, note: '',
+          start: '', end: '', personId: null,
+        });
+      });
+      created++;
+
+    } else if (t.type === 'delivery') {
+      // Create as packages + activities inside target delivery
+      (t.items||[]).forEach(item => {
+        if (item.type === 'activity') {
+          state.activities.push({
+            id: uid(), name: item.name, deliveryId, packageId: null,
+            hours: item.hours||0, desc: item.desc||'',
+            status: 'nao_iniciado', progress: 0, note: '',
+            start: '', end: '', personId: null,
+          });
+        } else {
+          const pkg = { id: uid(), name: item.name, deliveryId, personId: null, start: '', end: '', desc: '' };
+          if (!state.packages) state.packages = [];
+          state.packages.push(pkg);
+          (item.items||[]).forEach((a, idx) => {
+            state.activities.push({
+              id: uid(), name: a.name, packageId: pkg.id, deliveryId: null,
+              hours: a.hours||0, seqOrder: idx,
+              status: 'nao_iniciado', progress: 0, note: '',
+              start: '', end: '', personId: null, desc: '',
+            });
+          });
+        }
+        created++;
+      });
+    }
+  });
+
+  closeModal('modal-library-picker');
+  showToast(`✓ ${created} item(ns) adicionado(s) à entrega!`);
+  render();
 }
 
 // ============================================================
