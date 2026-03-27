@@ -490,7 +490,7 @@
     <!-- Supabase auth status -->
     <div style="margin-top:auto; padding:12px 14px 8px; border-top:1px solid var(--border);">
       <div id="sb-status-panel">
-        <button class="btn btn-ghost" style="width:100%; font-size:12px; justify-content:center; gap:7px;" onclick="openModal('modal-login')">
+        <button class="btn btn-ghost" style="width:100%; font-size:12px; justify-content:center; gap:7px;" onclick="document.getElementById('modal-login').classList.add('open')">
           <span style="font-size:14px;">◎</span>
           <span>Fazer Login</span>
         </button>
@@ -807,7 +807,7 @@
 // ============================================================
 const SB_URL  = 'https://ydfytofjbpoqpsbryhyg.supabase.co';
 const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlkZnl0b2ZqYnBvcXBzYnJ5aHlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NzAxMjUsImV4cCI6MjA5MDE0NjEyNX0.C2EmgZUxO3x0vNpqtw0uzL4U4YGRBaL0XeIK7INjVzM';
-const ADMIN_EMAIL = 'fredcviana@gmail.com'; // gestor principal
+const ADMIN_EMAIL = 'frederico.viana@hidrobr.com'; // gestor principal
 
 let sb = null;        // Supabase client
 let sbUser = null;    // logged in user
@@ -2074,7 +2074,7 @@ function renderSettings() {
         </div>
         ${connected
           ? `<button class="btn btn-danger btn-sm" onclick="sbSignOut()">Sair</button>`
-          : `<button class="btn btn-primary btn-sm" onclick="openModal('modal-login')">Fazer Login</button>`}
+          : `<button class="btn btn-primary btn-sm" onclick="document.getElementById('modal-login').classList.add('open')">Fazer Login</button>`}
       </div>
     </div>
 
