@@ -1044,10 +1044,103 @@ function renderDashboard() {
     <div class="card">
       <div class="card-header">
         <div class="card-title">Mapa de Carga — Horas por Pessoa por Mês</div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:6px; background:var(--surface2); border-radius:var(--radius-sm); padding:4px 8px;">
+            <button onclick="heatmapShift(-3)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;" title="Recuar 3 meses">‹</button>
+            <span style="font-size:11px; color:var(--muted); white-space:nowrap;" id="hm-range-label">—</span>
+            <button onclick="heatmapShift(3)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;" title="Avançar 3 meses">›</button>
+          </div>
+          <div style="display:flex; gap:4px;">
+            <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapSetWindow(3)">3m</button>
+            <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapSetWindow(6)">6m</button>
+            <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapSetWindow(12)">12m</button>
+            <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapSetWindow(0)">Tudo</button>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="month" id="hm-start" onchange="heatmapUpdateFromInputs()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:3px 8px;font-size:11px;font-family:var(--font);" />
+            <span style="font-size:11px; color:var(--muted);">até</span>
+            <input type="month" id="hm-end" onchange="heatmapUpdateFromInputs()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:3px 8px;font-size:11px;font-family:var(--font);" />
+          </div>
+          <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapReset()">↺ Reset</button>
+        </div>
       </div>
-      ${renderHeatmap()}
+      <div id="heatmap-content">
+        ${renderHeatmap()}
+      </div>
     </div>
   `;
+
+  // Initialize heatmap state after DOM renders
+  setTimeout(heatmapInitControls, 0);
+}
+
+// ---- Heatmap interactive state ----
+let _hmStart = null; // Date (first of month)
+let _hmEnd   = null; // Date (first of month)
+
+function heatmapInitControls() {
+  // Compute natural range from activities
+  let minDate = null, maxDate = null;
+  state.activities.forEach(a => {
+    if (a.start) { const d = new Date(a.start); if (!minDate || d < minDate) minDate = d; }
+    if (a.end)   { const d = new Date(a.end);   if (!maxDate || d > maxDate) maxDate = d; }
+  });
+  if (!minDate) minDate = new Date();
+  if (!maxDate) { maxDate = new Date(minDate); maxDate.setMonth(maxDate.getMonth()+5); }
+
+  _hmStart = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+  _hmEnd   = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+  heatmapSyncInputs();
+}
+
+function heatmapSyncInputs() {
+  const s = document.getElementById('hm-start');
+  const e = document.getElementById('hm-end');
+  if (!s || !e || !_hmStart || !_hmEnd) return;
+  s.value = `${_hmStart.getFullYear()}-${String(_hmStart.getMonth()+1).padStart(2,'0')}`;
+  e.value = `${_hmEnd.getFullYear()}-${String(_hmEnd.getMonth()+1).padStart(2,'0')}`;
+  const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const lbl = document.getElementById('hm-range-label');
+  if (lbl) lbl.textContent = `${monthNames[_hmStart.getMonth()]}/${_hmStart.getFullYear()} – ${monthNames[_hmEnd.getMonth()]}/${_hmEnd.getFullYear()}`;
+}
+
+function heatmapRefresh() {
+  const el = document.getElementById('heatmap-content');
+  if (el) el.innerHTML = renderHeatmap(_hmStart, _hmEnd);
+  heatmapSyncInputs();
+}
+
+function heatmapShift(months) {
+  if (!_hmStart || !_hmEnd) return;
+  _hmStart = new Date(_hmStart.getFullYear(), _hmStart.getMonth() + months, 1);
+  _hmEnd   = new Date(_hmEnd.getFullYear(), _hmEnd.getMonth() + months, 1);
+  heatmapRefresh();
+}
+
+function heatmapSetWindow(months) {
+  if (months === 0) {
+    heatmapInitControls();
+    heatmapRefresh();
+    return;
+  }
+  const today = new Date();
+  _hmStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  _hmEnd   = new Date(today.getFullYear(), today.getMonth() + months - 1, 1);
+  heatmapRefresh();
+}
+
+function heatmapReset() {
+  heatmapInitControls();
+  heatmapRefresh();
+}
+
+function heatmapUpdateFromInputs() {
+  const s = document.getElementById('hm-start')?.value;
+  const e = document.getElementById('hm-end')?.value;
+  if (s) { const [y,m] = s.split('-'); _hmStart = new Date(parseInt(y), parseInt(m)-1, 1); }
+  if (e) { const [y,m] = e.split('-'); _hmEnd   = new Date(parseInt(y), parseInt(m)-1, 1); }
+  if (_hmStart && _hmEnd && _hmStart > _hmEnd) _hmEnd = new Date(_hmStart.getFullYear(), _hmStart.getMonth()+1, 1);
+  heatmapRefresh();
 }
 
 function isLate(a) {
@@ -1126,19 +1219,23 @@ function renderStatusSummary() {
     </div>`).join('');
 }
 
-function renderHeatmap() {
+function renderHeatmap(overrideStart, overrideEnd) {
   if (!state.team.length || !state.activities.length) {
     return '<div class="empty"><div class="empty-text">Aloque atividades para ver o mapa de carga</div></div>';
   }
 
-  // Get date range
-  let minDate = null, maxDate = null;
-  state.activities.forEach(a => {
-    if (a.start) { const d = new Date(a.start); if (!minDate || d < minDate) minDate = d; }
-    if (a.end)   { const d = new Date(a.end);   if (!maxDate || d > maxDate) maxDate = d; }
-  });
-  if (!minDate) minDate = new Date();
-  if (!maxDate) { maxDate = new Date(minDate); maxDate.setMonth(maxDate.getMonth()+6); }
+  // Use override dates if provided, otherwise compute from activities
+  let minDate = overrideStart || null;
+  let maxDate = overrideEnd || null;
+
+  if (!minDate || !maxDate) {
+    state.activities.forEach(a => {
+      if (a.start) { const d = new Date(a.start); if (!minDate || d < minDate) minDate = d; }
+      if (a.end)   { const d = new Date(a.end);   if (!maxDate || d > maxDate) maxDate = d; }
+    });
+    if (!minDate) minDate = new Date();
+    if (!maxDate) { maxDate = new Date(minDate); maxDate.setMonth(maxDate.getMonth()+5); }
+  }
 
   // Build month list
   const months = [];
