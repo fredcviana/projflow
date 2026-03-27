@@ -1052,19 +1052,27 @@ function renderDashboard() {
 
     <div class="card">
       <div class="card-header">
-        <div class="card-title">Mapa de Carga — Horas por Pessoa por Mês</div>
+        <div class="card-title" id="hm-title">Mapa de Carga — Horas por Pessoa por Mês</div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <div style="display:flex; align-items:center; gap:6px; background:var(--surface2); border-radius:var(--radius-sm); padding:4px 8px;">
-            <button onclick="heatmapShift(-3)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;" title="Recuar 3 meses">‹</button>
-            <span style="font-size:11px; color:var(--muted); white-space:nowrap;" id="hm-range-label">—</span>
-            <button onclick="heatmapShift(3)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;" title="Avançar 3 meses">›</button>
+          <!-- View mode toggle -->
+          <div style="display:flex; background:var(--surface2); border-radius:var(--radius-sm); padding:3px; gap:2px;">
+            <button id="hm-btn-month" class="btn btn-sm" style="padding:3px 10px; font-size:11px; background:var(--accent); color:#fff; border:none;" onclick="heatmapSetMode('month')">Mês</button>
+            <button id="hm-btn-week"  class="btn btn-sm" style="padding:3px 10px; font-size:11px; background:transparent; color:var(--muted); border:none;" onclick="heatmapSetMode('week')">Semana</button>
           </div>
-          <div style="display:flex; gap:4px;">
+          <!-- Navigation -->
+          <div style="display:flex; align-items:center; gap:6px; background:var(--surface2); border-radius:var(--radius-sm); padding:4px 8px;">
+            <button onclick="heatmapShift(-1)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;" title="Recuar">‹</button>
+            <span style="font-size:11px; color:var(--muted); white-space:nowrap; min-width:160px; text-align:center;" id="hm-range-label">—</span>
+            <button onclick="heatmapShift(1)"  style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;" title="Avançar">›</button>
+          </div>
+          <!-- Quick windows -->
+          <div style="display:flex; gap:4px;" id="hm-window-btns">
             <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapSetWindow(3)">3m</button>
             <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapSetWindow(6)">6m</button>
             <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapSetWindow(12)">12m</button>
             <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapSetWindow(0)">Tudo</button>
           </div>
+          <!-- Date inputs -->
           <div style="display:flex; align-items:center; gap:6px;">
             <input type="month" id="hm-start" onchange="heatmapUpdateFromInputs()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:3px 8px;font-size:11px;font-family:var(--font);" />
             <span style="font-size:11px; color:var(--muted);">até</span>
@@ -1079,16 +1087,38 @@ function renderDashboard() {
     </div>
   `;
 
-  // Initialize heatmap state after DOM renders
   setTimeout(heatmapInitControls, 0);
 }
 
 // ---- Heatmap interactive state ----
-let _hmStart = null; // Date (first of month)
-let _hmEnd   = null; // Date (first of month)
+let _hmStart = null;
+let _hmEnd   = null;
+let _hmMode  = 'month'; // 'month' | 'week'
+
+function heatmapSetMode(mode) {
+  _hmMode = mode;
+  // Update toggle buttons
+  const btnM = document.getElementById('hm-btn-month');
+  const btnW = document.getElementById('hm-btn-week');
+  const title = document.getElementById('hm-title');
+  const winBtns = document.getElementById('hm-window-btns');
+  if (btnM) { btnM.style.background = mode==='month' ? 'var(--accent)' : 'transparent'; btnM.style.color = mode==='month' ? '#fff' : 'var(--muted)'; }
+  if (btnW) { btnW.style.background = mode==='week'  ? 'var(--accent)' : 'transparent'; btnW.style.color = mode==='week'  ? '#fff' : 'var(--muted)'; }
+  if (title) title.textContent = mode === 'week' ? 'Mapa de Carga — Horas por Pessoa por Semana' : 'Mapa de Carga — Horas por Pessoa por Mês';
+  // In week mode, default to 8-week window from today if range is too wide
+  if (mode === 'week' && _hmStart && _hmEnd) {
+    const diffMs = _hmEnd - _hmStart;
+    const diffDays = diffMs / 86400000;
+    if (diffDays > 90) {
+      const today = new Date();
+      _hmStart = new Date(today); _hmStart.setDate(today.getDate() - today.getDay() + 1); // Monday
+      _hmEnd   = new Date(_hmStart); _hmEnd.setDate(_hmStart.getDate() + 55); // ~8 weeks
+    }
+  }
+  heatmapRefresh();
+}
 
 function heatmapInitControls() {
-  // Compute natural range from activities
   let minDate = null, maxDate = null;
   state.activities.forEach(a => {
     if (a.start) { const d = new Date(a.start); if (!minDate || d < minDate) minDate = d; }
@@ -1100,6 +1130,8 @@ function heatmapInitControls() {
   _hmStart = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
   _hmEnd   = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
   heatmapSyncInputs();
+  // Restore toggle state
+  heatmapSetMode(_hmMode);
 }
 
 function heatmapSyncInputs() {
@@ -1110,38 +1142,59 @@ function heatmapSyncInputs() {
   e.value = `${_hmEnd.getFullYear()}-${String(_hmEnd.getMonth()+1).padStart(2,'0')}`;
   const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const lbl = document.getElementById('hm-range-label');
-  if (lbl) lbl.textContent = `${monthNames[_hmStart.getMonth()]}/${_hmStart.getFullYear()} – ${monthNames[_hmEnd.getMonth()]}/${_hmEnd.getFullYear()}`;
+  if (!lbl) return;
+  if (_hmMode === 'week') {
+    const ws = getWeekLabel(_hmStart);
+    const we = getWeekLabel(_hmEnd);
+    lbl.textContent = `${ws} – ${we}`;
+  } else {
+    lbl.textContent = `${monthNames[_hmStart.getMonth()]}/${_hmStart.getFullYear()} – ${monthNames[_hmEnd.getMonth()]}/${_hmEnd.getFullYear()}`;
+  }
+}
+
+function getWeekLabel(d) {
+  const mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay()+6)%7));
+  return `${String(mon.getDate()).padStart(2,'0')}/${String(mon.getMonth()+1).padStart(2,'0')}`;
 }
 
 function heatmapRefresh() {
   const el = document.getElementById('heatmap-content');
-  if (el) el.innerHTML = renderHeatmap(_hmStart, _hmEnd);
+  if (el) el.innerHTML = _hmMode === 'week'
+    ? renderHeatmapWeekly(_hmStart, _hmEnd)
+    : renderHeatmap(_hmStart, _hmEnd);
   heatmapSyncInputs();
 }
 
-function heatmapShift(months) {
+function heatmapShift(n) {
   if (!_hmStart || !_hmEnd) return;
-  _hmStart = new Date(_hmStart.getFullYear(), _hmStart.getMonth() + months, 1);
-  _hmEnd   = new Date(_hmEnd.getFullYear(), _hmEnd.getMonth() + months, 1);
+  if (_hmMode === 'week') {
+    // Shift by n weeks (7 days each)
+    _hmStart = new Date(_hmStart); _hmStart.setDate(_hmStart.getDate() + n * 7);
+    _hmEnd   = new Date(_hmEnd);   _hmEnd.setDate(_hmEnd.getDate()   + n * 7);
+  } else {
+    // Shift by n months
+    _hmStart = new Date(_hmStart.getFullYear(), _hmStart.getMonth() + n, 1);
+    _hmEnd   = new Date(_hmEnd.getFullYear(),   _hmEnd.getMonth()   + n, 1);
+  }
   heatmapRefresh();
 }
 
 function heatmapSetWindow(months) {
-  if (months === 0) {
-    heatmapInitControls();
-    heatmapRefresh();
-    return;
-  }
+  if (months === 0) { heatmapInitControls(); heatmapRefresh(); return; }
   const today = new Date();
-  _hmStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  _hmEnd   = new Date(today.getFullYear(), today.getMonth() + months - 1, 1);
+  if (_hmMode === 'week') {
+    // Convert months to weeks (approx)
+    const weeks = months * 4;
+    _hmStart = new Date(today); _hmStart.setDate(today.getDate() - ((today.getDay()+6)%7));
+    _hmEnd   = new Date(_hmStart); _hmEnd.setDate(_hmStart.getDate() + weeks * 7 - 1);
+  } else {
+    _hmStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    _hmEnd   = new Date(today.getFullYear(), today.getMonth() + months - 1, 1);
+  }
   heatmapRefresh();
 }
 
-function heatmapReset() {
-  heatmapInitControls();
-  heatmapRefresh();
-}
+function heatmapReset() { heatmapInitControls(); heatmapRefresh(); }
 
 function heatmapUpdateFromInputs() {
   const s = document.getElementById('hm-start')?.value;
@@ -1387,6 +1440,154 @@ function hexToRgba(hex, alpha) {
   const g = parseInt(hex.slice(3,5),16);
   const b = parseInt(hex.slice(5,7),16);
   return `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
+}
+
+function renderHeatmapWeekly(overrideStart, overrideEnd) {
+  if (!state.team.length || !state.activities.length) {
+    return '<div class="empty"><div class="empty-text">Aloque atividades para ver o mapa de carga</div></div>';
+  }
+
+  // Determine range
+  let minDate = overrideStart || null;
+  let maxDate = overrideEnd   || null;
+  if (!minDate || !maxDate) {
+    state.activities.forEach(a => {
+      if (a.start) { const d=new Date(a.start); if(!minDate||d<minDate) minDate=d; }
+      if (a.end)   { const d=new Date(a.end);   if(!maxDate||d>maxDate) maxDate=d; }
+    });
+    if (!minDate) minDate = new Date();
+    if (!maxDate) { maxDate = new Date(minDate); maxDate.setDate(maxDate.getDate()+55); }
+  }
+
+  // Build week list — each week starts on Monday
+  const weeks = [];
+  const startMon = new Date(minDate);
+  startMon.setDate(startMon.getDate() - ((startMon.getDay()+6)%7)); // back to Monday
+  const endSun = new Date(maxDate);
+  endSun.setDate(endSun.getDate() + (7 - ((endSun.getDay()+6)%7)) % 7); // forward to Sunday
+
+  const cur = new Date(startMon);
+  while (cur <= endSun) {
+    weeks.push(new Date(cur));
+    cur.setDate(cur.getDate()+7);
+  }
+  if (weeks.length > 26) weeks.length = 26; // cap at 26 weeks
+
+  // Compute hours per person per week
+  const data = {};
+  state.team.forEach(p => data[p.id] = {});
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  state.activities.forEach(a => {
+    const allocs = a.allocations && a.allocations.length
+      ? a.allocations
+      : (a.personId ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }] : []);
+
+    allocs.forEach(al => {
+      if (!al.personId) return;
+      const aStart = al.start || a.start; const aEnd = al.end || a.end;
+      if (!aStart || !aEnd) return;
+      const start = new Date(aStart); const end = new Date(aEnd);
+      const daysTotal = Math.max(1, (end - start) / 86400000);
+
+      weeks.forEach(wMon => {
+        const wSun = new Date(wMon); wSun.setDate(wMon.getDate()+6);
+        const overlapStart = start > wMon ? start : wMon;
+        const overlapEnd   = end < wSun   ? end   : wSun;
+        if (overlapStart <= overlapEnd) {
+          const days = (overlapEnd - overlapStart) / 86400000 + 1;
+          const h = (parseFloat(al.hours)||0) * days / daysTotal;
+          const key = wMon.toISOString().slice(0,10);
+          if (!data[al.personId]) data[al.personId] = {};
+          data[al.personId][key] = (data[al.personId][key]||0) + h;
+        }
+      });
+    });
+  });
+
+  let maxH = 0;
+  Object.values(data).forEach(pd => Object.values(pd).forEach(h => { if(h>maxH) maxH=h; }));
+
+  const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const cellW = Math.max(30, Math.min(56, Math.floor((window.innerWidth - 340) / weeks.length)));
+
+  // Build month grouping for header
+  let lastMonth = -1;
+
+  let html = `<div style="overflow-x:auto;"><table style="border-collapse:collapse; min-width:100%;">
+    <thead>
+      <tr>
+        <th style="min-width:120px; padding:0 10px 0 0;"></th>
+        ${weeks.map(w => {
+          const sun = new Date(w); sun.setDate(w.getDate()+6);
+          const m = w.getMonth();
+          const showMonth = m !== lastMonth;
+          lastMonth = m;
+          return `<th style="padding:0 2px 2px; text-align:center; min-width:${cellW}px;">
+            <div style="font-size:9px; color:${showMonth?'var(--accent2)':'transparent'}; font-weight:600; margin-bottom:1px;">${showMonth ? monthNames[m] : '.'}</div>
+          </th>`;
+        }).join('')}
+      </tr>
+      <tr>
+        <th style="padding:4px 10px 8px 0; font-size:11px; color:var(--muted); font-weight:500; text-align:left; white-space:nowrap;">Pessoa</th>
+        ${weeks.map(w => {
+          const isCurrentWeek = today >= w && today <= new Date(w.getTime() + 6*86400000);
+          const sun = new Date(w); sun.setDate(w.getDate()+6);
+          const label = `${String(w.getDate()).padStart(2,'0')}/${String(w.getMonth()+1).padStart(2,'0')}`;
+          return `<th style="padding:2px 2px 8px; font-size:9px; color:${isCurrentWeek?'var(--amber)':'var(--muted)'}; text-align:center; min-width:${cellW}px; font-weight:${isCurrentWeek?'700':'400'};" title="${label} – ${String(sun.getDate()).padStart(2,'0')}/${String(sun.getMonth()+1).padStart(2,'0')}">${label}</th>`;
+        }).join('')}
+      </tr>
+    </thead>
+    <tbody>`;
+
+  state.team.forEach((p, i) => {
+    const col = getPersonColor(i);
+    html += `<tr>
+      <td style="padding:4px 10px 4px 0; white-space:nowrap;">
+        <div style="display:flex; align-items:center; gap:7px;">
+          <div class="avatar avatar-sm" style="background:${col}22; color:${col};">${initials(p.name)}</div>
+          <span style="font-size:12px;">${p.name.split(' ')[0]}</span>
+        </div>
+      </td>`;
+
+    weeks.forEach(w => {
+      const key = w.toISOString().slice(0,10);
+      const h = data[p.id]?.[key] || 0;
+      const isCurrentWeek = today >= w && today <= new Date(w.getTime() + 6*86400000);
+      let bg = isCurrentWeek ? 'rgba(251,191,36,0.07)' : 'var(--surface2)';
+      let textCol = 'var(--muted)';
+      let border = isCurrentWeek ? 'border:1px solid rgba(251,191,36,0.3);' : '';
+      if (h > 0) {
+        const intensity = Math.min(h / (maxH || 1), 1);
+        const alpha = 0.15 + intensity * 0.75;
+        bg = hexToRgba(col, alpha);
+        textCol = intensity > 0.5 ? '#fff' : col;
+        border = isCurrentWeek ? 'border:1px solid rgba(251,191,36,0.4);' : '';
+      }
+      const sun = new Date(w); sun.setDate(w.getDate()+6);
+      const label = `${String(w.getDate()).padStart(2,'0')}/${String(w.getMonth()+1).padStart(2,'0')} – ${String(sun.getDate()).padStart(2,'0')}/${String(sun.getMonth()+1).padStart(2,'0')}`;
+      html += `<td style="padding:3px 4px; text-align:center;">
+        <div class="tooltip-wrap">
+          <div class="heatmap-cell" style="background:${bg}; color:${textCol}; ${border} width:${cellW}px; height:${cellW}px; line-height:${cellW}px; font-size:${cellW>40?10:9}px; box-sizing:border-box;">
+            ${h>0 ? Math.round(h)+'h' : ''}
+          </div>
+          ${h>0?`<div class="tooltip">${p.name}<br>Semana ${label}<br><b>${Math.round(h)}h</b></div>`:''}
+        </div>
+      </td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+  html += `<div style="display:flex; align-items:center; gap:8px; margin-top:16px; font-size:11px; color:var(--muted);">
+    <span>Baixa carga</span>
+    ${['0.2','0.4','0.6','0.8','1'].map(op=>`<div style="width:20px;height:14px;border-radius:3px;background:rgba(108,99,255,${op});"></div>`).join('')}
+    <span>Alta carga</span>
+    <div style="width:20px;height:14px;border-radius:3px;background:rgba(251,191,36,0.3);border:1px solid rgba(251,191,36,0.5);margin-left:8px;"></div>
+    <span>Semana atual</span>
+  </div>`;
+
+  return html;
 }
 
 // ============================================================
@@ -2462,91 +2663,107 @@ function renderMyTimeline(acts, today, col) {
 function renderMyActivityCard(a, col) {
   const prog = a.workProg || 0;
 
-  // Time status config
   const tsConfig = {
-    done:     { bg: 'rgba(52,211,153,0.06)',  border: 'rgba(52,211,153,0.2)',  icon: '✓',  label: 'Concluída',                  labelCol: 'var(--green)' },
-    ok:       { bg: 'var(--surface)',          border: 'var(--border)',          icon: '●',  label: 'No prazo',                   labelCol: 'var(--green)' },
-    warning:  { bg: 'rgba(251,191,36,0.04)',   border: 'rgba(251,191,36,0.25)', icon: '!',  label: 'Atenção — progresso lento',  labelCol: 'var(--amber)' },
-    critical: { bg: 'rgba(251,191,36,0.08)',   border: 'rgba(251,191,36,0.35)', icon: '!!', label: 'Crítico — muito atrasado',   labelCol: 'var(--amber)' },
-    today:    { bg: 'rgba(251,191,36,0.08)',   border: 'rgba(251,191,36,0.35)', icon: '⏰', label: 'Vence hoje!',                labelCol: 'var(--amber)' },
-    late:     { bg: 'rgba(248,113,113,0.06)',  border: 'rgba(248,113,113,0.3)', icon: '⚠', label: 'Prazo vencido',              labelCol: 'var(--red)'   },
-    nodate:   { bg: 'var(--surface)',          border: 'var(--border)',          icon: '?',  label: 'Sem data definida',          labelCol: 'var(--muted)' },
+    done:     { bg: 'rgba(52,211,153,0.06)',  border: 'rgba(52,211,153,0.2)',  icon: '✓',  label: 'Concluída',                 labelCol: 'var(--green)' },
+    ok:       { bg: 'var(--surface)',          border: 'var(--border)',          icon: '●',  label: 'No prazo',                  labelCol: 'var(--green)' },
+    warning:  { bg: 'rgba(251,191,36,0.04)',   border: 'rgba(251,191,36,0.25)', icon: '!',  label: 'Atenção — progresso lento', labelCol: 'var(--amber)' },
+    critical: { bg: 'rgba(251,191,36,0.08)',   border: 'rgba(251,191,36,0.35)', icon: '!!', label: 'Crítico — muito atrasado',  labelCol: 'var(--amber)' },
+    today:    { bg: 'rgba(251,191,36,0.08)',   border: 'rgba(251,191,36,0.35)', icon: '⏰', label: 'Vence hoje!',               labelCol: 'var(--amber)' },
+    late:     { bg: 'rgba(248,113,113,0.06)',  border: 'rgba(248,113,113,0.3)', icon: '⚠', label: 'Prazo vencido',             labelCol: 'var(--red)'   },
+    nodate:   { bg: 'var(--surface)',          border: 'var(--border)',          icon: '?',  label: 'Sem data definida',         labelCol: 'var(--muted)' },
   };
   const ts = tsConfig[a.timeStatus] || tsConfig.ok;
 
-  // Days remaining display
+  // Hours done vs remaining
+  const hoursTotal     = parseFloat(a.hours) || 0;
+  const hoursDone      = Math.round(hoursTotal * prog / 100);
+  const hoursRemaining = Math.max(0, hoursTotal - hoursDone);
+  const hoursColor     = hoursRemaining === 0 ? 'var(--green)'
+    : a.timeStatus === 'late' ? 'var(--red)'
+    : a.timeStatus === 'critical' || a.timeStatus === 'today' ? 'var(--amber)'
+    : 'var(--text)';
+
+  // Days remaining
   let daysHtml = '';
   if (a.timeStatus === 'done') {
-    daysHtml = `<span style="font-size:11px; color:var(--green);">✓ Concluída</span>`;
+    daysHtml = `<span style="font-size:11px;color:var(--green);">✓ Concluída</span>`;
   } else if (a.daysRemaining !== null) {
-    if (a.daysRemaining < 0) {
-      daysHtml = `<span style="font-size:12px; font-weight:600; color:var(--red);">${Math.abs(a.daysRemaining)}d atrasada</span>`;
-    } else if (a.daysRemaining === 0) {
-      daysHtml = `<span style="font-size:12px; font-weight:600; color:var(--amber);">Vence hoje</span>`;
-    } else if (a.daysRemaining <= 3) {
-      daysHtml = `<span style="font-size:12px; font-weight:600; color:var(--amber);">${a.daysRemaining}d restantes</span>`;
-    } else {
-      daysHtml = `<span style="font-size:12px; color:var(--muted);">${a.daysRemaining}d restantes</span>`;
-    }
+    const dc = a.daysRemaining < 0 ? 'var(--red)' : a.daysRemaining <= 3 ? 'var(--amber)' : 'var(--muted)';
+    const dt = a.daysRemaining < 0 ? `${Math.abs(a.daysRemaining)}d atrasada`
+      : a.daysRemaining === 0 ? 'Vence hoje'
+      : `${a.daysRemaining}d restantes`;
+    daysHtml = `<span style="font-size:12px;font-weight:600;color:${dc};">${dt}</span>`;
   }
 
-  // Time vs work progress bar
   const timeP = a.timeProgress ?? 0;
-  const gap   = timeP - prog; // positive = behind schedule
+  const gap   = timeP - prog;
 
   return `
     <div style="background:${ts.bg}; border:1px solid ${ts.border}; border-radius:var(--radius); padding:16px 20px; margin-bottom:10px;">
 
-      <!-- Top row -->
-      <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
-        <div style="flex:1; min-width:200px;">
+      <!-- Top: name + badges -->
+      <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:180px;">
           <div style="font-size:15px; font-weight:600; margin-bottom:3px;">${esc(a.name)}</div>
           <div style="font-size:11px; color:var(--accent2);">${esc(a.project?.name||'—')} › ${esc(a.delivery?.name || a.pkg?.name ||'—')}</div>
         </div>
-        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0; flex-wrap:wrap;">
-          <span style="font-size:11px; font-weight:600; color:${ts.labelCol}; background:${ts.bg}; border:1px solid ${ts.border}; padding:3px 10px; border-radius:20px;">
-            ${ts.icon} ${ts.label}
-          </span>
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; flex-shrink:0;">
+          <span style="font-size:11px; font-weight:600; color:${ts.labelCol}; border:1px solid ${ts.border}; padding:3px 10px; border-radius:20px;">${ts.icon} ${ts.label}</span>
           ${getStatusBadge(a.effStatus)}
         </div>
       </div>
 
-      <!-- Meta row -->
-      <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:14px; font-size:12px; color:var(--muted);">
+      <!-- HOURS HIGHLIGHT -->
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:16px;">
+
+        <div style="background:var(--surface2); border-radius:var(--radius-sm); padding:12px 14px; border-left:3px solid ${col};">
+          <div style="font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:4px;">Total da Atividade</div>
+          <div style="font-size:28px; font-weight:700; color:${col}; line-height:1; letter-spacing:-1px;">${hoursTotal}<span style="font-size:14px; font-weight:500; margin-left:2px;">h</span></div>
+        </div>
+
+        <div style="background:var(--surface2); border-radius:var(--radius-sm); padding:12px 14px; border-left:3px solid var(--green);">
+          <div style="font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:4px;">Já Executadas</div>
+          <div style="font-size:28px; font-weight:700; color:var(--green); line-height:1; letter-spacing:-1px;">${hoursDone}<span style="font-size:14px; font-weight:500; margin-left:2px;">h</span></div>
+        </div>
+
+        <div style="background:var(--surface2); border-radius:var(--radius-sm); padding:12px 14px; border-left:3px solid ${hoursColor};">
+          <div style="font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:4px;">Ainda Faltam</div>
+          <div style="font-size:28px; font-weight:700; color:${hoursColor}; line-height:1; letter-spacing:-1px;">${hoursRemaining}<span style="font-size:14px; font-weight:500; margin-left:2px;">h</span></div>
+        </div>
+
+      </div>
+
+      <!-- Dates + days remaining -->
+      <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px; font-size:12px; color:var(--muted); align-items:center;">
         <span>📅 ${fmtDate(a.start)} → ${fmtDate(a.end)}</span>
-        <span>⏱ ${a.hours}h</span>
         ${a.daysTotal !== null ? `<span>📆 ${a.daysTotal}d de duração</span>` : ''}
         ${daysHtml}
       </div>
 
-      <!-- Dual progress bar: tempo vs trabalho -->
+      <!-- Dual progress bar -->
       ${a.timeStatus !== 'nodate' && a.timeStatus !== 'done' ? `
       <div style="margin-bottom:14px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
           <span style="font-size:10px; color:var(--muted);">TEMPO DECORRIDO</span>
           <span style="font-size:10px; color:var(--muted);">${timeP}%</span>
         </div>
-        <div style="height:5px; background:var(--surface3); border-radius:3px; overflow:hidden; margin-bottom:6px; position:relative;">
-          <div style="height:100%; width:${timeP}%; background:${gap > 20 ? 'var(--red)' : gap > 5 ? 'var(--amber)' : 'var(--teal)'}; border-radius:3px;"></div>
+        <div style="height:5px; background:var(--surface3); border-radius:3px; overflow:hidden; margin-bottom:6px;">
+          <div style="height:100%; width:${timeP}%; background:${gap>20?'var(--red)':gap>5?'var(--amber)':'var(--teal)'}; border-radius:3px;"></div>
         </div>
-        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
           <span style="font-size:10px; color:var(--muted);">TRABALHO EXECUTADO</span>
           <span style="font-size:10px; color:var(--muted);">${prog}%</span>
         </div>
         <div style="height:5px; background:var(--surface3); border-radius:3px; overflow:hidden;">
           <div style="height:100%; width:${prog}%; background:${prog>=timeP?'var(--green)':gap>20?'var(--red)':'var(--amber)'}; border-radius:3px;"></div>
         </div>
-        ${gap > 5 ? `<div style="font-size:10px; color:${gap>20?'var(--red)':'var(--amber)'}; margin-top:4px;">
-          ▼ ${gap.toFixed(0)}% de defasagem entre tempo e progresso
-        </div>` : gap < -5 ? `<div style="font-size:10px; color:var(--green); margin-top:4px;">
-          ▲ Adiantada em ${Math.abs(gap).toFixed(0)}%
-        </div>` : ''}
+        ${gap > 5 ? `<div style="font-size:10px; color:${gap>20?'var(--red)':'var(--amber)'}; margin-top:4px;">▼ ${gap.toFixed(0)}% de defasagem entre tempo e progresso</div>`
+          : gap < -5 ? `<div style="font-size:10px; color:var(--green); margin-top:4px;">▲ Adiantada em ${Math.abs(gap).toFixed(0)}%</div>` : ''}
       </div>` : a.timeStatus === 'done' ? `
       <div style="margin-bottom:14px;">
         <div class="progress-wrap"><div class="progress-bar green" style="width:100%;"></div></div>
       </div>` : ''}
 
-      <!-- Action button -->
       ${a.effStatus !== 'concluido' ? `
       <button class="btn btn-primary btn-sm" style="width:100%; justify-content:center;" onclick="openProgress(${a.id})">
         ↻ Atualizar andamento
