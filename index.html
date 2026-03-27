@@ -619,6 +619,7 @@ window.navigate = function() {};
     </div>
     <input type="hidden" id="a-delivery-id" />
     <input type="hidden" id="a-activity-id" />
+    <input type="hidden" id="a-package-id" />
     <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
       <button class="btn btn-ghost" onclick="closeModal('modal-activity')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveActivity()">Salvar Atividade</button>
@@ -738,6 +739,41 @@ window.navigate = function() {};
   </div>
 </div>
 
+<!-- Modal Pacote de Atividades -->
+<div class="modal-overlay" id="modal-package">
+  <div class="modal">
+    <div class="modal-title" id="modal-package-title">Novo Pacote de Atividades</div>
+    <div class="form-group">
+      <label class="form-label">Nome do Pacote *</label>
+      <input class="form-control" id="pkg-name" placeholder="Ex: Levantamento de Campo" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Responsável Geral</label>
+      <select class="form-control" id="pkg-person"></select>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Data de Início</label>
+        <input class="form-control" id="pkg-start" type="date" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prazo</label>
+        <input class="form-control" id="pkg-end" type="date" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Descrição</label>
+      <textarea class="form-control" id="pkg-desc" rows="2" placeholder="Descreva o pacote e suas interdependências..."></textarea>
+    </div>
+    <input type="hidden" id="pkg-delivery-id" />
+    <input type="hidden" id="pkg-id" />
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-package')">Cancelar</button>
+      <button class="btn btn-primary" onclick="savePackage()">Salvar Pacote</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Pessoa -->
 <div class="modal-overlay" id="modal-person">
   <div class="modal">
@@ -791,9 +827,13 @@ let state = loadState();
 function loadState() {
   try {
     const raw = localStorage.getItem('projflow_v2');
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (!s.packages) s.packages = []; // migrate old data
+      return s;
+    }
   } catch(e) {}
-  return { projects: [], deliveries: [], activities: [], team: [], nextId: 1 };
+  return { projects: [], deliveries: [], packages: [], activities: [], team: [], nextId: 1 };
 }
 
 function saveState() {
@@ -1220,24 +1260,50 @@ function renderProjectDetail() {
 }
 
 function renderDeliveryCard(d, p) {
-  const acts = state.activities.filter(a => a.deliveryId === d.id);
-  const totalH = acts.reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
-  const doneH = acts.filter(a => a.status === 'concluido').reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
-  const pct = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
-  const lates = acts.filter(a => isLate(a)).length;
+  // All activities directly in this delivery (no package)
+  const directActs = state.activities.filter(a => a.deliveryId === d.id && !a.packageId);
+  // Packages in this delivery
+  const pkgs = (state.packages || []).filter(pkg => pkg.deliveryId === d.id);
+  // All activities (direct + in packages) for totals
+  const pkgIds = pkgs.map(pkg => pkg.id);
+  const allActs = state.activities.filter(a => a.deliveryId === d.id || pkgIds.includes(a.packageId));
+  // Deduplicate — activities can reference deliveryId OR packageId
+  const allActsUniq = state.activities.filter(a =>
+    a.deliveryId === d.id || pkgs.some(pkg => pkg.id === a.packageId)
+  );
 
-  const actsHTML = acts.length ? `
-    <div class="activity-header">
-      <div>Atividade</div>
-      <div>Responsável</div>
-      <div>Horas</div>
-      <div>Início</div>
-      <div>Término</div>
-      <div>Progresso</div>
-      <div>Status</div>
-    </div>
-    ${acts.map(a => renderActivityRow(a)).join('')}
-  ` : `<div style="color:var(--muted); font-size:13px; padding:12px 0;">Nenhuma atividade. <a onclick="openNewActivity(${d.id})" style="color:var(--accent2); cursor:pointer;">Adicionar atividade</a></div>`;
+  const totalH = allActsUniq.reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+  const doneH  = allActsUniq.filter(a => a.status === 'concluido').reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+  const pct    = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
+  const lates  = allActsUniq.filter(a => isLate(a)).length;
+  const totalItems = pkgs.length + directActs.length;
+
+  // Build body content
+  let bodyHTML = '';
+
+  // Direct activities (no package)
+  if (directActs.length) {
+    bodyHTML += `
+      <div class="activity-header">
+        <div>Atividade</div><div>Responsável</div><div>Horas</div>
+        <div>Início</div><div>Término</div><div>Progresso</div><div>Status</div>
+      </div>
+      ${directActs.map(a => renderActivityRow(a)).join('')}`;
+  }
+
+  // Packages
+  pkgs.forEach(pkg => {
+    bodyHTML += renderPackageCard(pkg, d);
+  });
+
+  if (!totalItems) {
+    bodyHTML = `<div style="color:var(--muted); font-size:13px; padding:12px 0;">
+      Nenhum item. 
+      <a onclick="openNewActivity(${d.id})" style="color:var(--accent2); cursor:pointer;">+ Atividade direta</a>
+      &nbsp;·&nbsp;
+      <a onclick="openNewPackage(${d.id})" style="color:var(--teal); cursor:pointer;">+ Pacote de atividades</a>
+    </div>`;
+  }
 
   return `
     <div class="delivery-card">
@@ -1247,19 +1313,134 @@ function renderDeliveryCard(d, p) {
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <span style="font-size:14px; font-weight:500;">${esc(d.name)}</span>
             ${lates > 0 ? `<span class="badge badge-red">${lates} atrasada${lates>1?'s':''}</span>` : ''}
+            ${pkgs.length > 0 ? `<span class="badge badge-purple">${pkgs.length} pacote${pkgs.length>1?'s':''}</span>` : ''}
           </div>
           <div style="font-size:11px; color:var(--muted); margin-top:3px;">
-            ${fmtDate(d.start)} → ${fmtDate(d.end)} · ${acts.length} atividade${acts.length!==1?'s':''} · ${totalH}h · ${pct}% concluído
+            ${fmtDate(d.start)} → ${fmtDate(d.end)} · ${allActsUniq.length} atividade${allActsUniq.length!==1?'s':''} · ${totalH}h · ${pct}% concluído
           </div>
         </div>
         <div style="display:flex; gap:6px;" onclick="event.stopPropagation()">
+          <button class="btn btn-ghost btn-sm" onclick="openNewPackage(${d.id})">+ Pacote</button>
           <button class="btn btn-ghost btn-sm" onclick="openNewActivity(${d.id})">+ Atividade</button>
           <button class="btn btn-ghost btn-sm" onclick="openEditDelivery(${d.id})">✎</button>
           <button class="btn btn-danger btn-sm" onclick="deleteDelivery(${d.id})">✕</button>
         </div>
       </div>
       <div class="delivery-body" id="body-${d.id}">
+        ${bodyHTML}
+      </div>
+    </div>`;
+}
+
+function renderPackageCard(pkg, d) {
+  const acts = state.activities.filter(a => a.packageId === pkg.id)
+    .sort((a,b) => (a.seqOrder||0) - (b.seqOrder||0));
+  const totalH = acts.reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+  const doneH  = acts.filter(a => a.status === 'concluido').reduce((s,a) => s + (parseFloat(a.hours)||0), 0);
+  const pct    = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
+  const lates  = acts.filter(a => isLate(a)).length;
+
+  // Consolidated status: blocked if any activity is blocked
+  const hasBlocked  = acts.some(a => a.status === 'bloqueado');
+  const hasLate     = acts.some(a => isLate(a) && a.status !== 'concluido');
+  const allDone     = acts.length > 0 && acts.every(a => a.status === 'concluido');
+  const pkgStatus   = allDone ? 'concluido' : hasBlocked ? 'bloqueado' : hasLate ? 'atrasado' : 'em_andamento';
+
+  const personIdx = state.team.findIndex(p => p.id === pkg.personId);
+  const person    = state.team.find(p => p.id === pkg.personId);
+  const col       = personIdx >= 0 ? getPersonColor(personIdx) : '#7a7a8a';
+
+  let actsHTML = '';
+  if (acts.length) {
+    actsHTML = `
+      <div style="padding:12px 16px;">
+        <div class="activity-header" style="grid-template-columns:24px 2fr 1fr 80px 110px 110px 120px 100px;">
+          <div>#</div><div>Atividade</div><div>Responsável</div><div>Horas</div>
+          <div>Início</div><div>Término</div><div>Progresso</div><div>Status</div>
+        </div>
+        ${acts.map((a, idx) => renderActivityRowInPackage(a, idx, acts)).join('')}
+        <div style="margin-top:10px;">
+          <a onclick="openNewActivityInPackage(${pkg.id}, ${d.id})" style="font-size:12px; color:var(--teal); cursor:pointer;">+ Adicionar atividade ao pacote</a>
+        </div>
+      </div>`;
+  } else {
+    actsHTML = `<div style="padding:12px 16px; color:var(--muted); font-size:13px;">
+      Nenhuma atividade.
+      <a onclick="openNewActivityInPackage(${pkg.id}, ${d.id})" style="color:var(--teal); cursor:pointer;">+ Adicionar</a>
+    </div>`;
+  }
+
+  return `
+    <div style="margin:8px 0; border:1px solid rgba(45,212,191,0.2); border-radius:8px; overflow:hidden;">
+      <div style="background:rgba(45,212,191,0.06); padding:12px 16px; display:flex; align-items:center; gap:10px; cursor:pointer;" onclick="toggleDelivery('pkg-${pkg.id}')">
+        <span class="expand-icon" id="exp-pkg-${pkg.id}">▶</span>
+        <div style="width:6px; height:6px; border-radius:50%; background:var(--teal); flex-shrink:0;"></div>
+        <div style="flex:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span style="font-size:13px; font-weight:500; color:var(--teal);">${esc(pkg.name)}</span>
+            <span class="badge" style="background:rgba(45,212,191,0.12); color:var(--teal); font-size:10px;">Pacote</span>
+            ${getStatusBadge(pkgStatus)}
+            ${lates > 0 ? `<span class="badge badge-red">${lates} atrasada${lates>1?'s':''}</span>` : ''}
+          </div>
+          <div style="font-size:11px; color:var(--muted); margin-top:2px; display:flex; gap:12px; flex-wrap:wrap;">
+            ${person ? `<span>${initials(person.name)} ${person.name.split(' ')[0]}</span>` : ''}
+            <span>${fmtDate(pkg.start)} → ${fmtDate(pkg.end)}</span>
+            <span>${acts.length} atividade${acts.length!==1?'s':''}</span>
+            <span>${totalH}h · ${pct}%</span>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;" onclick="event.stopPropagation()">
+          <div style="min-width:80px;">
+            <div class="progress-wrap"><div class="progress-bar ${pct===100?'green':pct>60?'':pct>30?'amber':'red'}" style="width:${pct}%; background:var(--teal);"></div></div>
+          </div>
+          <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:3px 8px;" onclick="openEditPackage(${pkg.id})">✎</button>
+          <button class="btn btn-danger btn-sm" style="font-size:11px; padding:3px 7px;" onclick="deletePackage(${pkg.id})">✕</button>
+        </div>
+      </div>
+      <div class="delivery-body" id="body-pkg-${pkg.id}">
         ${actsHTML}
+      </div>
+    </div>`;
+}
+
+function renderActivityRowInPackage(a, idx, allActs) {
+  const person  = state.team.find(p => p.id === a.personId);
+  const pIdx    = state.team.findIndex(p => p.id === a.personId);
+  const col     = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+  const prog    = a.progress || 0;
+  const late    = isLate(a);
+  const statusBadge = late && a.status !== 'concluido' ? `<span class="badge badge-red">Atrasado</span>` : getStatusBadge(a.status);
+
+  // Sequence indicator
+  const isFirst = idx === 0;
+  const prevDone = idx === 0 || allActs[idx-1].status === 'concluido';
+  const seqColor = isFirst ? 'var(--muted)' : prevDone ? 'var(--green)' : 'var(--amber)';
+
+  return `
+    <div class="activity-row" style="grid-template-columns:24px 2fr 1fr 80px 110px 110px 120px 100px;">
+      <div style="font-size:11px; font-weight:600; color:${seqColor}; text-align:center;">${idx+1}</div>
+      <div style="min-width:0;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          ${idx > 0 ? `<span style="font-size:10px; color:var(--muted);" title="Depende da atividade anterior">→</span>` : ''}
+          <div style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.name)}</div>
+        </div>
+        ${a.note ? `<div style="font-size:11px; color:var(--muted);">${esc(a.note)}</div>` : ''}
+      </div>
+      <div>${person ? `<div style="display:flex;align-items:center;gap:6px;"><div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(person.name)}</div><span style="font-size:12px;">${person.name.split(' ')[0]}</span></div>` : '<span style="color:var(--muted);">—</span>'}</div>
+      <div style="font-family:var(--mono);font-size:12px;">${a.hours||'—'}h</div>
+      <div style="font-size:12px;color:var(--muted);">${fmtDate(a.start)}</div>
+      <div style="font-size:12px;color:var(--muted);">${fmtDate(a.end)}</div>
+      <div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="progress-wrap" style="flex:1;width:60px;"><div class="progress-bar ${prog===100?'green':prog>60?'':prog>30?'amber':'red'}" style="width:${prog}%;"></div></div>
+          <span style="font-size:11px;color:var(--muted);min-width:28px;">${prog}%</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+        ${statusBadge}
+        <button class="btn btn-ghost btn-sm" style="padding:3px 7px;font-size:11px;" onclick="openProgress(${a.id})">↻</button>
+        <button class="btn btn-ghost btn-sm" style="padding:3px 6px;font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>
+        <button class="btn btn-danger btn-sm" style="padding:3px 6px;font-size:11px;" onclick="deleteActivity(${a.id})">✕</button>
       </div>
     </div>`;
 }
@@ -1348,13 +1529,16 @@ function renderActivitiesDashboard() {
 
   // Build enriched activity list
   let acts = state.activities.map(a => {
-    const delivery  = state.deliveries.find(d => d.id === a.deliveryId);
+    const delivery  = a.deliveryId
+      ? state.deliveries.find(d => d.id === a.deliveryId)
+      : (state.packages||[]).find(p => p.id === a.packageId) ? state.deliveries.find(d => d.id === (state.packages.find(p=>p.id===a.packageId)||{}).deliveryId) : null;
+    const pkg       = a.packageId ? (state.packages||[]).find(p => p.id === a.packageId) : null;
     const project   = delivery ? state.projects.find(p => p.id === delivery.projectId) : null;
     const person    = state.team.find(p => p.id === a.personId);
     const personIdx = state.team.findIndex(p => p.id === a.personId);
     const late      = isLate(a);
     const effStatus = late && a.status !== 'concluido' ? 'atrasado' : (a.status || 'nao_iniciado');
-    return { ...a, delivery, project, person, personIdx, late, effStatus };
+    return { ...a, delivery, pkg, project, person, personIdx, late, effStatus };
   });
 
   // Apply filters
@@ -2179,14 +2363,94 @@ function saveProject() {
 }
 
 function deleteProject(id) {
-  if (!confirm('Excluir projeto e todas suas entregas e atividades?')) return;
+  if (!confirm('Excluir projeto e todas suas entregas, pacotes e atividades?')) return;
   const deliveries = state.deliveries.filter(d => d.projectId === id);
-  deliveries.forEach(d => {
-    state.activities = state.activities.filter(a => a.deliveryId !== d.id);
-  });
+  const delIds = deliveries.map(d => d.id);
+  const pkgIds = (state.packages||[]).filter(p => delIds.includes(p.deliveryId)).map(p => p.id);
+  state.activities = state.activities.filter(a => !delIds.includes(a.deliveryId) && !pkgIds.includes(a.packageId));
+  state.packages = (state.packages||[]).filter(p => !delIds.includes(p.deliveryId));
   state.deliveries = state.deliveries.filter(d => d.projectId !== id);
   state.projects = state.projects.filter(p => p.id !== id);
   render();
+}
+
+// ============================================================
+//  MODALS: PACKAGE
+// ============================================================
+function openNewPackage(deliveryId) {
+  document.getElementById('modal-package-title').textContent = 'Novo Pacote de Atividades';
+  document.getElementById('pkg-name').value = '';
+  document.getElementById('pkg-start').value = '';
+  document.getElementById('pkg-end').value = '';
+  document.getElementById('pkg-desc').value = '';
+  document.getElementById('pkg-delivery-id').value = deliveryId;
+  document.getElementById('pkg-id').value = '';
+  populatePersonSelectPkg();
+  openModal('modal-package');
+}
+
+function openEditPackage(id) {
+  const pkg = (state.packages||[]).find(x => x.id === id);
+  if (!pkg) return;
+  document.getElementById('modal-package-title').textContent = 'Editar Pacote';
+  document.getElementById('pkg-name').value = pkg.name;
+  document.getElementById('pkg-start').value = pkg.start || '';
+  document.getElementById('pkg-end').value = pkg.end || '';
+  document.getElementById('pkg-desc').value = pkg.desc || '';
+  document.getElementById('pkg-delivery-id').value = pkg.deliveryId;
+  document.getElementById('pkg-id').value = id;
+  populatePersonSelectPkg(pkg.personId);
+  openModal('modal-package');
+}
+
+function populatePersonSelectPkg(selectedId) {
+  const sel = document.getElementById('pkg-person');
+  sel.innerHTML = '<option value="">— Nenhum responsável —</option>' +
+    state.team.map(p => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+}
+
+function savePackage() {
+  const name = document.getElementById('pkg-name').value.trim();
+  if (!name) { alert('Informe o nome do pacote.'); return; }
+  const editId = parseInt(document.getElementById('pkg-id').value) || 0;
+  const data = {
+    name,
+    deliveryId: parseInt(document.getElementById('pkg-delivery-id').value),
+    personId: parseInt(document.getElementById('pkg-person').value) || null,
+    start: document.getElementById('pkg-start').value,
+    end: document.getElementById('pkg-end').value,
+    desc: document.getElementById('pkg-desc').value,
+  };
+  if (!state.packages) state.packages = [];
+  if (editId) {
+    const pkg = state.packages.find(x => x.id === editId);
+    Object.assign(pkg, data);
+  } else {
+    state.packages.push({ id: uid(), ...data });
+  }
+  closeModal('modal-package');
+  render();
+}
+
+function deletePackage(id) {
+  if (!confirm('Excluir pacote? As atividades dentro dele também serão excluídas.')) return;
+  state.activities = state.activities.filter(a => a.packageId !== id);
+  state.packages = (state.packages||[]).filter(p => p.id !== id);
+  render();
+}
+
+function openNewActivityInPackage(packageId, deliveryId) {
+  document.getElementById('modal-activity-title').textContent = 'Nova Atividade no Pacote';
+  document.getElementById('a-name').value = '';
+  document.getElementById('a-hours').value = '';
+  document.getElementById('a-start').value = '';
+  document.getElementById('a-end').value = '';
+  document.getElementById('a-desc').value = '';
+  document.getElementById('a-delivery-id').value = deliveryId;
+  document.getElementById('a-activity-id').value = '';
+  document.getElementById('a-package-id').value = packageId;
+  populatePersonSelect();
+  openModal('modal-activity');
 }
 
 // ============================================================
@@ -2237,8 +2501,10 @@ function saveDelivery() {
 }
 
 function deleteDelivery(id) {
-  if (!confirm('Excluir entrega e todas suas atividades?')) return;
-  state.activities = state.activities.filter(a => a.deliveryId !== id);
+  if (!confirm('Excluir entrega e todos seus pacotes e atividades?')) return;
+  const pkgIds = (state.packages||[]).filter(p => p.deliveryId === id).map(p => p.id);
+  state.activities = state.activities.filter(a => a.deliveryId !== id && !pkgIds.includes(a.packageId));
+  state.packages = (state.packages||[]).filter(p => p.deliveryId !== id);
   state.deliveries = state.deliveries.filter(d => d.id !== id);
   render();
 }
@@ -2255,6 +2521,7 @@ function openNewActivity(deliveryId) {
   document.getElementById('a-desc').value = '';
   document.getElementById('a-delivery-id').value = deliveryId;
   document.getElementById('a-activity-id').value = '';
+  document.getElementById('a-package-id').value = '';
   populatePersonSelect();
   openModal('modal-activity');
 }
@@ -2268,8 +2535,9 @@ function openEditActivity(id) {
   document.getElementById('a-start').value = a.start || '';
   document.getElementById('a-end').value = a.end || '';
   document.getElementById('a-desc').value = a.desc || '';
-  document.getElementById('a-delivery-id').value = a.deliveryId;
+  document.getElementById('a-delivery-id').value = a.deliveryId || '';
   document.getElementById('a-activity-id').value = id;
+  document.getElementById('a-package-id').value = a.packageId || '';
   populatePersonSelect(a.personId);
   openModal('modal-activity');
 }
@@ -2284,6 +2552,8 @@ function saveActivity() {
   const name = document.getElementById('a-name').value.trim();
   if (!name) { alert('Informe o nome da atividade.'); return; }
   const editId = parseInt(document.getElementById('a-activity-id').value) || 0;
+  const packageId = parseInt(document.getElementById('a-package-id').value) || null;
+  const deliveryId = parseInt(document.getElementById('a-delivery-id').value) || null;
 
   const data = {
     name,
@@ -2292,13 +2562,19 @@ function saveActivity() {
     start: document.getElementById('a-start').value,
     end: document.getElementById('a-end').value,
     desc: document.getElementById('a-desc').value,
-    deliveryId: parseInt(document.getElementById('a-delivery-id').value),
+    deliveryId: packageId ? null : deliveryId,
+    packageId: packageId || null,
   };
 
   if (editId) {
     const a = state.activities.find(x => x.id === editId);
     Object.assign(a, data);
   } else {
+    // Auto seqOrder within package
+    if (packageId) {
+      const pkgActs = state.activities.filter(a => a.packageId === packageId);
+      data.seqOrder = pkgActs.length;
+    }
     state.activities.push({ id: uid(), status: 'nao_iniciado', progress: 0, ...data });
   }
   closeModal('modal-activity');
