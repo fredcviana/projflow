@@ -2177,18 +2177,17 @@ function renderActByPerson(personMap) {
 // ============================================================
 function renderMyView() {
   document.getElementById('topbar-title').textContent = 'Minha Visão';
-  document.getElementById('topbar-sub').textContent = 'Suas atividades do sprint atual';
+  document.getElementById('topbar-sub').textContent = 'Suas atividades e cronograma pessoal';
   document.getElementById('topbar-actions').innerHTML = `
-    <button class="btn btn-ghost btn-sm" onclick="sbManualSync()">↻ Atualizar</button>
+    <button class="btn btn-ghost btn-sm" onclick="sbManualSync(); setTimeout(renderMyView,1500)">↻ Atualizar</button>
     <button class="btn btn-primary btn-sm" onclick="exportExcel()">↓ Exportar Excel</button>
   `;
 
   if (!state.team.length) {
-    document.getElementById('page-content').innerHTML = `<div class="empty"><div class="empty-icon">◉</div><div class="empty-text">Nenhuma pessoa cadastrada</div><div class="empty-sub">O gestor precisa cadastrar a equipe primeiro</div></div>`;
+    document.getElementById('page-content').innerHTML = `<div class="empty"><div class="empty-icon">◉</div><div class="empty-text">Nenhuma pessoa cadastrada</div></div>`;
     return;
   }
 
-  // Person selector
   const savedPerson = localStorage.getItem('projflow_my_person') || '';
 
   document.getElementById('page-content').innerHTML = `
@@ -2198,7 +2197,6 @@ function renderMyView() {
         <option value="">— Selecione seu nome —</option>
         ${state.team.map(p => `<option value="${p.id}" ${String(p.id)===savedPerson?'selected':''}>${esc(p.name)}</option>`).join('')}
       </select>
-      ${savedPerson ? `<button class="btn btn-ghost btn-sm" onclick="sbManualSync(); setTimeout(renderMyView,1500)">↻ Buscar atualizações</button>` : ''}
     </div>
     <div id="myview-content"></div>
   `;
@@ -2216,78 +2214,348 @@ function renderMyActivities(personId) {
   const person = state.team.find(p => p.id === personId);
   if (!person) return;
   const pIdx = state.team.findIndex(p => p.id === personId);
-  const col = getPersonColor(pIdx);
+  const col  = getPersonColor(pIdx);
+  const today = new Date(); today.setHours(0,0,0,0);
 
+  // Enrich activities
   const myActs = state.activities
     .filter(a => actPersonIds(a).includes(personId))
     .map(a => {
-      const delivery = state.deliveries.find(d => d.id === a.deliveryId);
+      const alloc    = (a.allocations||[]).find(al => al.personId === personId) || {};
+      const delivery = a.deliveryId ? state.deliveries.find(d => d.id === a.deliveryId)
+        : (a.packageId ? state.deliveries.find(d => d.id === ((state.packages||[]).find(p=>p.id===a.packageId)||{}).deliveryId) : null);
       const project  = delivery ? state.projects.find(p => p.id === delivery.projectId) : null;
-      const effStatus = isLate(a) && a.status !== 'concluido' ? 'atrasado' : (a.status || 'nao_iniciado');
-      return { ...a, delivery, project, effStatus };
-    })
-    .sort((a,b) => {
-      const o = { atrasado:0, bloqueado:1, em_andamento:2, nao_iniciado:3, concluido:4 };
-      return (o[a.effStatus]??5)-(o[b.effStatus]??5);
-    });
+      const pkg      = a.packageId ? (state.packages||[]).find(p => p.id === a.packageId) : null;
 
-  const total  = myActs.length;
-  const done   = myActs.filter(a => a.effStatus === 'concluido').length;
-  const late   = myActs.filter(a => a.effStatus === 'atrasado').length;
-  const active = myActs.filter(a => a.effStatus === 'em_andamento').length;
-  const totalH = myActs.reduce((s,a) => s+actTotalHours(a), 0);
-  const avgProg = total ? Math.round(myActs.reduce((s,a)=>s+(a.progress||0),0)/total) : 0;
+      // Effective dates for this person's allocation
+      const start = alloc.start || a.start || '';
+      const end   = alloc.end   || a.end   || '';
+      const hours = parseFloat(alloc.hours) || actTotalHours(a);
+
+      // Time indicators
+      const startDate = start ? new Date(start) : null;
+      const endDate   = end   ? new Date(end)   : null;
+      if (startDate) startDate.setHours(0,0,0,0);
+      if (endDate)   endDate.setHours(0,0,0,0);
+
+      const daysTotal     = (startDate && endDate) ? Math.round((endDate - startDate) / 86400000) : null;
+      const daysRemaining = endDate ? Math.round((endDate - today) / 86400000) : null;
+      const daysElapsed   = (startDate && endDate) ? Math.max(0, Math.round((today - startDate) / 86400000)) : null;
+      const timeProgress  = (daysTotal > 0 && daysElapsed !== null) ? Math.min(100, Math.round(daysElapsed / daysTotal * 100)) : null;
+
+      // Sufficient time indicator
+      // If work progress is behind time progress → insufficient
+      const workProg = a.progress || 0;
+      let timeStatus = 'ok'; // ok | warning | critical | late | done
+      if (a.status === 'concluido') {
+        timeStatus = 'done';
+      } else if (!endDate || daysRemaining === null) {
+        timeStatus = 'nodate';
+      } else if (daysRemaining < 0) {
+        timeStatus = 'late';
+      } else if (daysRemaining === 0) {
+        timeStatus = 'today';
+      } else if (timeProgress !== null && workProg < timeProgress - 20) {
+        timeStatus = 'critical'; // work significantly behind time
+      } else if (timeProgress !== null && workProg < timeProgress - 5) {
+        timeStatus = 'warning';
+      }
+
+      const effStatus = isLate(a) && a.status !== 'concluido' ? 'atrasado' : (a.status || 'nao_iniciado');
+
+      return { ...a, alloc, delivery, project, pkg, start, end, hours,
+        startDate, endDate, daysTotal, daysRemaining, daysElapsed, timeProgress,
+        timeStatus, effStatus, workProg };
+    });
 
   const el = document.getElementById('myview-content');
   if (!el) return;
 
-  if (!total) {
+  if (!myActs.length) {
     el.innerHTML = `<div class="empty"><div class="empty-text">Nenhuma atividade atribuída a ${esc(person.name)}</div></div>`;
     return;
   }
 
+  // Compute KPIs
+  const total    = myActs.length;
+  const done     = myActs.filter(a => a.effStatus === 'concluido').length;
+  const late     = myActs.filter(a => a.timeStatus === 'late').length;
+  const critical = myActs.filter(a => a.timeStatus === 'critical' || a.timeStatus === 'today').length;
+  const totalH   = myActs.reduce((s,a) => s + a.hours, 0);
+  const doneH    = myActs.filter(a=>a.effStatus==='concluido').reduce((s,a)=>s+a.hours,0);
+  const overallProg = total ? Math.round(myActs.reduce((s,a)=>s+(a.workProg),0)/total) : 0;
+
+  // Sort by date for timeline
+  const sorted = [...myActs].sort((a,b) => {
+    if (!a.start && !b.start) return 0;
+    if (!a.start) return 1;
+    if (!b.start) return -1;
+    return new Date(a.start) - new Date(b.start);
+  });
+
+  // Active / upcoming / done groups for timeline
+  const active   = sorted.filter(a => a.effStatus !== 'concluido' && a.startDate && a.startDate <= today);
+  const upcoming = sorted.filter(a => a.effStatus !== 'concluido' && a.startDate && a.startDate > today);
+  const finished = sorted.filter(a => a.effStatus === 'concluido');
+
   el.innerHTML = `
-    <!-- Header pessoa -->
-    <div style="display:flex; align-items:center; gap:14px; margin-bottom:24px; padding:16px 20px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);">
-      <div class="avatar" style="width:48px;height:48px;font-size:16px;background:${col}22;color:${col};">${initials(person.name)}</div>
-      <div style="flex:1;">
-        <div style="font-size:16px; font-weight:600;">${esc(person.name)}</div>
+
+    <!-- PERSON HEADER -->
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:20px 24px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);">
+      <div class="avatar" style="width:52px;height:52px;font-size:18px;background:${col}22;color:${col};flex-shrink:0;">${initials(person.name)}</div>
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:18px; font-weight:600; margin-bottom:2px;">${esc(person.name)}</div>
         <div style="font-size:12px; color:var(--muted);">${esc(person.role||'')}</div>
+        <div style="margin-top:10px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <span style="font-size:11px; color:var(--muted);">Progresso geral</span>
+            <span style="font-size:11px; color:var(--muted);">${Math.round(doneH)}h / ${Math.round(totalH)}h</span>
+          </div>
+          <div style="height:6px; background:var(--surface3); border-radius:3px; overflow:hidden;">
+            <div style="height:100%; width:${overallProg}%; background:${col}; border-radius:3px; transition:width 0.4s;"></div>
+          </div>
+        </div>
       </div>
-      <div style="display:flex; gap:20px; flex-wrap:wrap;">
-        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">ATIVIDADES</div><div style="font-size:22px;font-weight:600;">${total}</div></div>
-        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">PROGRESSO</div><div style="font-size:22px;font-weight:600;">${avgProg}%</div></div>
-        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">EM ANDAMENTO</div><div style="font-size:22px;font-weight:600;color:var(--blue);">${active}</div></div>
-        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">ATRASADAS</div><div style="font-size:22px;font-weight:600;color:${late>0?'var(--red)':'var(--muted)'};">${late}</div></div>
-        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">HORAS</div><div style="font-size:22px;font-weight:600;">${totalH}h</div></div>
+      <div style="display:flex; gap:16px; flex-wrap:wrap; flex-shrink:0;">
+        ${[
+          ['TOTAL', total, 'var(--text)'],
+          ['CONCLUÍDAS', done, 'var(--green)'],
+          ['ATRASADAS', late, late>0?'var(--red)':'var(--muted)'],
+          ['ATENÇÃO', critical, critical>0?'var(--amber)':'var(--muted)'],
+        ].map(([lbl,val,c])=>`<div style="text-align:center;">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:0.5px;">${lbl}</div>
+          <div style="font-size:24px;font-weight:700;color:${c};line-height:1.1;">${val}</div>
+        </div>`).join('')}
       </div>
     </div>
 
-    <!-- Atividades -->
-    ${myActs.map(a => `
-      <div style="background:var(--surface); border:1px solid ${a.effStatus==='atrasado'?'rgba(248,113,113,0.3)':a.effStatus==='em_andamento'?'rgba(96,165,250,0.2)':'var(--border)'}; border-radius:var(--radius); padding:16px 20px; margin-bottom:12px;">
-        <div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-          <div style="flex:1; min-width:200px;">
-            <div style="font-size:14px; font-weight:500; margin-bottom:4px;">${esc(a.name)}</div>
-            <div style="font-size:11px; color:var(--accent2); margin-bottom:8px;">${esc(a.project?.name||'—')} › ${esc(a.delivery?.name||'—')}</div>
-            <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--muted);">
-              <span>📅 ${fmtDate(a.start)} → ${fmtDate(a.end)}</span>
-              <span>⏱ ${a.hours||0}h</span>
-            </div>
-          </div>
-          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px; min-width:140px;">
-            ${getStatusBadge(a.effStatus)}
-            <div style="display:flex; align-items:center; gap:8px; width:100%;">
-              <div class="progress-wrap" style="flex:1;"><div class="progress-bar ${a.progress===100?'green':a.progress>60?'':a.progress>30?'amber':'red'}" style="width:${a.progress||0}%;"></div></div>
-              <span style="font-size:12px; color:var(--muted); min-width:32px;">${a.progress||0}%</span>
-            </div>
-            <button class="btn btn-primary btn-sm" style="width:100%;" onclick="openProgress(${a.id}); document.getElementById('progress-save-cb') && (document.getElementById('progress-save-cb').checked=true)">↻ Atualizar andamento</button>
-          </div>
-        </div>
-        ${a.note ? `<div style="margin-top:10px; padding:8px 12px; background:var(--surface2); border-radius:var(--radius-sm); font-size:12px; color:var(--muted);">${esc(a.note)}</div>` : ''}
-      </div>`).join('')}
+    <!-- TIMELINE -->
+    ${renderMyTimeline(sorted, today, col)}
+
+    <!-- ACTIVITY CARDS -->
+    ${active.length ? `<div class="section-title" style="margin:24px 0 12px;">Em execução agora</div>
+    ${active.map(a => renderMyActivityCard(a, col)).join('')}` : ''}
+
+    ${upcoming.length ? `<div class="section-title" style="margin:24px 0 12px;">Próximas atividades</div>
+    ${upcoming.map(a => renderMyActivityCard(a, col)).join('')}` : ''}
+
+    ${finished.length ? `
+    <div style="margin:24px 0 12px; display:flex; align-items:center; gap:10px; cursor:pointer;" onclick="toggleMyDone()">
+      <div class="section-title" style="margin:0;">Concluídas (${finished.length})</div>
+      <span id="my-done-toggle" style="font-size:12px; color:var(--muted);">▶ mostrar</span>
+    </div>
+    <div id="my-done-list" style="display:none;">
+      ${finished.map(a => renderMyActivityCard(a, col)).join('')}
+    </div>` : ''}
   `;
 }
+
+function toggleMyDone() {
+  const el  = document.getElementById('my-done-list');
+  const tog = document.getElementById('my-done-toggle');
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  tog.textContent = open ? '▶ mostrar' : '▼ ocultar';
+}
+
+function renderMyTimeline(acts, today, col) {
+  const withDates = acts.filter(a => a.start && a.end);
+  if (!withDates.length) return '';
+
+  const dates = withDates.flatMap(a => [new Date(a.start), new Date(a.end)]);
+  const minD = new Date(Math.min(...dates)); minD.setDate(1);
+  const maxD = new Date(Math.max(...dates));
+
+  const totalSpan = Math.max(1, maxD - minD);
+
+  function pct(d) {
+    return Math.max(0, Math.min(100, (d - minD) / totalSpan * 100));
+  }
+
+  const todayPct = pct(today);
+  const showToday = today >= minD && today <= maxD;
+
+  const statusColors = {
+    concluido: '#34d399', em_andamento: '#60a5fa', nao_iniciado: '#4a4a5a',
+    atrasado: '#f87171', bloqueado: '#fbbf24'
+  };
+
+  const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+  // Build month markers
+  const months = [];
+  const cur = new Date(minD);
+  while (cur <= maxD) {
+    months.push(new Date(cur));
+    cur.setMonth(cur.getMonth()+1);
+  }
+
+  const ROW = 28;
+  const LABEL_W = 160;
+
+  return `
+    <div class="card" style="margin-bottom:8px;">
+      <div style="font-size:13px; font-weight:600; margin-bottom:14px; display:flex; align-items:center; gap:8px;">
+        <span style="color:var(--teal);">◈</span> Linha do Tempo
+      </div>
+      <div style="overflow-x:auto;">
+        <div style="min-width:500px; position:relative;">
+
+          <!-- Month labels -->
+          <div style="display:flex; margin-left:${LABEL_W}px; margin-bottom:6px; position:relative; height:18px;">
+            ${months.map(m => {
+              const left = pct(m).toFixed(1);
+              return `<div style="position:absolute; left:${left}%; font-size:10px; color:var(--muted); white-space:nowrap; transform:translateX(-50%);">${monthNames[m.getMonth()]} ${String(m.getFullYear()).slice(2)}</div>`;
+            }).join('')}
+          </div>
+
+          <!-- Rows -->
+          <div style="position:relative;">
+            ${withDates.map((a, ri) => {
+              const left  = pct(new Date(a.start)).toFixed(1);
+              const right = pct(new Date(a.end)).toFixed(1);
+              const w     = Math.max(parseFloat(right) - parseFloat(left), 0.5).toFixed(1);
+              const barCol = statusColors[a.effStatus] || '#4a4a5a';
+              const prog   = a.workProg || 0;
+
+              // Time indicator dot
+              let dotHtml = '';
+              if (a.timeStatus === 'late') dotHtml = `<span style="color:var(--red); font-size:10px; margin-left:4px;">⚠</span>`;
+              else if (a.timeStatus === 'critical') dotHtml = `<span style="color:var(--amber); font-size:10px; margin-left:4px;">!</span>`;
+              else if (a.timeStatus === 'today') dotHtml = `<span style="color:var(--amber); font-size:10px; margin-left:4px;">⏰</span>`;
+
+              return `<div style="height:${ROW}px; display:flex; align-items:center; position:relative; border-top:1px solid var(--border);">
+                <!-- Label -->
+                <div style="width:${LABEL_W}px; flex-shrink:0; padding-right:10px; display:flex; align-items:center; gap:4px; overflow:hidden;">
+                  <span style="font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1;" title="${esc(a.name)}">${esc(a.name)}</span>
+                  ${dotHtml}
+                </div>
+                <!-- Bar area -->
+                <div style="flex:1; height:${ROW}px; position:relative; background:${ri%2===0?'transparent':'rgba(255,255,255,0.01)'};">
+                  <!-- Bar -->
+                  <div style="position:absolute; top:50%; transform:translateY(-50%); left:${left}%; width:${w}%; min-width:3px; height:16px; background:${barCol}; border-radius:4px; opacity:0.85; cursor:pointer; overflow:hidden;" onclick="openProgress(${a.id})" title="${esc(a.name)}">
+                    <!-- Progress fill -->
+                    <div style="position:absolute; left:0; top:0; height:100%; width:${prog}%; background:rgba(0,0,0,0.22); border-radius:4px 0 0 4px;"></div>
+                    <span style="position:relative; font-size:9px; font-weight:600; color:rgba(0,0,0,0.65); padding:0 4px; line-height:16px; white-space:nowrap; overflow:hidden;">${w>10?esc(a.name):''}</span>
+                  </div>
+                </div>
+              </div>`;
+            }).join('')}
+
+            <!-- Today line -->
+            ${showToday ? `<div style="position:absolute; top:0; bottom:0; left:calc(${LABEL_W}px + ${todayPct.toFixed(1)}% * (100% - ${LABEL_W}px) / 100); width:2px; background:var(--amber); opacity:0.8; pointer-events:none; z-index:5;">
+              <div style="position:absolute; top:0; left:50%; transform:translateX(-50%); font-size:9px; color:var(--amber); white-space:nowrap; background:var(--surface); padding:1px 4px; border-radius:3px; font-weight:600;">hoje</div>
+            </div>` : ''}
+          </div>
+
+          <!-- Legend -->
+          <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px; padding-top:10px; border-top:1px solid var(--border); font-size:10px; color:var(--muted);">
+            ${Object.entries(statusColors).map(([s,c])=>`<div style="display:flex;align-items:center;gap:4px;"><div style="width:10px;height:10px;border-radius:2px;background:${c};opacity:0.85;"></div>${s==='nao_iniciado'?'Não iniciado':s==='em_andamento'?'Em andamento':s==='concluido'?'Concluído':s==='atrasado'?'Atrasado':'Bloqueado'}</div>`).join('')}
+            <div style="display:flex;align-items:center;gap:4px;margin-left:auto;"><div style="width:2px;height:10px;background:var(--amber);opacity:0.8;"></div>Hoje</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderMyActivityCard(a, col) {
+  const prog = a.workProg || 0;
+
+  // Time status config
+  const tsConfig = {
+    done:     { bg: 'rgba(52,211,153,0.06)',  border: 'rgba(52,211,153,0.2)',  icon: '✓',  label: 'Concluída',                  labelCol: 'var(--green)' },
+    ok:       { bg: 'var(--surface)',          border: 'var(--border)',          icon: '●',  label: 'No prazo',                   labelCol: 'var(--green)' },
+    warning:  { bg: 'rgba(251,191,36,0.04)',   border: 'rgba(251,191,36,0.25)', icon: '!',  label: 'Atenção — progresso lento',  labelCol: 'var(--amber)' },
+    critical: { bg: 'rgba(251,191,36,0.08)',   border: 'rgba(251,191,36,0.35)', icon: '!!', label: 'Crítico — muito atrasado',   labelCol: 'var(--amber)' },
+    today:    { bg: 'rgba(251,191,36,0.08)',   border: 'rgba(251,191,36,0.35)', icon: '⏰', label: 'Vence hoje!',                labelCol: 'var(--amber)' },
+    late:     { bg: 'rgba(248,113,113,0.06)',  border: 'rgba(248,113,113,0.3)', icon: '⚠', label: 'Prazo vencido',              labelCol: 'var(--red)'   },
+    nodate:   { bg: 'var(--surface)',          border: 'var(--border)',          icon: '?',  label: 'Sem data definida',          labelCol: 'var(--muted)' },
+  };
+  const ts = tsConfig[a.timeStatus] || tsConfig.ok;
+
+  // Days remaining display
+  let daysHtml = '';
+  if (a.timeStatus === 'done') {
+    daysHtml = `<span style="font-size:11px; color:var(--green);">✓ Concluída</span>`;
+  } else if (a.daysRemaining !== null) {
+    if (a.daysRemaining < 0) {
+      daysHtml = `<span style="font-size:12px; font-weight:600; color:var(--red);">${Math.abs(a.daysRemaining)}d atrasada</span>`;
+    } else if (a.daysRemaining === 0) {
+      daysHtml = `<span style="font-size:12px; font-weight:600; color:var(--amber);">Vence hoje</span>`;
+    } else if (a.daysRemaining <= 3) {
+      daysHtml = `<span style="font-size:12px; font-weight:600; color:var(--amber);">${a.daysRemaining}d restantes</span>`;
+    } else {
+      daysHtml = `<span style="font-size:12px; color:var(--muted);">${a.daysRemaining}d restantes</span>`;
+    }
+  }
+
+  // Time vs work progress bar
+  const timeP = a.timeProgress ?? 0;
+  const gap   = timeP - prog; // positive = behind schedule
+
+  return `
+    <div style="background:${ts.bg}; border:1px solid ${ts.border}; border-radius:var(--radius); padding:16px 20px; margin-bottom:10px;">
+
+      <!-- Top row -->
+      <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:200px;">
+          <div style="font-size:15px; font-weight:600; margin-bottom:3px;">${esc(a.name)}</div>
+          <div style="font-size:11px; color:var(--accent2);">${esc(a.project?.name||'—')} › ${esc(a.delivery?.name || a.pkg?.name ||'—')}</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0; flex-wrap:wrap;">
+          <span style="font-size:11px; font-weight:600; color:${ts.labelCol}; background:${ts.bg}; border:1px solid ${ts.border}; padding:3px 10px; border-radius:20px;">
+            ${ts.icon} ${ts.label}
+          </span>
+          ${getStatusBadge(a.effStatus)}
+        </div>
+      </div>
+
+      <!-- Meta row -->
+      <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:14px; font-size:12px; color:var(--muted);">
+        <span>📅 ${fmtDate(a.start)} → ${fmtDate(a.end)}</span>
+        <span>⏱ ${a.hours}h</span>
+        ${a.daysTotal !== null ? `<span>📆 ${a.daysTotal}d de duração</span>` : ''}
+        ${daysHtml}
+      </div>
+
+      <!-- Dual progress bar: tempo vs trabalho -->
+      ${a.timeStatus !== 'nodate' && a.timeStatus !== 'done' ? `
+      <div style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+          <span style="font-size:10px; color:var(--muted);">TEMPO DECORRIDO</span>
+          <span style="font-size:10px; color:var(--muted);">${timeP}%</span>
+        </div>
+        <div style="height:5px; background:var(--surface3); border-radius:3px; overflow:hidden; margin-bottom:6px; position:relative;">
+          <div style="height:100%; width:${timeP}%; background:${gap > 20 ? 'var(--red)' : gap > 5 ? 'var(--amber)' : 'var(--teal)'}; border-radius:3px;"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+          <span style="font-size:10px; color:var(--muted);">TRABALHO EXECUTADO</span>
+          <span style="font-size:10px; color:var(--muted);">${prog}%</span>
+        </div>
+        <div style="height:5px; background:var(--surface3); border-radius:3px; overflow:hidden;">
+          <div style="height:100%; width:${prog}%; background:${prog>=timeP?'var(--green)':gap>20?'var(--red)':'var(--amber)'}; border-radius:3px;"></div>
+        </div>
+        ${gap > 5 ? `<div style="font-size:10px; color:${gap>20?'var(--red)':'var(--amber)'}; margin-top:4px;">
+          ▼ ${gap.toFixed(0)}% de defasagem entre tempo e progresso
+        </div>` : gap < -5 ? `<div style="font-size:10px; color:var(--green); margin-top:4px;">
+          ▲ Adiantada em ${Math.abs(gap).toFixed(0)}%
+        </div>` : ''}
+      </div>` : a.timeStatus === 'done' ? `
+      <div style="margin-bottom:14px;">
+        <div class="progress-wrap"><div class="progress-bar green" style="width:100%;"></div></div>
+      </div>` : ''}
+
+      <!-- Action button -->
+      ${a.effStatus !== 'concluido' ? `
+      <button class="btn btn-primary btn-sm" style="width:100%; justify-content:center;" onclick="openProgress(${a.id})">
+        ↻ Atualizar andamento
+      </button>` : ''}
+
+      ${a.note ? `<div style="margin-top:10px; padding:8px 12px; background:var(--surface2); border-radius:var(--radius-sm); font-size:12px; color:var(--muted);">${esc(a.note)}</div>` : ''}
+    </div>`;
+}
+
 
 // ============================================================
 //  EXPORT EXCEL (XLSX via SheetJS)
