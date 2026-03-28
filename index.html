@@ -959,14 +959,34 @@ window.navigate = function() {};
       <!-- Impactos -->
       <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:16px 0 10px;">Impactos Identificados</div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
-        ${['financeiro','cronograma','escopo','reputacional'].map(type => `
-        <label style="display:flex; align-items:flex-start; gap:10px; padding:12px 14px; background:var(--surface2); border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--border);" id="fact-impact-lbl-${type}">
-          <input type="checkbox" id="fact-impact-${type}" onchange="toggleFactImpact('${type}')" style="margin-top:2px; width:16px; height:16px; accent-color:var(--accent);" />
+        <label style="display:flex; align-items:flex-start; gap:10px; padding:12px 14px; background:var(--surface2); border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--border);" id="fact-impact-lbl-financeiro">
+          <input type="checkbox" id="fact-impact-financeiro" onchange="toggleFactImpact('financeiro')" style="margin-top:2px; width:16px; height:16px; accent-color:var(--accent);" />
           <div>
-            <div style="font-size:13px; font-weight:500;">${type==='financeiro'?'💰 Financeiro':type==='cronograma'?'📅 Cronograma':type==='escopo'?'📋 Escopo':'🏆 Reputacional'}</div>
-            <div style="font-size:11px; color:var(--muted); margin-top:2px;">${type==='financeiro'?'Impacto em custos ou receitas':type==='cronograma'?'Afeta prazos e entregas':type==='escopo'?'Altera o escopo contratado':'Afeta imagem ou relacionamento'}</div>
+            <div style="font-size:13px; font-weight:500;">💰 Financeiro</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">Impacto em custos ou receitas</div>
           </div>
-        </label>`).join('')}
+        </label>
+        <label style="display:flex; align-items:flex-start; gap:10px; padding:12px 14px; background:var(--surface2); border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--border);" id="fact-impact-lbl-cronograma">
+          <input type="checkbox" id="fact-impact-cronograma" onchange="toggleFactImpact('cronograma')" style="margin-top:2px; width:16px; height:16px; accent-color:var(--accent);" />
+          <div>
+            <div style="font-size:13px; font-weight:500;">📅 Cronograma</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">Afeta prazos e entregas</div>
+          </div>
+        </label>
+        <label style="display:flex; align-items:flex-start; gap:10px; padding:12px 14px; background:var(--surface2); border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--border);" id="fact-impact-lbl-escopo">
+          <input type="checkbox" id="fact-impact-escopo" onchange="toggleFactImpact('escopo')" style="margin-top:2px; width:16px; height:16px; accent-color:var(--accent);" />
+          <div>
+            <div style="font-size:13px; font-weight:500;">📋 Escopo</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">Altera o escopo contratado</div>
+          </div>
+        </label>
+        <label style="display:flex; align-items:flex-start; gap:10px; padding:12px 14px; background:var(--surface2); border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--border);" id="fact-impact-lbl-reputacional">
+          <input type="checkbox" id="fact-impact-reputacional" onchange="toggleFactImpact('reputacional')" style="margin-top:2px; width:16px; height:16px; accent-color:var(--accent);" />
+          <div>
+            <div style="font-size:13px; font-weight:500;">🏆 Reputacional</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">Afeta imagem ou relacionamento</div>
+          </div>
+        </label>
       </div>
       <div class="form-group">
         <label class="form-label">Descrição dos Impactos</label>
@@ -983,14 +1003,42 @@ window.navigate = function() {};
       <!-- 5 Porquês -->
       <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:16px 0 6px;">Análise de Causa — 5 Porquês</div>
       <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">Pergunte "por quê?" sucessivamente para identificar a causa raiz.</div>
-      ${[1,2,3,4,5].map(n => `
+
       <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; margin-top:2px;">${n}</div>
+        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; margin-top:2px;">1</div>
         <div style="flex:1;">
-          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Por quê${n===1?' o fato ocorreu?':n===2?' isso aconteceu?':n===3?' isso ocorreu?':n===4?' isso se deu?':' isso é assim?'}</div>
-          <input class="form-control" id="fact-why-${n}" placeholder="${n===1?'Primeiro porquê...':n===2?'Segundo porquê...':n===3?'Terceiro porquê...':n===4?'Quarto porquê...':'Causa raiz...'}" />
+          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Por quê o fato ocorreu?</div>
+          <input class="form-control" id="fact-why-1" placeholder="Primeiro porquê..." />
         </div>
-      </div>`).join('')}
+      </div>
+      <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
+        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; margin-top:2px;">2</div>
+        <div style="flex:1;">
+          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Por quê isso aconteceu?</div>
+          <input class="form-control" id="fact-why-2" placeholder="Segundo porquê..." />
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
+        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; margin-top:2px;">3</div>
+        <div style="flex:1;">
+          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Por quê isso ocorreu?</div>
+          <input class="form-control" id="fact-why-3" placeholder="Terceiro porquê..." />
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
+        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; margin-top:2px;">4</div>
+        <div style="flex:1;">
+          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Por quê isso se deu?</div>
+          <input class="form-control" id="fact-why-4" placeholder="Quarto porquê..." />
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
+        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; margin-top:2px;">5</div>
+        <div style="flex:1;">
+          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Por quê isso é assim? (Causa raiz)</div>
+          <input class="form-control" id="fact-why-5" placeholder="Causa raiz..." />
+        </div>
+      </div>
 
       <!-- Plano de Ação -->
       <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:16px 0 10px;">Plano de Ação</div>
