@@ -562,7 +562,18 @@ window.navigate = function() {};
     </div>
     <div class="form-group">
       <label class="form-label">Descrição</label>
-      <textarea class="form-control" id="p-desc" rows="3" placeholder="Descreva brevemente o projeto..."></textarea>
+      <textarea class="form-control" id="p-desc" rows="2" placeholder="Descreva brevemente o projeto..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Líder(es) Técnico(s) <span style="font-size:11px; color:var(--muted); font-weight:400;">— opcional</span></label>
+      <select id="p-leader-add" class="form-control" style="margin-bottom:8px;"
+        onchange="addProjectLeader(this.value); this.value='';">
+        <option value="">+ Vincular Líder Técnico...</option>
+      </select>
+      <div id="p-leaders-list" style="display:flex; flex-wrap:wrap; gap:6px; min-height:24px;"></div>
+      <div style="font-size:11px; color:var(--muted); margin-top:6px;">
+        Se nenhum líder for vinculado, apenas o Gerente poderá aprovar atividades deste projeto.
+      </div>
     </div>
     <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
       <button class="btn btn-ghost" onclick="closeModal('modal-project')">Cancelar</button>
@@ -1309,8 +1320,9 @@ function canDo(action) {
     case 'delete_project':
     case 'manage_team':
     case 'manage_templates':
-    case 'approve_activities':
       return profile === 'gerente';
+    case 'approve_activities':
+      return profile === 'gerente' || profile === 'lider';
     case 'create_delivery':
     case 'edit_delivery':
     case 'delete_delivery':
@@ -1337,6 +1349,25 @@ function canEditProject(projectId) {
   if (!person) return false;
   const p = state.projects.find(x => x.id === projectId);
   return (p?.leaders || []).includes(person.id);
+}
+
+// Can this user approve activities for a given project?
+function canApproveForProject(projectId) {
+  const profile = currentProfile();
+  if (profile === 'gerente') return true;
+  if (profile !== 'lider') return false;
+  const person = currentPerson();
+  if (!person) return false;
+  const p = state.projects.find(x => x.id === projectId);
+  // If project has no leaders, only gerente can approve
+  if (!p?.leaders?.length) return false;
+  return p.leaders.includes(person.id);
+}
+
+// Get project leaders as team members
+function getProjectLeaders(projectId) {
+  const p = state.projects.find(x => x.id === projectId);
+  return (p?.leaders || []).map(id => state.team.find(t => t.id === id)).filter(Boolean);
 }
 
 function isMyActivity(activityId) {
@@ -2060,27 +2091,41 @@ function renderHeatmapWeekly(overrideStart, overrideEnd) {
 //  RENDER: PROJECTS LIST
 // ============================================================
 function renderProjects() {
-  document.getElementById('topbar-title').textContent = 'Projetos';
-  document.getElementById('topbar-sub').textContent = `${state.projects.length} projeto(s) cadastrado(s)`;
-  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-ghost" onclick="openMspModal()">↑ Importar MS Project</button><button class="btn btn-primary" onclick="openNewProject()">+ Novo Projeto</button>`;
+  const profile = currentProfile();
+  const person  = currentPerson();
 
-  if (!state.projects.length) {
+  // Líder only sees projects they're linked to
+  let visibleProjects = state.projects;
+  if (profile === 'lider' && person) {
+    visibleProjects = state.projects.filter(p => (p.leaders||[]).includes(person.id));
+  }
+
+  document.getElementById('topbar-title').textContent = 'Projetos';
+  document.getElementById('topbar-sub').textContent = `${visibleProjects.length} projeto(s)`;
+  document.getElementById('topbar-actions').innerHTML = profile === 'gerente'
+    ? `<button class="btn btn-ghost" onclick="openMspModal()">↑ Importar MS Project</button>
+       <button class="btn btn-primary" onclick="openNewProject()">+ Novo Projeto</button>`
+    : '';
+
+  if (!visibleProjects.length) {
     document.getElementById('page-content').innerHTML = `
       <div class="empty">
         <div class="empty-icon">⬡</div>
-        <div class="empty-text">Nenhum projeto cadastrado</div>
-        <div class="empty-sub">Clique em "Novo Projeto" para começar</div>
+        <div class="empty-text">${profile === 'lider' ? 'Nenhum projeto vinculado a você' : 'Nenhum projeto cadastrado'}</div>
+        <div class="empty-sub">${profile === 'lider' ? 'Peça ao gerente para vincular você a um projeto.' : 'Clique em "Novo Projeto" para começar'}</div>
       </div>`;
     return;
   }
 
-  const rows = state.projects.map(p => {
+  const rows = visibleProjects.map(p => {
     const deliveries = state.deliveries.filter(d => d.projectId === p.id);
     const activities = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
-    const totalH = activities.reduce((s,a) => s+actTotalHours(a), 0);
-    const doneH = activities.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
-    const pct = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
-    const lates = activities.filter(a => isLate(a)).length;
+    const totalH  = activities.reduce((s,a) => s+actTotalHours(a), 0);
+    const doneH   = activities.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
+    const pct     = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
+    const lates   = activities.filter(a => isLate(a)).length;
+    const leaders = getProjectLeaders(p.id);
+    const canEdit = canEditProject(p.id);
 
     return `
       <div class="card" style="margin-bottom:12px; cursor:pointer;" onclick="navigate('project_detail', ${p.id})">
@@ -2089,12 +2134,22 @@ function renderProjects() {
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
               <span style="font-size:15px; font-weight:500;">${esc(p.name)}</span>
               ${lates > 0 ? `<span class="badge badge-red">${lates} atrasada${lates>1?'s':''}</span>` : ''}
+              ${leaders.length > 0
+                ? leaders.map(l => {
+                    const li = state.team.findIndex(t => t.id === l.id);
+                    const col = li >= 0 ? getPersonColor(li) : '#7a7a8a';
+                    return `<div class="avatar avatar-sm tooltip-wrap" style="background:${col}22;color:${col};"
+                      title="${l.name}">${initials(l.name)}
+                      <div class="tooltip">${esc(l.name)} — Líder Técnico</div>
+                    </div>`;
+                  }).join('')
+                : `<span style="font-size:10px; color:var(--muted); background:var(--surface2); padding:2px 7px; border-radius:10px;">Sem líder</span>`}
             </div>
             <div class="info-row" style="margin-bottom:12px;">
               ${p.client ? `<div class="info-item"><div class="lbl">Cliente</div><div class="val">${esc(p.client)}</div></div>` : ''}
               <div class="info-item"><div class="lbl">Período</div><div class="val">${fmtDate(p.start)} → ${fmtDate(p.end)}</div></div>
               <div class="info-item"><div class="lbl">Entregas</div><div class="val">${deliveries.length}</div></div>
-              <div class="info-item"><div class="lbl">Horas Totais</div><div class="val">${totalH.toLocaleString('pt-BR')}h</div></div>
+              <div class="info-item"><div class="lbl">Horas Totais</div><div class="val">${Math.round(totalH).toLocaleString('pt-BR')}h</div></div>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
               <div class="progress-wrap" style="flex:1;">
@@ -2103,10 +2158,10 @@ function renderProjects() {
               <span style="font-size:11px; color:var(--muted); white-space:nowrap;">${pct}% concluído</span>
             </div>
           </div>
-          <div style="display:flex; gap:6px; flex-shrink:0;" onclick="event.stopPropagation()">
+          ${canEdit ? `<div style="display:flex; gap:6px; flex-shrink:0;" onclick="event.stopPropagation()">
             <button class="btn btn-ghost btn-sm" onclick="openEditProject(${p.id})">✎ Editar</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id})">✕</button>
-          </div>
+            ${profile === 'gerente' ? `<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id})">✕</button>` : ''}
+          </div>` : ''}
         </div>
       </div>`;
   }).join('');
@@ -2121,18 +2176,23 @@ function renderProjectDetail() {
   const p = state.projects.find(x => x.id === currentProjectId);
   if (!p) { navigate('projects'); return; }
 
+  const profile    = currentProfile();
+  const canEdit    = canEditProject(p.id);
+  const leaders    = getProjectLeaders(p.id);
+  const hasLeaders = leaders.length > 0;
+
   document.getElementById('topbar-title').textContent = p.name;
   document.getElementById('topbar-sub').textContent = p.client || 'Projeto';
   document.getElementById('topbar-actions').innerHTML = `
-    <button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Entrega</button>
-    <button class="btn btn-primary btn-sm" onclick="openEditProject(${p.id})">✎ Editar Projeto</button>
+    ${canEdit ? `<button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Entrega</button>` : ''}
+    ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openEditProject(${p.id})">✎ Editar Projeto</button>` : ''}
   `;
 
   const deliveries = state.deliveries.filter(d => d.projectId === p.id);
-  const allActs = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
-  const totalH = allActs.reduce((s,a) => s+actTotalHours(a), 0);
-  const doneH = allActs.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
-  const pct = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
+  const allActs    = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
+  const totalH     = allActs.reduce((s,a) => s+actTotalHours(a), 0);
+  const doneH      = allActs.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
+  const pct        = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
 
   let deliveriesHTML = '';
   if (!deliveries.length) {
@@ -2147,6 +2207,25 @@ function renderProjectDetail() {
       <span>›</span>
       <span>${esc(p.name)}</span>
     </div>
+
+
+    ${hasLeaders || profile === 'gerente' ? `
+    <div style="display:flex; align-items:center; gap:12px; padding:12px 16px; background:var(--surface2);
+      border-radius:var(--radius-sm); margin-bottom:20px; flex-wrap:wrap;">
+      <span style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Líderes Técnicos</span>
+      ${hasLeaders
+        ? leaders.map(l => {
+            const li = state.team.findIndex(t => t.id === l.id);
+            const col = li >= 0 ? getPersonColor(li) : '#7a7a8a';
+            return `<div style="display:inline-flex; align-items:center; gap:5px;">
+              <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(l.name)}</div>
+              <span style="font-size:12px;">${esc(l.name)}</span>
+            </div>`;
+          }).join('')
+        : `<span style="font-size:12px; color:var(--muted);">Nenhum líder vinculado — aprovações pelo Gerente</span>`}
+      ${profile === 'gerente' ? `<button class="btn btn-ghost btn-sm" style="margin-left:auto; font-size:11px;"
+        onclick="openEditProject(${p.id})">✎ Editar líderes</button>` : ''}
+    </div>` : ''}
 
     <div class="grid-4" style="margin-bottom:24px;">
       <div class="stat">
@@ -2173,7 +2252,7 @@ function renderProjectDetail() {
 
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
       <div class="section-title">Entregas e Atividades</div>
-      <button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Nova Entrega</button>
+      ${canEdit ? `<button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Nova Entrega</button>` : ''}
     </div>
     ${deliveriesHTML}
   `;
@@ -4018,6 +4097,56 @@ function renderSettings() {
 // ============================================================
 let editingProjectId = null;
 
+// Working list of leader ids while editing a project
+let _editingProjectLeaders = [];
+
+function _populateProjectLeaderSelect() {
+  const sel = document.getElementById('p-leader-add');
+  if (!sel) return;
+  const liders = state.team.filter(p => p.profile === 'lider');
+  sel.innerHTML = '<option value="">+ Vincular Líder Técnico...</option>' +
+    liders.filter(p => !_editingProjectLeaders.includes(p.id))
+      .map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  if (!liders.length) {
+    sel.innerHTML = '<option value="" disabled>Nenhum Líder Técnico cadastrado na equipe</option>';
+  }
+}
+
+function _renderProjectLeadersList() {
+  const el = document.getElementById('p-leaders-list');
+  if (!el) return;
+  if (!_editingProjectLeaders.length) {
+    el.innerHTML = `<span style="font-size:12px; color:var(--muted);">Nenhum líder vinculado — Gerente será o aprovador</span>`;
+    return;
+  }
+  el.innerHTML = _editingProjectLeaders.map(id => {
+    const p    = state.team.find(x => x.id === id);
+    const pIdx = state.team.findIndex(x => x.id === id);
+    const col  = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+    return p ? `<div style="display:inline-flex; align-items:center; gap:5px; padding:4px 10px 4px 6px;
+      background:${col}18; border:1px solid ${col}44; border-radius:20px; font-size:12px;">
+      <div class="avatar avatar-sm" style="background:${col}22;color:${col};width:20px;height:20px;font-size:10px;">${initials(p.name)}</div>
+      <span>${esc(p.name.split(' ')[0])}</span>
+      <span style="cursor:pointer; color:var(--muted); margin-left:2px; font-size:11px;"
+        onclick="removeProjectLeader(${id})">✕</span>
+    </div>` : '';
+  }).join('');
+}
+
+function addProjectLeader(id) {
+  id = parseInt(id);
+  if (!id || _editingProjectLeaders.includes(id)) return;
+  _editingProjectLeaders.push(id);
+  _renderProjectLeadersList();
+  _populateProjectLeaderSelect();
+}
+
+function removeProjectLeader(id) {
+  _editingProjectLeaders = _editingProjectLeaders.filter(x => x !== id);
+  _renderProjectLeadersList();
+  _populateProjectLeaderSelect();
+}
+
 function openNewProject() {
   editingProjectId = null;
   document.getElementById('modal-project-title').textContent = 'Novo Projeto';
@@ -4026,6 +4155,9 @@ function openNewProject() {
   document.getElementById('p-end').value = '';
   document.getElementById('p-client').value = '';
   document.getElementById('p-desc').value = '';
+  _editingProjectLeaders = [];
+  _renderProjectLeadersList();
+  _populateProjectLeaderSelect();
   openModal('modal-project');
 }
 
@@ -4039,6 +4171,9 @@ function openEditProject(id) {
   document.getElementById('p-end').value = p.end || '';
   document.getElementById('p-client').value = p.client || '';
   document.getElementById('p-desc').value = p.desc || '';
+  _editingProjectLeaders = [...(p.leaders || [])];
+  _renderProjectLeadersList();
+  _populateProjectLeaderSelect();
   openModal('modal-project');
 }
 
@@ -4047,19 +4182,21 @@ function saveProject() {
   if (!name) { alert('Informe o nome do projeto.'); return; }
   if (editingProjectId) {
     const p = state.projects.find(x => x.id === editingProjectId);
-    p.name = name;
-    p.start = document.getElementById('p-start').value;
-    p.end = document.getElementById('p-end').value;
-    p.client = document.getElementById('p-client').value;
-    p.desc = document.getElementById('p-desc').value;
+    p.name    = name;
+    p.start   = document.getElementById('p-start').value;
+    p.end     = document.getElementById('p-end').value;
+    p.client  = document.getElementById('p-client').value;
+    p.desc    = document.getElementById('p-desc').value;
+    p.leaders = [..._editingProjectLeaders];
   } else {
     state.projects.push({
       id: uid(), name,
-      start: document.getElementById('p-start').value,
-      end: document.getElementById('p-end').value,
-      client: document.getElementById('p-client').value,
-      desc: document.getElementById('p-desc').value,
-      status: 'ativo',
+      start:   document.getElementById('p-start').value,
+      end:     document.getElementById('p-end').value,
+      client:  document.getElementById('p-client').value,
+      desc:    document.getElementById('p-desc').value,
+      leaders: [..._editingProjectLeaders],
+      status:  'ativo',
       createdAt: new Date().toISOString()
     });
   }
@@ -5907,52 +6044,141 @@ async function submitCheckin() {
 // ============================================================
 function renderApprovals() {
   document.getElementById('topbar-title').textContent = 'Aprovações';
-  document.getElementById('topbar-sub').textContent = 'Solicitações de conclusão pendentes';
+  document.getElementById('topbar-sub').textContent = 'Solicitações de conclusão de atividades';
   document.getElementById('topbar-actions').innerHTML = '';
 
-  const pending = state.activities.filter(a => a.approvalStatus === 'pending');
+  const profile  = currentProfile();
+  const canReview = canDo('approve_activities');
 
-  if (!pending.length) {
+  // All activities with any approval status
+  // Lider only sees activities from projects they're assigned to
+  const filterByAccess = (acts) => {
+    if (profile === 'gerente') return acts;
+    const person = currentPerson();
+    if (!person) return [];
+    return acts.filter(a => {
+      const delivery = a.deliveryId
+        ? state.deliveries.find(d => d.id === a.deliveryId)
+        : (a.packageId ? (() => {
+            const pkg = (state.packages||[]).find(p => p.id === a.packageId);
+            return pkg ? state.deliveries.find(d => d.id === pkg.deliveryId) : null;
+          })() : null);
+      const projectId = delivery?.projectId;
+      if (!projectId) return false;
+      const proj = state.projects.find(p => p.id === projectId);
+      return (proj?.leaders||[]).includes(person.id);
+    });
+  };
+
+  const pending  = filterByAccess(state.activities.filter(a => a.approvalStatus === 'pending'));
+  const reviewed = filterByAccess(state.activities.filter(a =>
+    a.approvalStatus === 'approved' || a.approvalStatus === 'revision'
+  )).sort((a,b) => (b.reviewedAt||'').localeCompare(a.reviewedAt||'')).slice(0,20);
+
+  if (!canReview) {
     document.getElementById('page-content').innerHTML = `
-      <div class="empty"><div class="empty-icon">✓</div>
-      <div class="empty-text">Nenhuma aprovação pendente</div>
-      <div class="empty-sub">Quando a equipe solicitar conclusão de atividades, aparecerão aqui</div></div>`;
+      <div class="empty"><div class="empty-icon">🔒</div>
+      <div class="empty-text">Acesso restrito</div>
+      <div class="empty-sub">Apenas Gerentes e Líderes Técnicos podem revisar aprovações.<br>
+      Para solicitar aprovação de uma atividade, vá em <strong>Minha Visão</strong> e atualize o progresso para 100%.</div></div>`;
     return;
   }
 
-  document.getElementById('page-content').innerHTML = `
-    <div style="display:flex; flex-direction:column; gap:12px;">
-    ${pending.map(a => {
-      const allocs   = a.allocations||[];
-      const delivery = state.deliveries.find(d => d.id === a.deliveryId);
-      const project  = delivery ? state.projects.find(p => p.id === delivery.projectId) : null;
-      const people   = allocs.map(al => state.team.find(p => p.id === al.personId)).filter(Boolean);
-      const range    = actDateRange(a);
+  const renderCard = (a, isPending) => {
+    // Resolve project/delivery regardless of deliveryId or packageId
+    const delivery = a.deliveryId
+      ? state.deliveries.find(d => d.id === a.deliveryId)
+      : (a.packageId ? (() => {
+          const pkg = (state.packages||[]).find(p => p.id === a.packageId);
+          return pkg ? state.deliveries.find(d => d.id === pkg.deliveryId) : null;
+        })() : null);
+    const project = delivery ? state.projects.find(p => p.id === delivery.projectId) : null;
+    const allocs  = a.allocations||[];
+    const people  = allocs.map(al => state.team.find(p => p.id === al.personId)).filter(Boolean);
+    const range   = actDateRange(a);
+    const canApprove = project ? canApproveForProject(project.id) : canDo('approve_activities');
+    const projLeaders = project ? getProjectLeaders(project.id) : [];
 
-      return `<div class="card" style="border-color:rgba(251,191,36,0.3);">
-        <div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-          <div style="flex:1; min-width:200px;">
-            <div style="font-size:14px; font-weight:600; margin-bottom:4px;">${esc(a.name)}</div>
-            <div style="font-size:11px; color:var(--accent2); margin-bottom:8px;">${esc(project?.name||'—')} › ${esc(delivery?.name||'—')}</div>
-            <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">
-              ${people.map(p=>`<span style="margin-right:8px;">👤 ${esc(p.name)}</span>`).join('')}
-              📅 ${fmtDate(range.start)} → ${fmtDate(range.end)} · ${Math.round(actTotalHours(a))}h
-            </div>
-            ${a.approvalDesc ? `<div style="padding:10px 12px; background:var(--surface2); border-radius:var(--radius-sm); margin-bottom:6px;">
-              <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">DESCRIÇÃO DA ENTREGA</div>
-              <div style="font-size:13px;">${esc(a.approvalDesc)}</div>
-            </div>` : ''}
-            ${a.approvalLink ? `<div style="font-size:12px; color:var(--accent2);">🔗 <a href="${esc(a.approvalLink)}" target="_blank" style="color:var(--accent2);">${esc(a.approvalLink)}</a></div>` : ''}
+    const statusBadge = isPending
+      ? `<span class="badge badge-amber">⏳ Aguardando revisão</span>`
+      : a.approvalStatus === 'approved'
+        ? `<span class="badge badge-green">✓ Aprovada</span>`
+        : `<span class="badge badge-red">↩ Revisão solicitada</span>`;
+
+    const reviewer = a.reviewedBy ? state.team.find(p => p.id === a.reviewedBy) : null;
+
+    return `<div class="card" style="border-left:3px solid ${isPending?'var(--amber)':a.approvalStatus==='approved'?'var(--green)':'var(--red)'}; margin-bottom:12px;">
+      <div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:200px;">
+          <div style="font-size:14px; font-weight:600; margin-bottom:4px;">${esc(a.name)}</div>
+          <div style="font-size:11px; color:var(--accent2); margin-bottom:8px;">
+            ${esc(project?.name||'—')} › ${esc(delivery?.name||'—')}
           </div>
-          <div style="display:flex; flex-direction:column; gap:8px; flex-shrink:0;">
-            <span class="badge badge-amber">⏳ Aguardando aprovação</span>
-            ${canDo('approve_activities') || currentProfile()==='lider' ? `
-            <button class="btn btn-success btn-sm" onclick="openReviewApproval(${a.id})">Revisar →</button>` : ''}
+          <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-bottom:10px;">
+            <span>${people.map(p=>`👤 ${esc(p.name)}`).join(', ') || '—'}</span>
+            <span>📅 ${fmtDate(range.start)} → ${fmtDate(range.end)}</span>
+            <span>⏱ ${Math.round(actTotalHours(a))}h</span>
           </div>
+
+          ${a.approvalDesc ? `<div style="padding:10px 12px; background:var(--surface2); border-radius:var(--radius-sm); margin-bottom:6px;">
+            <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">O QUE FOI ENTREGUE</div>
+            <div style="font-size:13px;">${esc(a.approvalDesc)}</div>
+          </div>` : ''}
+          ${a.approvalLink ? `<div style="font-size:12px; margin-bottom:6px;">
+            🔗 <a href="${esc(a.approvalLink)}" target="_blank" style="color:var(--accent2);">${esc(a.approvalLink)}</a>
+          </div>` : ''}
+
+          ${a.reviewerComment ? `<div style="padding:8px 12px; background:${a.approvalStatus==='approved'?'rgba(52,211,153,0.06)':'rgba(248,113,113,0.06)'}; border-radius:var(--radius-sm); font-size:12px; margin-top:4px;">
+            <span style="font-weight:600;">Comentário:</span> ${esc(a.reviewerComment)}
+            ${reviewer ? `<span style="color:var(--muted);"> — ${esc(reviewer.name)}</span>` : ''}
+          </div>` : ''}
         </div>
-      </div>`;
-    }).join('')}
+
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px; flex-shrink:0;">
+          ${statusBadge}
+          ${isPending && canApprove ? `
+            <button class="btn btn-success btn-sm" style="width:100%;" onclick="openReviewApproval(${a.id})">✎ Revisar →</button>
+          ` : isPending && !canApprove ? `
+            <div style="font-size:11px; color:var(--muted); text-align:right; line-height:1.5;">
+              Aprovador:<br>
+              ${projLeaders.length
+                ? projLeaders.map(l=>`<strong>${esc(l.name.split(' ')[0])}</strong>`).join(', ')
+                : '<strong>Gerente</strong>'}
+            </div>
+          ` : ''}
+        </div>
+      </div>
     </div>`;
+  };
+
+  document.getElementById('page-content').innerHTML = `
+    ${pending.length ? `
+    <div class="section-title" style="margin-bottom:12px;">
+      Aguardando revisão (${pending.length})
+    </div>
+    ${pending.map(a => renderCard(a, true)).join('')}
+    ` : `<div style="padding:16px; background:var(--surface2); border-radius:var(--radius); margin-bottom:24px; font-size:13px; color:var(--muted);">
+      ✓ Nenhuma atividade aguardando aprovação no momento.
+    </div>`}
+
+    ${reviewed.length ? `
+    <div style="margin-top:24px; display:flex; align-items:center; gap:10px; cursor:pointer;" onclick="toggleReviewedHistory()">
+      <div class="section-title" style="margin:0;">Histórico recente (${reviewed.length})</div>
+      <span id="reviewed-toggle" style="font-size:12px; color:var(--muted);">▶ mostrar</span>
+    </div>
+    <div id="reviewed-history" style="display:none; margin-top:12px;">
+      ${reviewed.map(a => renderCard(a, false)).join('')}
+    </div>` : ''}
+  `;
+}
+
+function toggleReviewedHistory() {
+  const el  = document.getElementById('reviewed-history');
+  const tog = document.getElementById('reviewed-toggle');
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  tog.textContent  = open ? '▶ mostrar' : '▼ ocultar';
 }
 
 function openRequestApproval(activityId) {
