@@ -1091,9 +1091,21 @@ window.navigate = function() {};
         <label class="form-label">Data *</label>
         <input class="form-control" id="al-date" type="date" />
       </div>
+    </div>
+
+    <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Participantes</label>
-        <input class="form-control" id="al-participants" placeholder="Ex: Fred, Ana, Cliente CMOC..." />
+        <label class="form-label">Equipe participante</label>
+        <select id="al-team-add" class="form-control" style="margin-bottom:8px;"
+          onchange="addAlTeamMember(this.value); this.value='';">
+          <option value="">+ Selecionar membro da equipe...</option>
+        </select>
+        <div id="al-team-list" style="display:flex; flex-wrap:wrap; gap:6px; min-height:32px;"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Participantes do cliente / externos</label>
+        <input class="form-control" id="al-participants"
+          placeholder="Ex: João Silva (CMOC), Maria (IGAM)..." />
       </div>
     </div>
 
@@ -6545,29 +6557,49 @@ async function _renderLogbookContent(projectId) {
 }
 
 function _renderAlignmentCard(e) {
-  const proj    = state.projects.find(p => p.id === e.projectId);
-  const impacts = (e.impacts||[]).map(i => alImpactLabel[i]||i).join(' · ');
+  const proj     = state.projects.find(p => p.id === e.projectId);
+  const impacts  = (e.impacts||[]).map(i => alImpactLabel[i]||i).join(' · ');
   const typeCol  = e.type === 'cliente' ? 'var(--teal)' : 'var(--blue)';
   const typeIcon = e.type === 'cliente' ? '🤝' : '👥';
   const typeLabel = e.type === 'cliente' ? 'Alinhamento com cliente' : 'Alinhamento com equipe';
 
+  // Team member avatars
+  const teamHTML = (e.teamMembers||[]).map(id => {
+    const p    = state.team.find(x => x.id === id);
+    const pIdx = state.team.findIndex(x => x.id === id);
+    const col  = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+    return p ? `<div class="avatar avatar-sm tooltip-wrap" style="background:${col}22;color:${col};" title="${p.name}">
+      ${initials(p.name)}
+      <div class="tooltip">${p.name}</div>
+    </div>` : '';
+  }).join('');
+
   return `<div style="background:var(--surface); border:1px solid var(--border); border-left:3px solid ${typeCol};
     border-radius:var(--radius); padding:14px 16px; margin-bottom:10px; position:relative;">
-    <!-- dot on timeline -->
     <div style="position:absolute; left:-26px; top:14px; width:10px; height:10px; border-radius:50%;
       background:${typeCol}; border:2px solid var(--bg); z-index:2;"></div>
 
     <div style="display:flex; align-items:flex-start; gap:10px; flex-wrap:wrap;">
       <div style="flex:1; min-width:0;">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
           <span style="font-size:13px; font-weight:600;">${typeIcon} ${typeLabel}</span>
           ${proj ? `<span style="font-size:11px; color:var(--accent2);">${esc(proj.name)}</span>` : ''}
-          ${impacts ? `<span style="font-size:11px; color:var(--muted);">${impacts}</span>` : ''}
+          ${impacts ? `<span style="font-size:11px; color:var(--muted); padding:2px 8px; background:var(--surface2); border-radius:10px;">${impacts}</span>` : ''}
         </div>
-        ${e.participants ? `<div style="font-size:11px; color:var(--muted); margin-bottom:6px;">👤 ${esc(e.participants)}</div>` : ''}
+
+        ${teamHTML || e.participants ? `<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
+          ${teamHTML ? `<div style="display:flex; align-items:center; gap:5px;">
+            <span style="font-size:11px; color:var(--muted);">Equipe:</span>
+            <div style="display:flex; gap:4px;">${teamHTML}</div>
+          </div>` : ''}
+          ${e.participants ? `<div style="font-size:12px; color:var(--muted);">
+            <span style="font-weight:500;">Cliente:</span> ${esc(e.participants)}
+          </div>` : ''}
+        </div>` : ''}
+
         <div style="font-size:13px; line-height:1.6; margin-bottom:${e.actions?'8px':'0'};">${esc(e.content||'').replace(/\n/g,'<br>')}</div>
         ${e.actions ? `<div style="padding:8px 10px; background:var(--surface2); border-radius:var(--radius-sm); font-size:12px; color:var(--muted);">
-          <span style="font-weight:600;">Encaminhamentos:</span> ${esc(e.actions).replace(/\n/g,'<br>')}
+          <span style="font-weight:600; color:var(--text);">Encaminhamentos:</span> ${esc(e.actions).replace(/\n/g,'<br>')}
         </div>` : ''}
       </div>
       <div style="display:flex; gap:5px; flex-shrink:0;">
@@ -6641,6 +6673,9 @@ function openNewAlignment(projectId) {
   document.getElementById('al-actions').value = '';
   document.getElementById('al-type').value = 'equipe';
   document.getElementById('al-id').value = '';
+  _alTeamMembers = [];
+  _renderAlTeamList();
+  _populateAlTeamSelect();
   ['escopo','cronograma','medicao','custo','na'].forEach(t => {
     const cb = document.getElementById(`al-impact-${t}`);
     if (cb) { cb.checked = false; toggleAlImpact(t); }
@@ -6661,6 +6696,9 @@ function openEditAlignment(id) {
   document.getElementById('al-actions').value = e.actions || '';
   document.getElementById('al-type').value = e.type || 'equipe';
   document.getElementById('al-id').value = id;
+  _alTeamMembers = [...(e.teamMembers || [])];
+  _renderAlTeamList();
+  _populateAlTeamSelect();
   ['escopo','cronograma','medicao','custo','na'].forEach(t => {
     const cb = document.getElementById(`al-impact-${t}`);
     if (cb) { cb.checked = (e.impacts||[]).includes(t); toggleAlImpact(t); }
@@ -6689,6 +6727,54 @@ function toggleAlImpact(type) {
   lbl.style.background = cb.checked ? 'rgba(108,99,255,0.1)' : 'var(--surface2)';
 }
 
+// Working list of selected team member ids for the alignment modal
+let _alTeamMembers = [];
+
+function _populateAlTeamSelect() {
+  const sel = document.getElementById('al-team-add');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">+ Selecionar membro da equipe...</option>' +
+    state.team
+      .filter(p => !_alTeamMembers.includes(p.id))
+      .map(p => `<option value="${p.id}">${esc(p.name)}</option>`)
+      .join('');
+}
+
+function _renderAlTeamList() {
+  const el = document.getElementById('al-team-list');
+  if (!el) return;
+  if (!_alTeamMembers.length) {
+    el.innerHTML = '<span style="font-size:12px; color:var(--muted);">Nenhum membro selecionado</span>';
+    return;
+  }
+  el.innerHTML = _alTeamMembers.map(id => {
+    const p    = state.team.find(x => x.id === id);
+    const pIdx = state.team.findIndex(x => x.id === id);
+    const col  = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+    return p ? `<div style="display:inline-flex; align-items:center; gap:5px; padding:4px 10px 4px 6px;
+      background:${col}18; border:1px solid ${col}44; border-radius:20px; font-size:12px;">
+      <div class="avatar avatar-sm" style="background:${col}22;color:${col};width:20px;height:20px;font-size:10px;">${initials(p.name)}</div>
+      <span>${esc(p.name.split(' ')[0])}</span>
+      <span style="cursor:pointer; color:var(--muted); margin-left:2px; font-size:11px;"
+        onclick="removeAlTeamMember(${id})">✕</span>
+    </div>` : '';
+  }).join('');
+}
+
+function addAlTeamMember(id) {
+  id = parseInt(id);
+  if (!id || _alTeamMembers.includes(id)) return;
+  _alTeamMembers.push(id);
+  _renderAlTeamList();
+  _populateAlTeamSelect();
+}
+
+function removeAlTeamMember(id) {
+  _alTeamMembers = _alTeamMembers.filter(x => x !== id);
+  _renderAlTeamList();
+  _populateAlTeamSelect();
+}
+
 function saveAlignment() {
   const content = document.getElementById('al-content').value.trim();
   if (!content) { alert('Descreva o que foi alinhado.'); return; }
@@ -6705,6 +6791,7 @@ function saveAlignment() {
     projectId,
     type:         document.getElementById('al-type').value,
     date:         document.getElementById('al-date').value,
+    teamMembers:  [..._alTeamMembers],
     participants: document.getElementById('al-participants').value.trim(),
     content,
     impacts,
