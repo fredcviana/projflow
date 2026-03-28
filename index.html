@@ -489,6 +489,15 @@ window.navigate = function() {};
     <div class="nav-item" onclick="navigate('myview')">
       <span class="nav-icon">◉</span><span>Minha Visão</span>
     </div>
+    <div class="nav-item" onclick="navigate('approvals')" id="nav-approvals" style="display:none;">
+      <span class="nav-icon">✓</span><span>Aprovações</span>
+    </div>
+    <div class="nav-item" onclick="navigate('sprints')" id="nav-sprints" style="display:none;">
+      <span class="nav-icon">⚡</span><span>Sprints</span>
+    </div>
+    <div class="nav-item" onclick="navigate('facts')">
+      <span class="nav-icon">⚠</span><span>Fatos Relevantes</span>
+    </div>
     <div class="nav-item" onclick="navigate('team')">
       <span class="nav-icon">◎</span><span>Equipe</span>
     </div>
@@ -893,17 +902,236 @@ window.navigate = function() {};
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">E-mail</label>
-        <input class="form-control" id="per-email" type="email" placeholder="email@exemplo.com" />
+        <label class="form-label">Perfil de Acesso *</label>
+        <select class="form-control" id="per-profile">
+          <option value="analista">Analista</option>
+          <option value="lider">Líder Técnico</option>
+          <option value="gerente">Gerente</option>
+        </select>
       </div>
       <div class="form-group">
         <label class="form-label">Carga Horária Semanal (h)</label>
         <input class="form-control" id="per-weekly" type="number" value="40" min="1" max="60" />
       </div>
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">E-mail</label>
+        <input class="form-control" id="per-email" type="email" placeholder="email@exemplo.com" />
+      </div>
+    </div>
     <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
       <button class="btn btn-ghost" onclick="closeModal('modal-person')">Cancelar</button>
       <button class="btn btn-primary" onclick="savePerson()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Fato Relevante -->
+<div class="modal-overlay" id="modal-fact">
+  <div class="modal modal-wide" style="width:720px; max-height:92vh; display:flex; flex-direction:column;">
+    <div class="modal-title" id="fact-modal-title" style="flex-shrink:0;">Novo Fato Relevante</div>
+    <div style="overflow-y:auto; flex:1; padding-right:4px;">
+
+      <!-- Identificação -->
+      <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin-bottom:10px;">Identificação</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Título *</label>
+          <input class="form-control" id="fact-title" placeholder="Ex: Atraso na entrega de análises laboratoriais" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Projeto *</label>
+          <select class="form-control" id="fact-project"></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Data da Ocorrência</label>
+          <input class="form-control" id="fact-date" type="date" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Responsável pelo Registro</label>
+          <select class="form-control" id="fact-owner"></select>
+        </div>
+      </div>
+
+      <!-- Impactos -->
+      <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:16px 0 10px;">Impactos Identificados</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+        ${['financeiro','cronograma','escopo','reputacional'].map(type => `
+        <label style="display:flex; align-items:flex-start; gap:10px; padding:12px 14px; background:var(--surface2); border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--border);" id="fact-impact-lbl-${type}">
+          <input type="checkbox" id="fact-impact-${type}" onchange="toggleFactImpact('${type}')" style="margin-top:2px; width:16px; height:16px; accent-color:var(--accent);" />
+          <div>
+            <div style="font-size:13px; font-weight:500;">${type==='financeiro'?'💰 Financeiro':type==='cronograma'?'📅 Cronograma':type==='escopo'?'📋 Escopo':'🏆 Reputacional'}</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">${type==='financeiro'?'Impacto em custos ou receitas':type==='cronograma'?'Afeta prazos e entregas':type==='escopo'?'Altera o escopo contratado':'Afeta imagem ou relacionamento'}</div>
+          </div>
+        </label>`).join('')}
+      </div>
+      <div class="form-group">
+        <label class="form-label">Descrição dos Impactos</label>
+        <textarea class="form-control" id="fact-impact-desc" rows="2" placeholder="Detalhe como cada impacto se manifesta..."></textarea>
+      </div>
+
+      <!-- Descrição -->
+      <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:16px 0 10px;">Descrição do Fato</div>
+      <div class="form-group">
+        <label class="form-label">O que aconteceu? *</label>
+        <textarea class="form-control" id="fact-desc" rows="3" placeholder="Descreva detalhadamente o fato ocorrido, contexto, circunstâncias..."></textarea>
+      </div>
+
+      <!-- 5 Porquês -->
+      <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:16px 0 6px;">Análise de Causa — 5 Porquês</div>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">Pergunte "por quê?" sucessivamente para identificar a causa raiz.</div>
+      ${[1,2,3,4,5].map(n => `
+      <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
+        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; margin-top:2px;">${n}</div>
+        <div style="flex:1;">
+          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Por quê${n===1?' o fato ocorreu?':n===2?' isso aconteceu?':n===3?' isso ocorreu?':n===4?' isso se deu?':' isso é assim?'}</div>
+          <input class="form-control" id="fact-why-${n}" placeholder="${n===1?'Primeiro porquê...':n===2?'Segundo porquê...':n===3?'Terceiro porquê...':n===4?'Quarto porquê...':'Causa raiz...'}" />
+        </div>
+      </div>`).join('')}
+
+      <!-- Plano de Ação -->
+      <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:16px 0 10px;">Plano de Ação</div>
+      <div id="fact-actions-list"></div>
+      <button class="btn btn-ghost btn-sm" onclick="addFactAction()" style="margin-bottom:12px;">+ Adicionar ação</button>
+
+      <div class="form-group">
+        <label class="form-label">Status do Fato</label>
+        <select class="form-control" id="fact-status">
+          <option value="aberto">Aberto</option>
+          <option value="em_tratamento">Em tratamento</option>
+          <option value="resolvido">Resolvido</option>
+          <option value="monitoramento">Em monitoramento</option>
+        </select>
+      </div>
+    </div>
+
+    <input type="hidden" id="fact-id" />
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px; padding-top:16px; border-top:1px solid var(--border); flex-shrink:0;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-fact')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveFact()">Salvar Fato Relevante</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Sprint -->
+<div class="modal-overlay" id="modal-sprint">
+  <div class="modal modal-wide">
+    <div class="modal-title" id="sprint-modal-title">Novo Sprint</div>
+    <div class="form-group">
+      <label class="form-label">Nome do Sprint *</label>
+      <input class="form-control" id="sp-name" placeholder="Ex: Sprint 1 — Levantamento de Campo" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Objetivo do Sprint</label>
+      <textarea class="form-control" id="sp-goal" rows="2" placeholder="O que a equipe vai entregar neste ciclo?"></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Início *</label>
+        <input class="form-control" id="sp-start" type="date" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Término *</label>
+        <input class="form-control" id="sp-end" type="date" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Projeto</label>
+      <select class="form-control" id="sp-project">
+        <option value="">— Selecionar projeto —</option>
+      </select>
+    </div>
+    <input type="hidden" id="sp-id" />
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-sprint')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveSprint()">Salvar Sprint</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Check-in Diário -->
+<div class="modal-overlay" id="modal-checkin" style="backdrop-filter:blur(6px);">
+  <div class="modal" style="width:520px;">
+    <div style="text-align:center; margin-bottom:20px;">
+      <div style="font-size:28px; margin-bottom:8px;">☀️</div>
+      <div class="modal-title" style="margin-bottom:4px;">Check-in Diário</div>
+      <div style="font-size:12px; color:var(--muted);" id="checkin-date-label"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="color:var(--accent2);">1. O que fiz ontem?</label>
+      <textarea class="form-control" id="ci-yesterday" rows="2" placeholder="Descreva as atividades realizadas..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="color:var(--green);">2. O que farei hoje?</label>
+      <textarea class="form-control" id="ci-today" rows="2" placeholder="Quais atividades planeja executar hoje..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="color:var(--amber);">3. Tenho algum impedimento?</label>
+      <div style="display:flex; gap:10px; margin-bottom:8px;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
+          <input type="radio" name="ci-impediment" value="no" checked onchange="document.getElementById('ci-impediment-text').style.display='none'"> Não
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
+          <input type="radio" name="ci-impediment" value="yes" onchange="document.getElementById('ci-impediment-text').style.display='block'"> Sim
+        </label>
+      </div>
+      <textarea class="form-control" id="ci-impediment-text" rows="2" placeholder="Descreva o impedimento..." style="display:none;"></textarea>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:space-between; margin-top:8px; align-items:center;">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-checkin')">Agora não</button>
+      <button class="btn btn-primary" onclick="submitCheckin()">Enviar check-in</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Solicitar Aprovação -->
+<div class="modal-overlay" id="modal-request-approval">
+  <div class="modal">
+    <div class="modal-title">Solicitar Aprovação de Conclusão</div>
+    <div id="approval-activity-info" style="padding:12px 14px; background:var(--surface2); border-radius:var(--radius-sm); margin-bottom:16px; font-size:13px;"></div>
+    <div class="form-group">
+      <label class="form-label">Descrição do que foi entregue *</label>
+      <textarea class="form-control" id="approval-desc" rows="3" placeholder="Descreva o que foi realizado, quais produtos foram gerados..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Link / Localização da entrega</label>
+      <input class="form-control" id="approval-link" placeholder="Ex: https://drive.google.com/... ou Pasta X no servidor" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Observações adicionais</label>
+      <textarea class="form-control" id="approval-note" rows="2" placeholder="Pendências, ressalvas, informações complementares..."></textarea>
+    </div>
+    <input type="hidden" id="approval-activity-id" />
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-request-approval')">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitApprovalRequest()">Enviar para aprovação</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Revisar Aprovação -->
+<div class="modal-overlay" id="modal-review-approval">
+  <div class="modal modal-wide">
+    <div class="modal-title">Revisar Solicitação de Aprovação</div>
+    <div id="review-activity-info" style="padding:12px 14px; background:var(--surface2); border-radius:var(--radius-sm); margin-bottom:16px; font-size:13px;"></div>
+    <div style="padding:14px 16px; background:var(--surface2); border-radius:var(--radius-sm); margin-bottom:16px;">
+      <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); margin-bottom:8px;">Entrega do colaborador</div>
+      <div id="review-delivery-desc" style="font-size:13px; margin-bottom:8px;"></div>
+      <div id="review-delivery-link" style="font-size:12px; color:var(--accent2);"></div>
+      <div id="review-delivery-note" style="font-size:12px; color:var(--muted); margin-top:6px;"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Comentário (obrigatório ao solicitar revisão)</label>
+      <textarea class="form-control" id="review-comment" rows="2" placeholder="Feedback, o que precisa ser ajustado..."></textarea>
+    </div>
+    <input type="hidden" id="review-activity-id" />
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-review-approval')">Cancelar</button>
+      <button class="btn btn-danger" onclick="rejectApproval()">↩ Solicitar revisão</button>
+      <button class="btn btn-success" onclick="approveActivity()">✓ Aprovar conclusão</button>
     </div>
   </div>
 </div>
@@ -923,6 +1151,66 @@ let sbSyncTimer = null;
 let sbChannel = null; // realtime channel
 
 // ============================================================
+//  ACCESS CONTROL
+// ============================================================
+function currentProfile() {
+  if (!sbUser) return 'analista';
+  if (sbUser.email === ADMIN_EMAIL) return 'gerente';
+  const person = state.team.find(p => p.email === sbUser.email);
+  return person?.profile || 'analista';
+}
+
+function currentPerson() {
+  if (!sbUser) return null;
+  return state.team.find(p => p.email === sbUser.email) || null;
+}
+
+function canDo(action) {
+  const profile = currentProfile();
+  switch(action) {
+    case 'create_project':
+    case 'delete_project':
+    case 'manage_team':
+    case 'manage_templates':
+    case 'approve_activities':
+      return profile === 'gerente';
+    case 'create_delivery':
+    case 'edit_delivery':
+    case 'delete_delivery':
+    case 'create_package':
+    case 'edit_package':
+    case 'delete_package':
+    case 'create_activity':
+    case 'edit_activity':
+    case 'delete_activity':
+      return profile === 'gerente' || profile === 'lider';
+    case 'update_progress':
+    case 'request_approval':
+      return !!sbUser;
+    default:
+      return profile === 'gerente';
+  }
+}
+
+function canEditProject(projectId) {
+  const profile = currentProfile();
+  if (profile === 'gerente') return true;
+  if (profile !== 'lider') return false;
+  const person = currentPerson();
+  if (!person) return false;
+  const p = state.projects.find(x => x.id === projectId);
+  return (p?.leaders || []).includes(person.id);
+}
+
+function isMyActivity(activityId) {
+  const person = currentPerson();
+  if (!person) return false;
+  const a = state.activities.find(x => x.id === activityId);
+  if (!a) return false;
+  return actPersonIds(a).includes(person.id);
+}
+
+// ============================================================
 //  DATA STORE
 // ============================================================
 let state = loadState();
@@ -932,8 +1220,9 @@ function loadState() {
     const raw = localStorage.getItem('projflow_v2');
     if (raw) {
       const s = JSON.parse(raw);
-      if (!s.packages) s.packages = [];
-      if (!s.templates) s.templates = [];
+      if (!s.packages)   s.packages   = [];
+      if (!s.templates)  s.templates  = [];
+      if (!s.facts)      s.facts      = [];
       // Migrate old single-person activities to allocations array
       s.activities = (s.activities || []).map(a => {
         if (!a.allocations) {
@@ -946,7 +1235,7 @@ function loadState() {
       return s;
     }
   } catch(e) {}
-  return { projects: [], deliveries: [], packages: [], activities: [], team: [], templates: [], nextId: 1 };
+  return { projects: [], deliveries: [], packages: [], activities: [], team: [], templates: [], facts: [], nextId: 1 };
 }
 
 function saveState() {
@@ -974,11 +1263,15 @@ let currentProjectId = null;
 function navigate(page, id) {
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  const map = { dashboard: 0, projects: 1, activities: 2, myview: 3, team: 4, library: 5, settings: 6 };
+  const map = { dashboard: 0, projects: 1, activities: 2, myview: 3, approvals: 4, sprints: 5, facts: 6, team: 7, library: 8, settings: 9 };
   if (map[page] !== undefined) {
     document.querySelectorAll('.nav-item')[map[page]]?.classList.add('active');
   }
-  if (id) currentProjectId = id;
+  if (id) {
+    if (page === 'project_detail') currentProjectId = typeof id === 'number' ? id : parseInt(id);
+    if (page === 'sprint_detail')  currentSprintId  = id;
+    if (page === 'fact_detail')    currentFactId    = id;
+  }
   render();
 }
 
@@ -989,12 +1282,32 @@ function render() {
     project_detail: renderProjectDetail,
     activities: renderActivitiesDashboard,
     myview: renderMyView,
+    approvals: renderApprovals,
+    sprints: renderSprints,
+    sprint_detail: renderSprintDetail,
+    facts: renderFacts,
+    fact_detail: renderFactDetail,
     team: renderTeam,
     library: renderLibrary,
     settings: renderSettings,
   };
   (pages[currentPage] || renderDashboard)();
   saveState();
+  // Show/hide nav items based on profile
+  _updateNavVisibility();
+}
+
+function _updateNavVisibility() {
+  const profile = currentProfile();
+  const navApprovals = document.getElementById('nav-approvals');
+  const navSprints   = document.getElementById('nav-sprints');
+  if (navApprovals) {
+    const pending = state.activities.filter(a => a.approvalStatus === 'pending').length;
+    navApprovals.style.display = (profile === 'gerente' || profile === 'lider') ? '' : 'none';
+    navApprovals.querySelector('span:last-child').textContent =
+      pending > 0 ? `Aprovações (${pending})` : 'Aprovações';
+  }
+  if (navSprints) navSprints.style.display = sbUser ? '' : 'none';
 }
 
 // ============================================================
@@ -1005,14 +1318,29 @@ function renderDashboard() {
   document.getElementById('topbar-sub').textContent = 'Visão geral do portfólio';
   document.getElementById('topbar-actions').innerHTML = '';
 
-  const totalProjects = state.projects.length;
-  const activeProjects = state.projects.filter(p => p.status !== 'concluido').length;
+  const totalProjects   = state.projects.length;
+  const activeProjects  = state.projects.filter(p => p.status !== 'concluido').length;
   const totalActivities = state.activities.length;
-  const totalHours = state.activities.reduce((s, a) => s + (parseFloat(a.hours)||0), 0);
-  const doneActivities = state.activities.filter(a => a.status === 'concluido').length;
-  const lateActivities = state.activities.filter(a => isLate(a)).length;
+  const totalHours      = state.activities.reduce((s,a) => s+actTotalHours(a), 0);
+  const doneActivities  = state.activities.filter(a => a.status === 'concluido').length;
+  const lateActivities  = state.activities.filter(a => isLate(a)).length;
+  const pendingApprovals = state.activities.filter(a => a.approvalStatus === 'pending').length;
+
+  const profile = currentProfile();
+  const showApprovals = (profile === 'gerente' || profile === 'lider') && pendingApprovals > 0;
 
   document.getElementById('page-content').innerHTML = `
+
+    ${showApprovals ? `
+    <div style="padding:14px 18px; background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.3); border-radius:var(--radius); margin-bottom:20px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <span style="font-size:20px;">⏳</span>
+      <div style="flex:1;">
+        <div style="font-size:14px; font-weight:600; color:var(--amber);">${pendingApprovals} atividade(s) aguardando sua aprovação</div>
+        <div style="font-size:12px; color:var(--muted);">Colaboradores solicitaram conclusão e aguardam revisão</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="color:var(--amber); border-color:rgba(251,191,36,0.4);" onclick="navigate('approvals')">Ver fila →</button>
+    </div>` : ''}
+
     <div class="grid-4" style="margin-bottom:24px;">
       <div class="stat">
         <div class="stat-label">Projetos Ativos</div>
@@ -1026,27 +1354,23 @@ function renderDashboard() {
       </div>
       <div class="stat">
         <div class="stat-label">Total de Horas</div>
-        <div class="stat-value">${totalHours.toLocaleString('pt-BR')}</div>
+        <div class="stat-value">${Math.round(totalHours).toLocaleString('pt-BR')}</div>
         <div class="stat-sub">alocadas</div>
       </div>
-      <div class="stat">
-        <div class="stat-label">Atividades Atrasadas</div>
-        <div class="stat-value" style="color:${lateActivities>0?'var(--red)':'var(--green)'}">${lateActivities}</div>
-        <div class="stat-sub">${lateActivities > 0 ? 'requer atenção' : 'tudo em dia'}</div>
+      <div class="stat" style="${pendingApprovals>0?'border-color:rgba(251,191,36,0.3);':''}">
+        <div class="stat-label">${pendingApprovals>0?'Aguard. Aprovação':'Atividades Atrasadas'}</div>
+        <div class="stat-value" style="color:${pendingApprovals>0?'var(--amber)':lateActivities>0?'var(--red)':'var(--green)'}">${pendingApprovals>0?pendingApprovals:lateActivities}</div>
+        <div class="stat-sub">${pendingApprovals>0?'para revisar':lateActivities>0?'requer atenção':'tudo em dia'}</div>
       </div>
     </div>
 
     <div class="grid-2" style="margin-bottom:24px;">
       <div class="card">
-        <div class="card-header">
-          <div class="card-title">Horas por Pessoa (Total)</div>
-        </div>
+        <div class="card-header"><div class="card-title">Horas por Pessoa (Total)</div></div>
         ${renderHoursByPerson()}
       </div>
       <div class="card">
-        <div class="card-header">
-          <div class="card-title">Status das Atividades</div>
-        </div>
+        <div class="card-header"><div class="card-title">Status das Atividades</div></div>
         ${renderStatusSummary()}
       </div>
     </div>
@@ -2399,6 +2723,10 @@ function renderMyView() {
         <option value="">— Selecione seu nome —</option>
         ${state.team.map(p => `<option value="${p.id}" ${String(p.id)===savedPerson?'selected':''}>${esc(p.name)}</option>`).join('')}
       </select>
+      ${sbUser && !hasCheckedInToday() ? `
+      <button class="btn btn-ghost btn-sm" style="color:var(--amber); border-color:rgba(251,191,36,0.4);" onclick="openCheckinModal()">
+        ☀️ Fazer check-in do dia
+      </button>` : sbUser ? `<span class="badge badge-green" style="font-size:11px;">✓ Check-in feito</span>` : ''}
     </div>
     <div id="myview-content"></div>
   `;
@@ -2766,9 +3094,23 @@ function renderMyActivityCard(a, col) {
       </div>` : ''}
 
       ${a.effStatus !== 'concluido' ? `
-      <button class="btn btn-primary btn-sm" style="width:100%; justify-content:center;" onclick="openProgress(${a.id})">
-        ↻ Atualizar andamento
-      </button>` : ''}
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" style="flex:1; justify-content:center;" onclick="openProgress(${a.id})">
+          ↻ Atualizar andamento
+        </button>
+        ${a.workProg === 100 && a.approvalStatus !== 'pending' && a.approvalStatus !== 'approved' ? `
+        <button class="btn btn-success btn-sm" style="flex:1; justify-content:center;" onclick="openRequestApproval(${a.id})">
+          ✓ Solicitar aprovação
+        </button>` : ''}
+        ${a.approvalStatus === 'pending' ? `
+        <div style="flex:1; text-align:center; padding:6px; background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.3); border-radius:var(--radius-sm); font-size:12px; color:var(--amber);">
+          ⏳ Aguardando aprovação
+        </div>` : ''}
+        ${a.approvalStatus === 'revision' ? `
+        <div style="flex:1; padding:6px 10px; background:rgba(248,113,113,0.08); border:1px solid rgba(248,113,113,0.2); border-radius:var(--radius-sm); font-size:12px; color:var(--red);">
+          ↩ Revisão solicitada${a.reviewerComment ? `<br><span style="font-size:11px; color:var(--muted);">${esc(a.reviewerComment)}</span>` : ''}
+        </div>` : ''}
+      </div>` : ''}
 
       ${a.note ? `<div style="margin-top:10px; padding:8px 12px; background:var(--surface2); border-radius:var(--radius-sm); font-size:12px; color:var(--muted);">${esc(a.note)}</div>` : ''}
     </div>`;
@@ -3371,12 +3713,16 @@ function applyLibrarySelection() {
 function renderTeam() {
   document.getElementById('topbar-title').textContent = 'Equipe';
   document.getElementById('topbar-sub').textContent = `${state.team.length} pessoa(s) cadastrada(s)`;
-  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="openNewPerson()">+ Cadastrar Pessoa</button>`;
+  document.getElementById('topbar-actions').innerHTML = canDo('manage_team')
+    ? `<button class="btn btn-primary" onclick="openNewPerson()">+ Cadastrar Pessoa</button>` : '';
 
   if (!state.team.length) {
-    document.getElementById('page-content').innerHTML = `<div class="empty"><div class="empty-icon">◎</div><div class="empty-text">Nenhuma pessoa cadastrada</div><div class="empty-sub">Cadastre sua equipe para alocar atividades</div></div>`;
+    document.getElementById('page-content').innerHTML = `<div class="empty"><div class="empty-icon">◎</div><div class="empty-text">Nenhuma pessoa cadastrada</div></div>`;
     return;
   }
+
+  const profileLabel = { gerente:'Gerente', lider:'Líder Técnico', analista:'Analista' };
+  const profileColor = { gerente:'badge-purple', lider:'badge-blue', analista:'badge-gray' };
 
   const cards = state.team.map((p, i) => {
     const col = getPersonColor(i);
@@ -3387,32 +3733,37 @@ function renderTeam() {
     }, 0);
     const activeActs = acts.filter(a => a.status === 'em_andamento').length;
     const lates = acts.filter(a => isLate(a)).length;
+    const pending = acts.filter(a => a.approvalStatus === 'pending').length;
+    const prf = p.profile || 'analista';
 
     return `
       <div class="card" style="display:flex; flex-direction:column; gap:14px;">
         <div style="display:flex; align-items:center; gap:12px;">
           <div class="avatar" style="width:44px; height:44px; font-size:14px; background:${col}22; color:${col};">${initials(p.name)}</div>
           <div style="flex:1; min-width:0;">
-            <div style="font-weight:500; font-size:14px;">${esc(p.name)}</div>
+            <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:2px;">
+              <span style="font-weight:500; font-size:14px;">${esc(p.name)}</span>
+              <span class="badge ${profileColor[prf]}" style="font-size:10px;">${profileLabel[prf]}</span>
+            </div>
             <div style="font-size:12px; color:var(--muted);">${esc(p.role||'—')}</div>
           </div>
-          <div style="display:flex; gap:5px;">
+          ${canDo('manage_team') ? `<div style="display:flex; gap:5px;">
             <button class="btn btn-ghost btn-sm" onclick="openEditPerson(${p.id})">✎</button>
             <button class="btn btn-danger btn-sm" onclick="deletePerson(${p.id})">✕</button>
-          </div>
+          </div>` : ''}
         </div>
         <hr class="sep" style="margin:0;">
         <div class="grid-3">
-          <div><div style="font-size:10px; color:var(--muted);">HORAS ALOCADAS</div><div style="font-size:18px; font-weight:600; margin-top:2px;">${totalH.toLocaleString('pt-BR')}h</div></div>
+          <div><div style="font-size:10px; color:var(--muted);">HORAS</div><div style="font-size:18px; font-weight:600; margin-top:2px;">${Math.round(totalH)}h</div></div>
           <div><div style="font-size:10px; color:var(--muted);">EM ANDAMENTO</div><div style="font-size:18px; font-weight:600; margin-top:2px;">${activeActs}</div></div>
           <div><div style="font-size:10px; color:var(--muted);">ATRASADAS</div><div style="font-size:18px; font-weight:600; margin-top:2px; color:${lates>0?'var(--red)':'inherit'}">${lates}</div></div>
         </div>
+        ${pending > 0 ? `<div style="font-size:12px; color:var(--amber);">⏳ ${pending} aprovação(ões) pendente(s)</div>` : ''}
         ${p.email ? `<div style="font-size:12px; color:var(--muted);">✉ ${esc(p.email)}</div>` : ''}
       </div>`;
   }).join('');
 
-  document.getElementById('page-content').innerHTML = `
-    <div class="grid-3">${cards}</div>`;
+  document.getElementById('page-content').innerHTML = `<div class="grid-3">${cards}</div>`;
 }
 
 // ============================================================
@@ -4042,6 +4393,7 @@ function openNewPerson() {
   document.getElementById('per-role').value = '';
   document.getElementById('per-email').value = '';
   document.getElementById('per-weekly').value = '40';
+  document.getElementById('per-profile').value = 'analista';
   openModal('modal-person');
 }
 
@@ -4053,24 +4405,28 @@ function openEditPerson(id) {
   document.getElementById('per-role').value = p.role || '';
   document.getElementById('per-email').value = p.email || '';
   document.getElementById('per-weekly').value = p.weeklyHours || 40;
+  document.getElementById('per-profile').value = p.profile || 'analista';
   openModal('modal-person');
 }
 
 function savePerson() {
   const name = document.getElementById('per-name').value.trim();
   if (!name) { alert('Informe o nome.'); return; }
+  const profile = document.getElementById('per-profile').value || 'analista';
   if (editingPersonId) {
     const p = state.team.find(x => x.id === editingPersonId);
     p.name = name;
     p.role = document.getElementById('per-role').value;
     p.email = document.getElementById('per-email').value;
     p.weeklyHours = parseInt(document.getElementById('per-weekly').value) || 40;
+    p.profile = profile;
   } else {
     state.team.push({
       id: uid(), name,
       role: document.getElementById('per-role').value,
       email: document.getElementById('per-email').value,
       weeklyHours: parseInt(document.getElementById('per-weekly').value) || 40,
+      profile,
     });
   }
   closeModal('modal-person');
@@ -4505,13 +4861,22 @@ function showToast(msg) {
 async function sbInit() {
   sb = supabase.createClient(SB_URL, SB_KEY);
 
-  // Check existing session
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
     sbUser = session.user;
     await sbLoadData();
+    await loadSprints();
+    await loadTodayCheckins();
     sbUpdatePanel();
     sbSubscribeRealtime();
+    _updateNavVisibility();
+    // Trigger daily check-in if not done yet (after 1s delay)
+    setTimeout(() => {
+      if (sbUser && !hasCheckedInToday()) {
+        const person = currentPerson();
+        if (person) openCheckinModal();
+      }
+    }, 1200);
   } else {
     sbUpdatePanel();
   }
@@ -4541,15 +4906,19 @@ async function sbSignIn() {
   sbUser = data.user;
   closeModal('modal-login');
   await sbLoadData();
+  await loadSprints();
+  await loadTodayCheckins();
   sbUpdatePanel();
   sbSubscribeRealtime();
+  _updateNavVisibility();
 
-  // Link user to team member by email
   const person = state.team.find(p => p.email === sbUser.email);
   if (person) {
     localStorage.setItem('projflow_my_person', String(person.id));
     showToast(`✓ Bem-vindo(a), ${person.name.split(' ')[0]}!`);
     if (sbUser.email !== ADMIN_EMAIL) navigate('myview');
+    // Trigger check-in if not done
+    setTimeout(() => { if (!hasCheckedInToday()) openCheckinModal(); }, 800);
   } else {
     showToast(`✓ Login realizado!`);
   }
@@ -4743,6 +5112,902 @@ async function sbBulkCreateUsers() {
 
 function sbManualSync() {
   if (sb) sbLoadData();
+}
+
+// ============================================================
+//  SPRINTS
+// ============================================================
+let _sprints = []; // loaded from Supabase
+let _sprintActivities = {}; // sprintId -> [activityId]
+let currentSprintId = null;
+let currentFactId   = null;
+
+async function loadSprints() {
+  if (!sb) return;
+  try {
+    const { data: sprints } = await sb.from('projflow_sprints').select('*').order('start_date', { ascending: false });
+    const { data: acts }    = await sb.from('projflow_sprint_activities').select('*');
+    _sprints = sprints || [];
+    _sprintActivities = {};
+    (acts||[]).forEach(r => {
+      if (!_sprintActivities[r.sprint_id]) _sprintActivities[r.sprint_id] = [];
+      _sprintActivities[r.sprint_id].push(r.activity_id);
+    });
+  } catch(e) { console.warn('loadSprints:', e); }
+}
+
+function getActiveSprint(projectId) {
+  return _sprints.find(s => s.project_id === projectId && s.status === 'ativo') || null;
+}
+
+function getSprintActivities(sprintId) {
+  return _sprintActivities[sprintId] || [];
+}
+
+function renderSprints() {
+  document.getElementById('topbar-title').textContent = 'Sprints';
+  document.getElementById('topbar-sub').textContent = 'Ciclos de trabalho da equipe';
+  document.getElementById('topbar-actions').innerHTML = canDo('create_project')
+    ? `<button class="btn btn-primary" onclick="openNewSprint()">+ Novo Sprint</button>` : '';
+
+  loadSprints().then(() => {
+    if (!_sprints.length) {
+      document.getElementById('page-content').innerHTML = `
+        <div class="empty"><div class="empty-icon">⚡</div>
+        <div class="empty-text">Nenhum sprint criado</div>
+        <div class="empty-sub">Crie o primeiro sprint para organizar o trabalho da equipe</div></div>`;
+      return;
+    }
+
+    const statusLabel = { planejamento:'Planejamento', ativo:'Ativo', concluido:'Concluído' };
+    const statusBadge = { planejamento:'badge-gray', ativo:'badge-green', concluido:'badge-blue' };
+
+    // Group by project
+    const byProject = {};
+    _sprints.forEach(s => {
+      const proj = state.projects.find(p => p.id === s.project_id);
+      const key  = s.project_id;
+      if (!byProject[key]) byProject[key] = { name: proj?.name || 'Sem projeto', sprints: [] };
+      byProject[key].sprints.push(s);
+    });
+
+    let html = '';
+    Object.values(byProject).forEach(grp => {
+      html += `<div style="margin-bottom:28px;">
+        <div class="section-title" style="margin-bottom:12px;">${esc(grp.name)}</div>
+        <div style="display:flex; flex-direction:column; gap:10px;">`;
+
+      grp.sprints.forEach(s => {
+        const acts  = getSprintActivities(s.id);
+        const done  = acts.filter(id => state.activities.find(a => a.id === id && a.status === 'concluido')).length;
+        const pct   = acts.length > 0 ? Math.round(done/acts.length*100) : 0;
+        const today = new Date().toISOString().slice(0,10);
+        const daysLeft = s.end_date ? Math.round((new Date(s.end_date)-new Date(today))/86400000) : null;
+
+        html += `<div class="card" style="cursor:pointer; border-color:${s.status==='ativo'?'rgba(52,211,153,0.3)':'var(--border)'};" onclick="navigate('sprint_detail','${s.id}')">
+          <div style="display:flex; align-items:flex-start; gap:12px;">
+            <div style="flex:1; min-width:0;">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+                <span style="font-size:14px; font-weight:500;">${esc(s.name)}</span>
+                <span class="badge ${statusBadge[s.status]||'badge-gray'}">${statusLabel[s.status]||s.status}</span>
+                ${s.status==='ativo' && daysLeft !== null ? `<span class="badge ${daysLeft<=3?'badge-red':daysLeft<=7?'badge-amber':'badge-gray'}">${daysLeft<0?Math.abs(daysLeft)+'d atrasado':daysLeft+'d restantes'}</span>` : ''}
+              </div>
+              ${s.goal ? `<div style="font-size:12px; color:var(--muted); margin-bottom:8px;">${esc(s.goal)}</div>` : ''}
+              <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">
+                ${fmtDate(s.start_date)} → ${fmtDate(s.end_date)} · ${acts.length} atividades · ${done} concluídas
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <div class="progress-wrap" style="flex:1;"><div class="progress-bar ${pct===100?'green':pct>60?'':pct>30?'amber':'red'}" style="width:${pct}%;"></div></div>
+                <span style="font-size:11px; color:var(--muted);">${pct}%</span>
+              </div>
+            </div>
+            <div style="display:flex; gap:6px; flex-shrink:0;" onclick="event.stopPropagation()">
+              ${s.status==='planejamento' ? `<button class="btn btn-success btn-sm" onclick="activateSprint('${s.id}')">▶ Ativar</button>` : ''}
+              ${s.status==='ativo' ? `<button class="btn btn-ghost btn-sm" onclick="closeSprint('${s.id}')">✓ Fechar</button>` : ''}
+              ${canDo('create_project') ? `<button class="btn btn-ghost btn-sm" onclick="openEditSprint('${s.id}')">✎</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteSprint('${s.id}')">✕</button>` : ''}
+            </div>
+          </div>
+        </div>`;
+      });
+      html += '</div></div>';
+    });
+
+    document.getElementById('page-content').innerHTML = html;
+  });
+}
+
+function renderSprintDetail() {
+  const s = _sprints.find(x => x.id === currentSprintId);
+  if (!s) { navigate('sprints'); return; }
+
+  const proj  = state.projects.find(p => p.id === s.project_id);
+  const actIds = getSprintActivities(s.id);
+  const spActs = actIds.map(id => state.activities.find(a => a.id === id)).filter(Boolean);
+  const done   = spActs.filter(a => a.status === 'concluido').length;
+  const pct    = spActs.length > 0 ? Math.round(done/spActs.length*100) : 0;
+  const totalH = spActs.reduce((s,a) => s+actTotalHours(a), 0);
+  const doneH  = spActs.filter(a=>a.status==='concluido').reduce((s,a)=>s+actTotalHours(a),0);
+
+  document.getElementById('topbar-title').textContent = s.name;
+  document.getElementById('topbar-sub').textContent = proj?.name || '';
+  document.getElementById('topbar-actions').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="navigate('sprints')">← Voltar</button>
+    ${canDo('create_activity') ? `<button class="btn btn-ghost btn-sm" onclick="openSprintActivityPicker('${s.id}')">+ Adicionar atividades</button>` : ''}
+    ${s.status==='ativo' ? `<button class="btn btn-ghost btn-sm" onclick="closeSprint('${s.id}')">✓ Fechar Sprint</button>` : ''}
+  `;
+
+  // All project activities not yet in sprint
+  const allProjActs = state.activities.filter(a => {
+    const d = state.deliveries.find(d => d.id === a.deliveryId);
+    const pkg = (state.packages||[]).find(p => p.id === a.packageId);
+    const delivProjId = d?.projectId || state.deliveries.find(dd => dd.id === pkg?.deliveryId)?.projectId;
+    return delivProjId === s.project_id;
+  });
+  const notInSprint = allProjActs.filter(a => !actIds.includes(a.id));
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="grid-4" style="margin-bottom:24px;">
+      <div class="stat"><div class="stat-label">Atividades</div><div class="stat-value">${spActs.length}</div><div class="stat-sub">${done} concluídas</div></div>
+      <div class="stat"><div class="stat-label">Progresso</div><div class="stat-value">${pct}%</div><div class="stat-sub">${Math.round(doneH)}h / ${Math.round(totalH)}h</div></div>
+      <div class="stat"><div class="stat-label">Período</div><div class="stat-value" style="font-size:16px;">${fmtDate(s.start_date)}</div><div class="stat-sub">até ${fmtDate(s.end_date)}</div></div>
+      <div class="stat"><div class="stat-label">Status</div><div class="stat-value" style="font-size:16px; color:${s.status==='ativo'?'var(--green)':s.status==='concluido'?'var(--blue)':'var(--muted)'};">${s.status==='ativo'?'Ativo':s.status==='concluido'?'Concluído':'Planejamento'}</div></div>
+    </div>
+
+    ${s.goal ? `<div class="card" style="margin-bottom:20px; border-left:3px solid var(--accent);">
+      <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">OBJETIVO DO SPRINT</div>
+      <div style="font-size:14px;">${esc(s.goal)}</div>
+    </div>` : ''}
+
+    <div class="section-title" style="margin-bottom:12px;">Atividades do Sprint</div>
+    ${spActs.length ? `
+    <div class="card" style="padding:0; overflow:hidden; margin-bottom:20px;">
+      <div style="overflow-x:auto;">
+        <table style="min-width:700px;">
+          <thead><tr>
+            <th style="padding:12px 16px;">Atividade</th>
+            <th>Responsável</th>
+            <th>Horas</th>
+            <th>Prazo</th>
+            <th>Progresso</th>
+            <th>Status</th>
+            <th></th>
+          </tr></thead>
+          <tbody>
+            ${spActs.map(a => {
+              const allocs = a.allocations||[];
+              const personHTML = allocs.length
+                ? allocs.map(al => { const p=state.team.find(x=>x.id===al.personId); const pi=state.team.findIndex(x=>x.id===al.personId); const c=pi>=0?getPersonColor(pi):'#7a7a8a'; return p?`<div class="avatar avatar-sm" style="background:${c}22;color:${c};display:inline-flex;" title="${p.name}">${initials(p.name)}</div>`:'' }).join('')
+                : '<span style="color:var(--muted);">—</span>';
+              const range = actDateRange(a);
+              const prog = a.progress||0;
+              return `<tr>
+                <td style="padding:10px 16px; font-weight:500; font-size:13px;">${esc(a.name)}</td>
+                <td><div style="display:flex;gap:4px;flex-wrap:wrap;">${personHTML}</div></td>
+                <td style="font-family:var(--mono);font-size:12px;">${Math.round(actTotalHours(a))}h</td>
+                <td style="font-size:12px;color:var(--muted);">${fmtDate(range.end)}</td>
+                <td style="min-width:100px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div class="progress-wrap" style="flex:1;"><div class="progress-bar ${prog===100?'green':prog>60?'':prog>30?'amber':'red'}" style="width:${prog}%;"></div></div>
+                    <span style="font-size:11px;color:var(--muted);">${prog}%</span>
+                  </div>
+                </td>
+                <td>${getStatusBadge(a.status)}</td>
+                <td>
+                  <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:3px 7px;" onclick="openProgress(${a.id})">↻</button>
+                  ${canDo('edit_activity') ? `<button class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 6px;" onclick="removeFromSprint('${s.id}',${a.id})">✕</button>` : ''}
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : `<div class="empty" style="margin-bottom:20px;"><div class="empty-text">Nenhuma atividade no sprint</div><div class="empty-sub">Clique em "+ Adicionar atividades" para selecionar do cronograma</div></div>`}
+
+    ${notInSprint.length && canDo('create_activity') ? `
+    <div class="section-title" style="margin-bottom:12px;">Backlog — Atividades disponíveis para o sprint</div>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div style="overflow-x:auto;">
+        <table style="min-width:600px;">
+          <thead><tr><th style="padding:10px 16px;">Atividade</th><th>Prazo</th><th>Horas</th><th></th></tr></thead>
+          <tbody>
+            ${notInSprint.map(a => {
+              const range = actDateRange(a);
+              return `<tr>
+                <td style="padding:8px 16px;font-size:13px;">${esc(a.name)}</td>
+                <td style="font-size:12px;color:var(--muted);">${fmtDate(range.end)}</td>
+                <td style="font-family:var(--mono);font-size:12px;">${Math.round(actTotalHours(a))}h</td>
+                <td><button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="addToSprint('${s.id}',${a.id})">+ Adicionar ao sprint</button></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ''}
+  `;
+}
+
+function openNewSprint() {
+  document.getElementById('sprint-modal-title').textContent = 'Novo Sprint';
+  document.getElementById('sp-name').value = '';
+  document.getElementById('sp-goal').value = '';
+  document.getElementById('sp-start').value = '';
+  document.getElementById('sp-end').value = '';
+  document.getElementById('sp-id').value = '';
+  const sel = document.getElementById('sp-project');
+  sel.innerHTML = '<option value="">— Selecionar projeto —</option>' +
+    state.projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  openModal('modal-sprint');
+}
+
+function openEditSprint(id) {
+  const s = _sprints.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('sprint-modal-title').textContent = 'Editar Sprint';
+  document.getElementById('sp-name').value  = s.name;
+  document.getElementById('sp-goal').value  = s.goal || '';
+  document.getElementById('sp-start').value = s.start_date || '';
+  document.getElementById('sp-end').value   = s.end_date || '';
+  document.getElementById('sp-id').value    = s.id;
+  const sel = document.getElementById('sp-project');
+  sel.innerHTML = '<option value="">— Selecionar projeto —</option>' +
+    state.projects.map(p => `<option value="${p.id}" ${p.id===s.project_id?'selected':''}>${esc(p.name)}</option>`).join('');
+  openModal('modal-sprint');
+}
+
+async function saveSprint() {
+  const name = document.getElementById('sp-name').value.trim();
+  if (!name) { alert('Informe o nome do sprint.'); return; }
+  const start = document.getElementById('sp-start').value;
+  const end   = document.getElementById('sp-end').value;
+  if (!start || !end) { alert('Informe as datas do sprint.'); return; }
+  const projectId = parseInt(document.getElementById('sp-project').value) || null;
+  const editId    = document.getElementById('sp-id').value;
+
+  if (!sb) { showToast('Conecte ao Supabase primeiro'); return; }
+
+  const payload = { name, goal: document.getElementById('sp-goal').value, start_date: start, end_date: end, project_id: projectId };
+
+  if (editId) {
+    await sb.from('projflow_sprints').update(payload).eq('id', editId);
+  } else {
+    await sb.from('projflow_sprints').insert({ ...payload, status: 'planejamento' });
+  }
+  closeModal('modal-sprint');
+  await loadSprints();
+  render();
+  showToast('✓ Sprint salvo!');
+}
+
+async function activateSprint(id) {
+  if (!sb) return;
+  // Deactivate other active sprints of same project
+  const s = _sprints.find(x => x.id === id);
+  if (s) {
+    await sb.from('projflow_sprints').update({ status: 'planejamento' })
+      .eq('project_id', s.project_id).eq('status', 'ativo');
+  }
+  await sb.from('projflow_sprints').update({ status: 'ativo' }).eq('id', id);
+  await loadSprints();
+  render();
+  showToast('✓ Sprint ativado!');
+}
+
+async function closeSprint(id) {
+  if (!confirm('Fechar este sprint? Atividades não concluídas voltam ao backlog.')) return;
+  if (!sb) return;
+  await sb.from('projflow_sprints').update({ status: 'concluido', closed_at: new Date().toISOString() }).eq('id', id);
+  await loadSprints();
+  navigate('sprints');
+  showToast('✓ Sprint fechado!');
+}
+
+async function deleteSprint(id) {
+  if (!confirm('Excluir este sprint? As atividades voltam ao backlog.')) return;
+  if (!sb) return;
+  await sb.from('projflow_sprints').delete().eq('id', id);
+  await loadSprints();
+  render();
+}
+
+async function addToSprint(sprintId, activityId) {
+  if (!sb) return;
+  await sb.from('projflow_sprint_activities').upsert({ sprint_id: sprintId, activity_id: activityId });
+  if (!_sprintActivities[sprintId]) _sprintActivities[sprintId] = [];
+  if (!_sprintActivities[sprintId].includes(activityId)) _sprintActivities[sprintId].push(activityId);
+  renderSprintDetail();
+  showToast('✓ Atividade adicionada ao sprint');
+}
+
+async function removeFromSprint(sprintId, activityId) {
+  if (!sb) return;
+  await sb.from('projflow_sprint_activities').delete().eq('sprint_id', sprintId).eq('activity_id', activityId);
+  if (_sprintActivities[sprintId]) {
+    _sprintActivities[sprintId] = _sprintActivities[sprintId].filter(id => id !== activityId);
+  }
+  renderSprintDetail();
+  showToast('Atividade removida do sprint');
+}
+
+// ============================================================
+//  CHECK-IN DIÁRIO
+// ============================================================
+let _todayCheckins = []; // loaded from Supabase
+
+async function loadTodayCheckins() {
+  if (!sb) return;
+  const today = new Date().toISOString().slice(0,10);
+  try {
+    const { data } = await sb.from('projflow_checkins').select('*').eq('check_date', today);
+    _todayCheckins = data || [];
+  } catch(e) { _todayCheckins = []; }
+}
+
+async function loadCheckinHistory(personId, limit=30) {
+  if (!sb) return [];
+  try {
+    const { data } = await sb.from('projflow_checkins').select('*')
+      .eq('person_id', personId).order('check_date', { ascending: false }).limit(limit);
+    return data || [];
+  } catch(e) { return []; }
+}
+
+function hasCheckedInToday() {
+  const person = currentPerson();
+  if (!person) return true; // not logged in = skip
+  const today = new Date().toISOString().slice(0,10);
+  return _todayCheckins.some(c => c.person_id === person.id && c.check_date === today);
+}
+
+function openCheckinModal() {
+  const today = new Date();
+  const weekdays = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  const months   = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  document.getElementById('checkin-date-label').textContent =
+    `${weekdays[today.getDay()]}, ${today.getDate()} de ${months[today.getMonth()]} de ${today.getFullYear()}`;
+  document.getElementById('ci-yesterday').value = '';
+  document.getElementById('ci-today').value = '';
+  document.getElementById('ci-impediment-text').value = '';
+  document.getElementById('ci-impediment-text').style.display = 'none';
+  document.querySelectorAll('input[name="ci-impediment"]').forEach(r => { r.checked = r.value === 'no'; });
+  openModal('modal-checkin');
+}
+
+async function submitCheckin() {
+  const person = currentPerson();
+  if (!person || !sb) return;
+
+  const hasImpediment = document.querySelector('input[name="ci-impediment"]:checked')?.value === 'yes';
+  const today = new Date().toISOString().slice(0,10);
+
+  // Find active sprint for person's projects
+  const myActIds = state.activities.filter(a => actPersonIds(a).includes(person.id)).map(a => a.id);
+  let activeSprintId = null;
+  for (const s of _sprints) {
+    if (s.status === 'ativo' && getSprintActivities(s.id).some(id => myActIds.includes(id))) {
+      activeSprintId = s.id;
+      break;
+    }
+  }
+
+  try {
+    await sb.from('projflow_checkins').upsert({
+      person_id:      person.id,
+      check_date:     today,
+      did_yesterday:  document.getElementById('ci-yesterday').value.trim(),
+      will_do_today:  document.getElementById('ci-today').value.trim(),
+      impediment:     hasImpediment ? document.getElementById('ci-impediment-text').value.trim() : null,
+      has_impediment: hasImpediment,
+      sprint_id:      activeSprintId,
+    }, { onConflict: 'person_id,check_date' });
+    closeModal('modal-checkin');
+    await loadTodayCheckins();
+    showToast('✓ Check-in registrado!');
+    if (hasImpediment) showToast('⚠ Impedimento notificado ao gestor');
+    render();
+  } catch(e) {
+    showToast('Erro ao salvar check-in: ' + e.message);
+  }
+}
+
+// ============================================================
+//  APROVAÇÕES
+// ============================================================
+function renderApprovals() {
+  document.getElementById('topbar-title').textContent = 'Aprovações';
+  document.getElementById('topbar-sub').textContent = 'Solicitações de conclusão pendentes';
+  document.getElementById('topbar-actions').innerHTML = '';
+
+  const pending = state.activities.filter(a => a.approvalStatus === 'pending');
+
+  if (!pending.length) {
+    document.getElementById('page-content').innerHTML = `
+      <div class="empty"><div class="empty-icon">✓</div>
+      <div class="empty-text">Nenhuma aprovação pendente</div>
+      <div class="empty-sub">Quando a equipe solicitar conclusão de atividades, aparecerão aqui</div></div>`;
+    return;
+  }
+
+  document.getElementById('page-content').innerHTML = `
+    <div style="display:flex; flex-direction:column; gap:12px;">
+    ${pending.map(a => {
+      const allocs   = a.allocations||[];
+      const delivery = state.deliveries.find(d => d.id === a.deliveryId);
+      const project  = delivery ? state.projects.find(p => p.id === delivery.projectId) : null;
+      const people   = allocs.map(al => state.team.find(p => p.id === al.personId)).filter(Boolean);
+      const range    = actDateRange(a);
+
+      return `<div class="card" style="border-color:rgba(251,191,36,0.3);">
+        <div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:200px;">
+            <div style="font-size:14px; font-weight:600; margin-bottom:4px;">${esc(a.name)}</div>
+            <div style="font-size:11px; color:var(--accent2); margin-bottom:8px;">${esc(project?.name||'—')} › ${esc(delivery?.name||'—')}</div>
+            <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">
+              ${people.map(p=>`<span style="margin-right:8px;">👤 ${esc(p.name)}</span>`).join('')}
+              📅 ${fmtDate(range.start)} → ${fmtDate(range.end)} · ${Math.round(actTotalHours(a))}h
+            </div>
+            ${a.approvalDesc ? `<div style="padding:10px 12px; background:var(--surface2); border-radius:var(--radius-sm); margin-bottom:6px;">
+              <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">DESCRIÇÃO DA ENTREGA</div>
+              <div style="font-size:13px;">${esc(a.approvalDesc)}</div>
+            </div>` : ''}
+            ${a.approvalLink ? `<div style="font-size:12px; color:var(--accent2);">🔗 <a href="${esc(a.approvalLink)}" target="_blank" style="color:var(--accent2);">${esc(a.approvalLink)}</a></div>` : ''}
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px; flex-shrink:0;">
+            <span class="badge badge-amber">⏳ Aguardando aprovação</span>
+            ${canDo('approve_activities') || currentProfile()==='lider' ? `
+            <button class="btn btn-success btn-sm" onclick="openReviewApproval(${a.id})">Revisar →</button>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+    </div>`;
+}
+
+function openRequestApproval(activityId) {
+  const a = state.activities.find(x => x.id === activityId);
+  if (!a) return;
+  const range = actDateRange(a);
+  document.getElementById('approval-activity-info').innerHTML = `
+    <div style="font-weight:500;">${esc(a.name)}</div>
+    <div style="font-size:12px; color:var(--muted);">${Math.round(actTotalHours(a))}h · ${fmtDate(range.start)} → ${fmtDate(range.end)}</div>`;
+  document.getElementById('approval-desc').value = '';
+  document.getElementById('approval-link').value = '';
+  document.getElementById('approval-note').value = '';
+  document.getElementById('approval-activity-id').value = activityId;
+  openModal('modal-request-approval');
+}
+
+async function submitApprovalRequest() {
+  const id   = parseInt(document.getElementById('approval-activity-id').value);
+  const desc = document.getElementById('approval-desc').value.trim();
+  if (!desc) { alert('Descreva o que foi entregue.'); return; }
+  const a = state.activities.find(x => x.id === id);
+  if (!a) return;
+  a.approvalStatus = 'pending';
+  a.approvalDesc   = desc;
+  a.approvalLink   = document.getElementById('approval-link').value.trim();
+  a.status         = 'em_andamento'; // stays in progress until approved
+  closeModal('modal-request-approval');
+  saveState();
+  showToast('✓ Solicitação enviada! Aguardando aprovação do gestor.');
+  render();
+}
+
+function openReviewApproval(activityId) {
+  const a = state.activities.find(x => x.id === activityId);
+  if (!a) return;
+  const allocs   = a.allocations||[];
+  const people   = allocs.map(al => state.team.find(p => p.id === al.personId)).filter(Boolean);
+  const range    = actDateRange(a);
+  document.getElementById('review-activity-info').innerHTML = `
+    <div style="font-weight:500;">${esc(a.name)}</div>
+    <div style="font-size:12px; color:var(--muted);">${people.map(p=>p.name).join(', ')} · ${Math.round(actTotalHours(a))}h · ${fmtDate(range.start)} → ${fmtDate(range.end)}</div>`;
+  document.getElementById('review-delivery-desc').textContent = a.approvalDesc || '—';
+  document.getElementById('review-delivery-link').innerHTML = a.approvalLink
+    ? `<a href="${esc(a.approvalLink)}" target="_blank" style="color:var(--accent2);">🔗 ${esc(a.approvalLink)}</a>` : '';
+  document.getElementById('review-delivery-note').textContent = a.approvalNote || '';
+  document.getElementById('review-comment').value = '';
+  document.getElementById('review-activity-id').value = activityId;
+  openModal('modal-review-approval');
+}
+
+async function approveActivity() {
+  const id = parseInt(document.getElementById('review-activity-id').value);
+  const a  = state.activities.find(x => x.id === id);
+  if (!a) return;
+  a.approvalStatus   = 'approved';
+  a.status           = 'concluido';
+  a.progress         = 100;
+  a.reviewerComment  = document.getElementById('review-comment').value.trim();
+  a.reviewedBy       = currentPerson()?.id;
+  a.reviewedAt       = new Date().toISOString();
+  closeModal('modal-review-approval');
+  saveState();
+  showToast('✓ Atividade aprovada e marcada como concluída!');
+  render();
+}
+
+async function rejectApproval() {
+  const comment = document.getElementById('review-comment').value.trim();
+  if (!comment) { alert('Informe o motivo da revisão.'); return; }
+  const id = parseInt(document.getElementById('review-activity-id').value);
+  const a  = state.activities.find(x => x.id === id);
+  if (!a) return;
+  a.approvalStatus  = 'revision';
+  a.status          = 'em_andamento';
+  a.reviewerComment = comment;
+  a.reviewedBy      = currentPerson()?.id;
+  a.reviewedAt      = new Date().toISOString();
+  closeModal('modal-review-approval');
+  saveState();
+  showToast('↩ Revisão solicitada. O colaborador será notificado.');
+  render();
+}
+
+// ============================================================
+//  FATOS RELEVANTES
+// ============================================================
+let _factActions = []; // working copy while editing
+
+const factStatusLabel = { aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Monitoramento' };
+const factStatusBadge = { aberto:'badge-red', em_tratamento:'badge-amber', resolvido:'badge-green', monitoramento:'badge-blue' };
+const impactLabel     = { financeiro:'💰 Financeiro', cronograma:'📅 Cronograma', escopo:'📋 Escopo', reputacional:'🏆 Reputacional' };
+
+function renderFacts() {
+  document.getElementById('topbar-title').textContent = 'Fatos Relevantes';
+  document.getElementById('topbar-sub').textContent = 'Ocorrências e não-conformidades dos projetos';
+  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="openNewFact()">+ Novo Fato Relevante</button>`;
+
+  if (!state.facts) state.facts = [];
+
+  // Filters
+  const fStatus  = document.getElementById('fact-filter-status')?.value  || '';
+  const fProject = document.getElementById('fact-filter-project')?.value || '';
+
+  let facts = [...state.facts];
+  if (fStatus)  facts = facts.filter(f => f.status === fStatus);
+  if (fProject) facts = facts.filter(f => String(f.projectId) === fProject);
+
+  // KPIs
+  const total    = state.facts.length;
+  const abertos  = state.facts.filter(f => f.status === 'aberto').length;
+  const tratando = state.facts.filter(f => f.status === 'em_tratamento').length;
+  const resolved = state.facts.filter(f => f.status === 'resolvido').length;
+
+  document.getElementById('page-content').innerHTML = `
+
+    <!-- KPIs -->
+    <div class="grid-4" style="margin-bottom:20px;">
+      <div class="stat"><div class="stat-label">Total</div><div class="stat-value">${total}</div></div>
+      <div class="stat" style="${abertos>0?'border-color:rgba(248,113,113,0.3);':''}">
+        <div class="stat-label">Abertos</div>
+        <div class="stat-value" style="color:${abertos>0?'var(--red)':'var(--muted)'}">${abertos}</div>
+      </div>
+      <div class="stat"><div class="stat-label">Em Tratamento</div><div class="stat-value" style="color:var(--amber)">${tratando}</div></div>
+      <div class="stat"><div class="stat-label">Resolvidos</div><div class="stat-value" style="color:var(--green)">${resolved}</div></div>
+    </div>
+
+    <!-- Filters -->
+    <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap;">
+      <select class="form-control" id="fact-filter-status" onchange="renderFacts()" style="width:180px; font-size:12px; padding:6px 10px;">
+        <option value="">Todos os status</option>
+        <option value="aberto">Aberto</option>
+        <option value="em_tratamento">Em tratamento</option>
+        <option value="resolvido">Resolvido</option>
+        <option value="monitoramento">Em monitoramento</option>
+      </select>
+      <select class="form-control" id="fact-filter-project" onchange="renderFacts()" style="width:220px; font-size:12px; padding:6px 10px;">
+        <option value="">Todos os projetos</option>
+        ${state.projects.map(p => `<option value="${p.id}" ${fProject===String(p.id)?'selected':''}>${esc(p.name)}</option>`).join('')}
+      </select>
+    </div>
+
+    ${!facts.length ? `<div class="empty"><div class="empty-icon">⚠</div><div class="empty-text">Nenhum fato relevante${fStatus||fProject?' encontrado com esses filtros':' registrado'}</div></div>` : ''}
+
+    <!-- Fact Cards -->
+    <div style="display:flex; flex-direction:column; gap:12px;">
+    ${facts.sort((a,b) => {
+      const o = {aberto:0,em_tratamento:1,monitoramento:2,resolvido:3};
+      return (o[a.status]??4)-(o[b.status]??4);
+    }).map(f => {
+      const proj    = state.projects.find(p => p.id === f.projectId);
+      const owner   = state.team.find(p => p.id === f.ownerId);
+      const impacts = (f.impacts||[]).map(i => impactLabel[i]||i).join(' · ');
+      const actions = f.actions||[];
+      const doneAct = actions.filter(a => a.done).length;
+
+      return `<div class="card" style="cursor:pointer; border-left:3px solid ${f.status==='aberto'?'var(--red)':f.status==='em_tratamento'?'var(--amber)':f.status==='resolvido'?'var(--green)':'var(--blue)'};"
+        onclick="navigate('fact_detail', ${f.id})">
+        <div style="display:flex; align-items:flex-start; gap:12px;">
+          <div style="flex:1; min-width:0;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:5px; flex-wrap:wrap;">
+              <span style="font-size:14px; font-weight:600;">${esc(f.title)}</span>
+              <span class="badge ${factStatusBadge[f.status]||'badge-gray'}">${factStatusLabel[f.status]||f.status}</span>
+            </div>
+            <div style="font-size:11px; color:var(--accent2); margin-bottom:6px;">${esc(proj?.name||'—')}</div>
+            ${impacts ? `<div style="font-size:11px; color:var(--muted); margin-bottom:6px;">${impacts}</div>` : ''}
+            <div style="display:flex; gap:16px; font-size:11px; color:var(--muted); flex-wrap:wrap;">
+              ${f.date ? `<span>📅 ${fmtDate(f.date)}</span>` : ''}
+              ${owner ? `<span>👤 ${esc(owner.name)}</span>` : ''}
+              ${actions.length ? `<span>✓ ${doneAct}/${actions.length} ações</span>` : ''}
+            </div>
+          </div>
+          <div style="display:flex; gap:5px; flex-shrink:0;" onclick="event.stopPropagation()">
+            <button class="btn btn-ghost btn-sm" onclick="openEditFact(${f.id})">✎</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteFact(${f.id})">✕</button>
+          </div>
+        </div>
+        ${actions.length ? `<div style="margin-top:10px;">
+          <div class="progress-wrap"><div class="progress-bar ${doneAct===actions.length?'green':doneAct>0?'amber':'red'}" style="width:${Math.round(doneAct/actions.length*100)}%;"></div></div>
+        </div>` : ''}
+      </div>`;
+    }).join('')}
+    </div>`;
+
+  // Restore filter selections after render
+  if (fStatus)  { const el=document.getElementById('fact-filter-status');  if(el) el.value=fStatus; }
+  if (fProject) { const el=document.getElementById('fact-filter-project'); if(el) el.value=fProject; }
+}
+
+function renderFactDetail() {
+  const f = (state.facts||[]).find(x => x.id === currentFactId);
+  if (!f) { navigate('facts'); return; }
+
+  const proj  = state.projects.find(p => p.id === f.projectId);
+  const owner = state.team.find(p => p.id === f.ownerId);
+  const impacts = (f.impacts||[]).map(i => impactLabel[i]||i);
+  const whys   = f.whys||[];
+  const actions = f.actions||[];
+  const doneAct = actions.filter(a => a.done).length;
+
+  document.getElementById('topbar-title').textContent = f.title;
+  document.getElementById('topbar-sub').textContent = proj?.name || 'Fato Relevante';
+  document.getElementById('topbar-actions').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="navigate('facts')">← Voltar</button>
+    <button class="btn btn-ghost btn-sm" onclick="openEditFact(${f.id})">✎ Editar</button>
+  `;
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="breadcrumb" style="margin-bottom:20px;">
+      <a onclick="navigate('facts')">Fatos Relevantes</a><span>›</span><span>${esc(f.title)}</span>
+    </div>
+
+    <!-- Header card -->
+    <div class="card" style="margin-bottom:20px; border-left:4px solid ${f.status==='aberto'?'var(--red)':f.status==='em_tratamento'?'var(--amber)':f.status==='resolvido'?'var(--green)':'var(--blue)'};">
+      <div style="display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:200px;">
+          <div style="font-size:18px; font-weight:700; margin-bottom:8px;">${esc(f.title)}</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+            <span class="badge ${factStatusBadge[f.status]||'badge-gray'}">${factStatusLabel[f.status]||f.status}</span>
+            ${impacts.map(i => `<span class="badge badge-gray">${i}</span>`).join('')}
+          </div>
+          <div class="info-row">
+            ${proj  ? `<div class="info-item"><div class="lbl">Projeto</div><div class="val">${esc(proj.name)}</div></div>` : ''}
+            ${f.date ? `<div class="info-item"><div class="lbl">Data</div><div class="val">${fmtDate(f.date)}</div></div>` : ''}
+            ${owner ? `<div class="info-item"><div class="lbl">Registrado por</div><div class="val">${esc(owner.name)}</div></div>` : ''}
+          </div>
+        </div>
+        ${actions.length ? `<div style="text-align:center; min-width:100px;">
+          <div style="font-size:10px; color:var(--muted); margin-bottom:6px;">PLANO DE AÇÃO</div>
+          <div style="font-size:28px; font-weight:700; color:${doneAct===actions.length?'var(--green)':'var(--amber)'};">${Math.round(doneAct/actions.length*100)}%</div>
+          <div style="font-size:11px; color:var(--muted);">${doneAct}/${actions.length} concluídas</div>
+        </div>` : ''}
+      </div>
+    </div>
+
+    <div class="grid-2" style="gap:16px; margin-bottom:16px;">
+
+      <!-- Descrição + Impactos -->
+      <div>
+        <div class="card" style="margin-bottom:12px;">
+          <div class="card-title" style="margin-bottom:10px;">Descrição do Fato</div>
+          <div style="font-size:13px; line-height:1.7;">${esc(f.desc||'—').replace(/\n/g,'<br>')}</div>
+          ${f.impactDesc ? `<div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
+            <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">IMPACTOS</div>
+            <div style="font-size:13px; line-height:1.7;">${esc(f.impactDesc).replace(/\n/g,'<br>')}</div>
+          </div>` : ''}
+        </div>
+
+        <!-- 5 Porquês -->
+        <div class="card">
+          <div class="card-title" style="margin-bottom:12px;">Análise de Causa — 5 Porquês</div>
+          ${whys.filter(w=>w).length ? whys.map((w,i) => w ? `
+            <div style="display:flex; gap:10px; margin-bottom:10px; align-items:flex-start;">
+              <div style="width:24px; height:24px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0;">${i+1}</div>
+              <div style="flex:1; font-size:13px; padding-top:3px; line-height:1.6;">${esc(w)}</div>
+            </div>` : '').join('')
+          : `<div style="color:var(--muted); font-size:13px;">Análise não preenchida.</div>`}
+          ${whys.filter(w=>w).length ? `<div style="margin-top:8px; padding-top:10px; border-top:1px solid var(--border);">
+            <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">CAUSA RAIZ IDENTIFICADA</div>
+            <div style="font-size:13px; font-weight:500; color:var(--accent2);">${esc(whys[4]||whys.filter(w=>w).slice(-1)[0]||'—')}</div>
+          </div>` : ''}
+        </div>
+      </div>
+
+      <!-- Plano de Ação -->
+      <div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <div class="card-title">Plano de Ação</div>
+          <button class="btn btn-ghost btn-sm" onclick="openEditFact(${f.id})">+ Editar</button>
+        </div>
+        ${!actions.length ? `<div style="color:var(--muted); font-size:13px;">Nenhuma ação cadastrada.</div>` :
+        actions.map((a,i) => `
+          <div style="display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-bottom:1px solid var(--border);">
+            <input type="checkbox" ${a.done?'checked':''} onchange="toggleFactAction(${f.id},${i})"
+              style="width:16px;height:16px;margin-top:2px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;" />
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:13px; ${a.done?'text-decoration:line-through;color:var(--muted);':''}">${esc(a.what)}</div>
+              <div style="display:flex; gap:12px; font-size:11px; color:var(--muted); margin-top:3px; flex-wrap:wrap;">
+                ${a.who ? `<span>👤 ${esc(a.who)}</span>` : ''}
+                ${a.when ? `<span>📅 ${fmtDate(a.when)}</span>` : ''}
+              </div>
+            </div>
+            <span class="badge ${a.done?'badge-green':'badge-gray'}" style="font-size:10px;">${a.done?'✓ Feito':'Pendente'}</span>
+          </div>`).join('')}
+
+        ${actions.length ? `<div style="margin-top:14px;">
+          <div class="progress-wrap" style="height:6px;">
+            <div class="progress-bar ${doneAct===actions.length?'green':doneAct>0?'amber':'red'}" style="width:${Math.round(doneAct/actions.length*100)}%;"></div>
+          </div>
+          <div style="font-size:11px; color:var(--muted); margin-top:4px;">${doneAct} de ${actions.length} ações concluídas</div>
+        </div>` : ''}
+      </div>
+    </div>`;
+}
+
+// ---- Fact CRUD ----
+function openNewFact() {
+  document.getElementById('fact-modal-title').textContent = 'Novo Fato Relevante';
+  document.getElementById('fact-title').value = '';
+  document.getElementById('fact-date').value  = new Date().toISOString().slice(0,10);
+  document.getElementById('fact-desc').value  = '';
+  document.getElementById('fact-impact-desc').value = '';
+  document.getElementById('fact-status').value = 'aberto';
+  document.getElementById('fact-id').value = '';
+  [1,2,3,4,5].forEach(n => { document.getElementById(`fact-why-${n}`).value = ''; });
+  ['financeiro','cronograma','escopo','reputacional'].forEach(t => {
+    const cb = document.getElementById(`fact-impact-${t}`);
+    if (cb) { cb.checked = false; toggleFactImpact(t); }
+  });
+  _factActions = [];
+  renderFactActionList();
+
+  const projSel = document.getElementById('fact-project');
+  projSel.innerHTML = '<option value="">— Selecionar projeto —</option>' +
+    state.projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  const ownerSel = document.getElementById('fact-owner');
+  ownerSel.innerHTML = '<option value="">— Selecionar pessoa —</option>' +
+    state.team.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+
+  openModal('modal-fact');
+}
+
+function openEditFact(id) {
+  const f = (state.facts||[]).find(x => x.id === id);
+  if (!f) return;
+  document.getElementById('fact-modal-title').textContent = 'Editar Fato Relevante';
+  document.getElementById('fact-title').value = f.title || '';
+  document.getElementById('fact-date').value  = f.date  || '';
+  document.getElementById('fact-desc').value  = f.desc  || '';
+  document.getElementById('fact-impact-desc').value = f.impactDesc || '';
+  document.getElementById('fact-status').value = f.status || 'aberto';
+  document.getElementById('fact-id').value = id;
+  [1,2,3,4,5].forEach(n => { const el = document.getElementById(`fact-why-${n}`); if(el) el.value = (f.whys||[])[n-1]||''; });
+  ['financeiro','cronograma','escopo','reputacional'].forEach(t => {
+    const cb = document.getElementById(`fact-impact-${t}`);
+    if (cb) { cb.checked = (f.impacts||[]).includes(t); toggleFactImpact(t); }
+  });
+  _factActions = JSON.parse(JSON.stringify(f.actions||[]));
+  renderFactActionList();
+
+  const projSel = document.getElementById('fact-project');
+  projSel.innerHTML = '<option value="">— Selecionar projeto —</option>' +
+    state.projects.map(p => `<option value="${p.id}" ${p.id===f.projectId?'selected':''}>${esc(p.name)}</option>`).join('');
+  const ownerSel = document.getElementById('fact-owner');
+  ownerSel.innerHTML = '<option value="">— Selecionar pessoa —</option>' +
+    state.team.map(p => `<option value="${p.id}" ${p.id===f.ownerId?'selected':''}>${esc(p.name)}</option>`).join('');
+
+  openModal('modal-fact');
+}
+
+function toggleFactImpact(type) {
+  const cb  = document.getElementById(`fact-impact-${type}`);
+  const lbl = document.getElementById(`fact-impact-lbl-${type}`);
+  if (!cb || !lbl) return;
+  lbl.style.border = cb.checked ? '1px solid var(--accent)' : '1px solid var(--border)';
+  lbl.style.background = cb.checked ? 'rgba(108,99,255,0.08)' : 'var(--surface2)';
+}
+
+function addFactAction() {
+  _factActions.push({ what: '', who: '', when: '', done: false });
+  renderFactActionList();
+}
+
+function renderFactActionList() {
+  const el = document.getElementById('fact-actions-list');
+  if (!el) return;
+  if (!_factActions.length) {
+    el.innerHTML = `<div style="font-size:12px; color:var(--muted); margin-bottom:8px;">Nenhuma ação cadastrada.</div>`;
+    return;
+  }
+  el.innerHTML = _factActions.map((a, i) => `
+    <div style="display:grid; grid-template-columns:1fr 140px 130px auto; gap:8px; align-items:end; margin-bottom:8px; padding:10px 12px; background:var(--surface2); border-radius:var(--radius-sm);">
+      <div>
+        <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px;">O QUE FAZER</label>
+        <input class="form-control" value="${esc(a.what)}" placeholder="Descreva a ação..."
+          onchange="_factActions[${i}].what=this.value"
+          style="font-size:12px;padding:6px 8px;" />
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px;">RESPONSÁVEL</label>
+        <select onchange="_factActions[${i}].who=this.options[this.selectedIndex].text"
+          style="width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:12px;padding:6px 8px;font-family:var(--font);">
+          <option value="">—</option>
+          ${state.team.map(p => `<option value="${p.id}" ${a.who===p.name?'selected':''}>${esc(p.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px;">PRAZO</label>
+        <input type="date" value="${a.when||''}" onchange="_factActions[${i}].when=this.value"
+          style="width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:12px;padding:6px 8px;font-family:var(--font);" />
+      </div>
+      <button class="btn btn-danger btn-sm" style="padding:4px 8px;" onclick="_factActions.splice(${i},1);renderFactActionList()">✕</button>
+    </div>`).join('');
+}
+
+function saveFact() {
+  const title = document.getElementById('fact-title').value.trim();
+  if (!title) { alert('Informe o título do fato relevante.'); return; }
+  const projectId = parseInt(document.getElementById('fact-project').value) || null;
+  if (!projectId) { alert('Selecione o projeto.'); return; }
+
+  if (!state.facts) state.facts = [];
+  const editId = parseInt(document.getElementById('fact-id').value) || 0;
+
+  const impacts = ['financeiro','cronograma','escopo','reputacional']
+    .filter(t => document.getElementById(`fact-impact-${t}`)?.checked);
+  const whys = [1,2,3,4,5].map(n => document.getElementById(`fact-why-${n}`)?.value?.trim()||'');
+
+  const data = {
+    title,
+    projectId,
+    ownerId: parseInt(document.getElementById('fact-owner').value) || null,
+    date:   document.getElementById('fact-date').value,
+    status: document.getElementById('fact-status').value,
+    impacts,
+    impactDesc: document.getElementById('fact-impact-desc').value.trim(),
+    desc:   document.getElementById('fact-desc').value.trim(),
+    whys,
+    actions: JSON.parse(JSON.stringify(_factActions)),
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (editId) {
+    const idx = state.facts.findIndex(x => x.id === editId);
+    if (idx >= 0) state.facts[idx] = { ...state.facts[idx], ...data };
+  } else {
+    state.facts.push({ id: uid(), createdAt: new Date().toISOString(), ...data });
+  }
+  closeModal('modal-fact');
+  saveState();
+  render();
+  showToast('✓ Fato relevante salvo!');
+}
+
+function deleteFact(id) {
+  if (!confirm('Excluir este fato relevante?')) return;
+  state.facts = (state.facts||[]).filter(f => f.id !== id);
+  saveState();
+  render();
+}
+
+function toggleFactAction(factId, actionIdx) {
+  const f = (state.facts||[]).find(x => x.id === factId);
+  if (!f || !f.actions) return;
+  f.actions[actionIdx].done = !f.actions[actionIdx].done;
+  saveState();
+  renderFactDetail();
+  showToast(f.actions[actionIdx].done ? '✓ Ação concluída!' : 'Ação reaberta');
 }
 
 // ============================================================
