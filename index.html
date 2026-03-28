@@ -507,6 +507,9 @@ window.navigate = function() {};
     <div class="nav-item" onclick="navigate('library')">
       <span class="nav-icon">▣</span><span>Biblioteca</span>
     </div>
+    <div class="nav-item" onclick="navigate('reports')">
+      <span class="nav-icon">📊</span><span>Relatórios</span>
+    </div>
     <div class="nav-section">Configurações</div>
     <div class="nav-item" onclick="navigate('settings')">
       <span class="nav-icon">◻</span><span>Configurações</span>
@@ -1016,43 +1019,9 @@ window.navigate = function() {};
 
       <!-- 5 Porquês -->
       <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:16px 0 6px;">Análise de Causa — 5 Porquês</div>
-      <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">Pergunte "por quê?" sucessivamente para identificar a causa raiz.</div>
-
-      <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; margin-top:2px;">1</div>
-        <div style="flex:1;">
-          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Por quê o fato ocorreu?</div>
-          <input class="form-control" id="fact-why-1" placeholder="Primeiro porquê..." />
-        </div>
-      </div>
-      <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; margin-top:2px;">2</div>
-        <div style="flex:1;">
-          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Por quê isso aconteceu?</div>
-          <input class="form-control" id="fact-why-2" placeholder="Segundo porquê..." />
-        </div>
-      </div>
-      <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; margin-top:2px;">3</div>
-        <div style="flex:1;">
-          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Por quê isso ocorreu?</div>
-          <input class="form-control" id="fact-why-3" placeholder="Terceiro porquê..." />
-        </div>
-      </div>
-      <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; margin-top:2px;">4</div>
-        <div style="flex:1;">
-          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Por quê isso se deu?</div>
-          <input class="form-control" id="fact-why-4" placeholder="Quarto porquê..." />
-        </div>
-      </div>
-      <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
-        <div style="width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; margin-top:2px;">5</div>
-        <div style="flex:1;">
-          <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Por quê isso é assim? (Causa raiz)</div>
-          <input class="form-control" id="fact-why-5" placeholder="Causa raiz..." />
-        </div>
-      </div>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">Pergunte "por quê?" sucessivamente para identificar a causa raiz. Inicie com 5 e adicione mais se necessário.</div>
+      <div id="fact-whys-list"></div>
+      <button class="btn btn-ghost btn-sm" onclick="addFactWhy()" style="margin-bottom:4px;">+ Adicionar porquê</button>
 
       <!-- Plano de Ação -->
       <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); margin:16px 0 10px;">Plano de Ação</div>
@@ -1394,6 +1363,8 @@ function loadState() {
       if (!s.sprints)           s.sprints           = [];
       if (!s.sprintActivities)  s.sprintActivities  = {};
       if (!s.logbookEntries)    s.logbookEntries    = [];
+      if (!s.reports)           s.reports           = {};
+      if (!s.config)            s.config            = {};
       // Migrate old single-person activities to allocations array
       s.activities = (s.activities || []).map(a => {
         if (!a.allocations) {
@@ -1406,7 +1377,7 @@ function loadState() {
       return s;
     }
   } catch(e) {}
-  return { projects: [], deliveries: [], packages: [], activities: [], team: [], templates: [], facts: [], sprints: [], sprintActivities: {}, logbookEntries: [], nextId: 1 };
+  return { projects: [], deliveries: [], packages: [], activities: [], team: [], templates: [], facts: [], sprints: [], sprintActivities: {}, logbookEntries: [], reports: {}, nextId: 1 };
 }
 
 function saveState() {
@@ -1434,7 +1405,7 @@ let currentProjectId = null;
 function navigate(page, id) {
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  const map = { dashboard: 0, projects: 1, activities: 2, myview: 3, approvals: 4, sprints: 5, facts: 6, logbook: 7, team: 8, library: 9, settings: 10 };
+  const map = { dashboard: 0, projects: 1, activities: 2, myview: 3, approvals: 4, sprints: 5, facts: 6, logbook: 7, team: 8, library: 9, reports: 10, settings: 11 };
   if (map[page] !== undefined) {
     document.querySelectorAll('.nav-item')[map[page]]?.classList.add('active');
   }
@@ -1461,6 +1432,7 @@ function render() {
     logbook: renderLogbook,
     team: renderTeam,
     library: renderLibrary,
+    reports: renderReports,
     settings: renderSettings,
   };
   (pages[currentPage] || renderDashboard)();
@@ -4084,6 +4056,40 @@ function renderSettings() {
       </div>
     </div>
 
+    <div class="section-title" style="margin-bottom:16px;">Identidade da Empresa</div>
+    <div class="card" style="margin-bottom:24px;">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Nome da Empresa</label>
+          <input class="form-control" id="cfg-company-name" placeholder="Ex: Hidrobr Engenharia" value="${state.config?.companyName||''}"
+            onchange="saveConfig('companyName',this.value)" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Slogan / Subtítulo</label>
+          <input class="form-control" id="cfg-company-sub" placeholder="Ex: Soluções Integradas" value="${state.config?.companySub||''}"
+            onchange="saveConfig('companySub',this.value)" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">CNPJ / Registro</label>
+          <input class="form-control" id="cfg-cnpj" placeholder="Ex: 00.000.000/0001-00" value="${state.config?.cnpj||''}"
+            onchange="saveConfig('cnpj',this.value)" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Website / Contato</label>
+          <input class="form-control" id="cfg-website" placeholder="Ex: www.hidrobr.com.br" value="${state.config?.website||''}"
+            onchange="saveConfig('website',this.value)" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Endereço</label>
+        <input class="form-control" id="cfg-address" placeholder="Ex: Belo Horizonte, MG" value="${state.config?.address||''}"
+          onchange="saveConfig('address',this.value)" />
+      </div>
+      <div style="font-size:12px; color:var(--muted); margin-top:4px;">Essas informações aparecem no cabeçalho dos relatórios exportados.</div>
+    </div>
+
     <div class="card" style="border-color:rgba(248,113,113,0.2);">
       <div class="card-title" style="margin-bottom:8px; color:var(--red);">Zona de Perigo</div>
       <p style="font-size:13px; color:var(--muted); margin-bottom:14px;">Apagar todos os dados locais. Esta ação não pode ser desfeita.</p>
@@ -6266,6 +6272,65 @@ async function rejectApproval() {
 //  FATOS RELEVANTES
 // ============================================================
 let _factActions = []; // working copy while editing
+let _factWhys    = []; // working copy: [{question:'', answer:''}]
+
+function _initFactWhys() {
+  _factWhys = [
+    { question: 'Por quê o fato ocorreu?',     answer: '' },
+    { question: 'Por quê isso aconteceu?',      answer: '' },
+    { question: 'Por quê isso ocorreu?',        answer: '' },
+    { question: 'Por quê isso se deu?',         answer: '' },
+    { question: 'Por quê isso é assim?',        answer: '' },
+  ];
+}
+
+function renderFactWhysList() {
+  const el = document.getElementById('fact-whys-list');
+  if (!el) return;
+  if (!_factWhys.length) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = _factWhys.map((w, i) => {
+    const isLast = i === _factWhys.length - 1;
+    const dotCol = isLast ? 'var(--teal)' : 'var(--accent)';
+    const label  = isLast ? 'Causa raiz' : `Porquê ${i+1}`;
+    return `<div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:12px; position:relative;">
+      <!-- Number dot -->
+      <div style="display:flex; flex-direction:column; align-items:center; flex-shrink:0;">
+        <div style="width:28px; height:28px; border-radius:50%; background:${dotCol}; color:#fff;
+          display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">${i+1}</div>
+        ${!isLast ? `<div style="width:2px; flex:1; min-height:12px; background:var(--border); margin-top:4px;"></div>` : ''}
+      </div>
+      <!-- Fields -->
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; gap:6px; margin-bottom:5px; align-items:center;">
+          <span style="font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">${label}</span>
+          ${i >= 5 ? `<button onclick="_factWhys.splice(${i},1); renderFactWhysList();"
+            style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:12px;padding:0;margin-left:auto;"
+            title="Remover">✕</button>` : ''}
+        </div>
+        <input class="form-control" style="margin-bottom:5px; font-size:13px;"
+          placeholder="Pergunta: Por quê...?"
+          value="${esc(w.question)}"
+          onchange="_factWhys[${i}].question = this.value" />
+        <textarea class="form-control" rows="2" style="font-size:13px; resize:vertical;"
+          placeholder="${isLast ? 'Causa raiz identificada...' : 'Resposta / explicação...'}"
+          onchange="_factWhys[${i}].answer = this.value">${esc(w.answer)}</textarea>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function addFactWhy() {
+  _factWhys.push({ question: `Por quê ${_factWhys.length + 1}?`, answer: '' });
+  renderFactWhysList();
+  // Scroll to bottom of modal
+  setTimeout(() => {
+    const list = document.getElementById('fact-whys-list');
+    if (list) list.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 50);
+}
 
 const factStatusLabel = { aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Monitoramento' };
 const factStatusBadge = { aberto:'badge-red', em_tratamento:'badge-amber', resolvido:'badge-green', monitoramento:'badge-blue' };
@@ -6429,16 +6494,40 @@ function renderFactDetail() {
         <!-- 5 Porquês -->
         <div class="card">
           <div class="card-title" style="margin-bottom:12px;">Análise de Causa — 5 Porquês</div>
-          ${whys.filter(w=>w).length ? whys.map((w,i) => w ? `
-            <div style="display:flex; gap:10px; margin-bottom:10px; align-items:flex-start;">
-              <div style="width:24px; height:24px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0;">${i+1}</div>
-              <div style="flex:1; font-size:13px; padding-top:3px; line-height:1.6;">${esc(w)}</div>
-            </div>` : '').join('')
-          : `<div style="color:var(--muted); font-size:13px;">Análise não preenchida.</div>`}
-          ${whys.filter(w=>w).length ? `<div style="margin-top:8px; padding-top:10px; border-top:1px solid var(--border);">
-            <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">CAUSA RAIZ IDENTIFICADA</div>
-            <div style="font-size:13px; font-weight:500; color:var(--accent2);">${esc(whys[4]||whys.filter(w=>w).slice(-1)[0]||'—')}</div>
-          </div>` : ''}
+          ${(() => {
+            // Support both old format (string[]) and new format ({question,answer}[])
+            const isOldFmt = whys.length && typeof whys[0] === 'string';
+            const defaultQs = ['Por quê o fato ocorreu?','Por quê isso aconteceu?','Por quê isso ocorreu?','Por quê isso se deu?','Por quê isso é assim?'];
+            const pairs = isOldFmt
+              ? whys.map((ans,i) => ({ question: defaultQs[i]||`Por quê ${i+1}?`, answer: ans||'' }))
+              : whys;
+            const filled = pairs.filter(p => p.question || p.answer);
+            if (!filled.length) return `<div style="color:var(--muted); font-size:13px;">Análise não preenchida.</div>`;
+            const lastFilled = [...pairs].reverse().find(p => p.answer);
+            return filled.map((p, i) => {
+              const isLast = i === filled.length - 1;
+              const dotCol = isLast ? 'var(--teal)' : 'var(--accent)';
+              return `<div style="display:flex; gap:10px; margin-bottom:${isLast?'0':'14px'}; align-items:flex-start; position:relative;">
+                <div style="display:flex; flex-direction:column; align-items:center; flex-shrink:0;">
+                  <div style="width:26px; height:26px; border-radius:50%; background:${dotCol}; color:#fff;
+                    display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;">${i+1}</div>
+                  ${!isLast ? `<div style="width:2px; background:var(--border); flex:1; min-height:14px; margin-top:4px;"></div>` : ''}
+                </div>
+                <div style="flex:1; min-width:0; padding-top:2px;">
+                  <div style="font-size:12px; font-weight:600; color:var(--text); margin-bottom:4px;">${esc(p.question||`Por quê ${i+1}?`)}</div>
+                  ${p.answer
+                    ? `<div style="font-size:13px; color:var(--muted); line-height:1.6; padding:8px 10px; background:var(--surface2); border-radius:var(--radius-sm);">${esc(p.answer).replace(/\n/g,'<br>')}</div>`
+                    : `<div style="font-size:12px; color:var(--border2); font-style:italic;">Sem resposta</div>`}
+                </div>
+              </div>`;
+            }).join('') +
+            (lastFilled ? `<div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+              <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:5px;">Causa raiz identificada</div>
+              <div style="font-size:13px; font-weight:600; color:var(--teal); padding:8px 12px; background:rgba(45,212,191,0.06); border-radius:var(--radius-sm); border-left:3px solid var(--teal);">
+                ${esc(lastFilled.answer)}
+              </div>
+            </div>` : '');
+          })()}
         </div>
       </div>
 
@@ -6482,13 +6571,14 @@ function openNewFact() {
   document.getElementById('fact-impact-desc').value = '';
   document.getElementById('fact-status').value = 'aberto';
   document.getElementById('fact-id').value = '';
-  [1,2,3,4,5].forEach(n => { document.getElementById(`fact-why-${n}`).value = ''; });
   ['financeiro','cronograma','escopo','reputacional'].forEach(t => {
     const cb = document.getElementById(`fact-impact-${t}`);
     if (cb) { cb.checked = false; toggleFactImpact(t); }
   });
   _factActions = [];
   renderFactActionList();
+  _initFactWhys();
+  renderFactWhysList();
 
   const projSel = document.getElementById('fact-project');
   projSel.innerHTML = '<option value="">— Selecionar projeto —</option>' +
@@ -6510,13 +6600,32 @@ function openEditFact(id) {
   document.getElementById('fact-impact-desc').value = f.impactDesc || '';
   document.getElementById('fact-status').value = f.status || 'aberto';
   document.getElementById('fact-id').value = id;
-  [1,2,3,4,5].forEach(n => { const el = document.getElementById(`fact-why-${n}`); if(el) el.value = (f.whys||[])[n-1]||''; });
   ['financeiro','cronograma','escopo','reputacional'].forEach(t => {
     const cb = document.getElementById(`fact-impact-${t}`);
     if (cb) { cb.checked = (f.impacts||[]).includes(t); toggleFactImpact(t); }
   });
   _factActions = JSON.parse(JSON.stringify(f.actions||[]));
   renderFactActionList();
+  // Load whys — support both old format (array of strings) and new format (array of {question,answer})
+  if (f.whys && f.whys.length) {
+    const isOldFormat = typeof f.whys[0] === 'string';
+    if (isOldFormat) {
+      // Migrate: old whys were just answer strings, use default questions
+      const defaultQs = [
+        'Por quê o fato ocorreu?','Por quê isso aconteceu?',
+        'Por quê isso ocorreu?','Por quê isso se deu?','Por quê isso é assim?'
+      ];
+      _factWhys = f.whys.map((ans, i) => ({
+        question: defaultQs[i] || `Por quê ${i+1}?`,
+        answer: ans || ''
+      }));
+    } else {
+      _factWhys = JSON.parse(JSON.stringify(f.whys));
+    }
+  } else {
+    _initFactWhys();
+  }
+  renderFactWhysList();
 
   const projSel = document.getElementById('fact-project');
   projSel.innerHTML = '<option value="">— Selecionar projeto —</option>' +
@@ -6584,7 +6693,7 @@ function saveFact() {
 
   const impacts = ['financeiro','cronograma','escopo','reputacional']
     .filter(t => document.getElementById(`fact-impact-${t}`)?.checked);
-  const whys = [1,2,3,4,5].map(n => document.getElementById(`fact-why-${n}`)?.value?.trim()||'');
+  const whys = _factWhys.filter(w => w.question || w.answer);
 
   const data = {
     title,
@@ -7043,6 +7152,921 @@ function deleteAlignment(id) {
   state.logbookEntries = (state.logbookEntries||[]).filter(e => String(e.id) !== String(id));
   saveState();
   render();
+}
+
+function saveConfig(key, value) {
+  if (!state.config) state.config = {};
+  state.config[key] = value;
+  saveState();
+}
+
+// ============================================================
+//  RELATÓRIOS
+// ============================================================
+let _currentReport = null; // { type, projectId, weekStart, factId }
+
+function renderReports() {
+  document.getElementById('topbar-title').textContent = 'Relatórios';
+  document.getElementById('topbar-sub').textContent = 'Geração e exportação de relatórios';
+  document.getElementById('topbar-actions').innerHTML = '';
+
+  document.getElementById('page-content').innerHTML = `
+    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; margin-bottom:32px;">
+      ${[
+        { type:'team_alloc',   icon:'👥', title:'Alocação da Equipe',              desc:'Distribuição de horas por pessoa, projetos e mapa de carga com campo de análise.' },
+        { type:'weekly',       icon:'📅', title:'Relatório Semanal de Projeto',    desc:'Atividades realizadas, previstas, pendências e pontos de alerta por semana.' },
+        { type:'fact_single',  icon:'⚠',  title:'Relatório de Fato Relevante',    desc:'Consolidação de um fato: descrição, impactos, 5 Porquês, plano de ação e análise crítica.' },
+        { type:'fact_consol',  icon:'📋', title:'Relatório Consolidado de Fatos', desc:'Visão integrada de todos os fatos abertos com KPIs, distribuição e análise crítica.' },
+      ].map(r => `<div class="card" style="cursor:pointer; border-left:3px solid var(--accent);"
+        onclick="openReport('${r.type}')">
+        <div style="font-size:28px; margin-bottom:10px;">${r.icon}</div>
+        <div style="font-size:14px; font-weight:600; margin-bottom:6px;">${r.title}</div>
+        <div style="font-size:12px; color:var(--muted); line-height:1.6;">${r.desc}</div>
+      </div>`).join('')}
+    </div>
+    <div id="report-content"></div>
+  `;
+}
+
+function openReport(type) {
+  _currentReport = { type };
+  const el = document.getElementById('report-content');
+  if (!el) return;
+
+  if (type === 'team_alloc')  renderReportTeamAlloc(el);
+  if (type === 'weekly')      renderReportWeeklySetup(el);
+  if (type === 'fact_single') renderReportFactSingleSetup(el);
+  if (type === 'fact_consol') renderReportFactConsol(el);
+}
+
+// ---------- HELPERS ----------
+function getMonday(d) {
+  const dt = new Date(d); dt.setHours(0,0,0,0);
+  const day = dt.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  dt.setDate(dt.getDate() + diff);
+  return dt;
+}
+function isoDate(d) { return d.toISOString().slice(0,10); }
+function reportKey(type, ...parts) { return `${type}_${parts.join('_')}`; }
+function getReportData(key) { return (state.reports||{})[key] || {}; }
+function saveReportData(key, data) {
+  if (!state.reports) state.reports = {};
+  state.reports[key] = { ...getReportData(key), ...data, updatedAt: new Date().toISOString() };
+  saveState();
+}
+function reportHeader(title, subtitle) {
+  const cfg = state.config || {};
+  return `<div style="display:flex; align-items:flex-start; justify-content:space-between; padding:20px 24px;
+    background:linear-gradient(135deg,var(--accent) 0%,var(--accent2) 100%); border-radius:var(--radius);
+    margin-bottom:24px; color:#fff; flex-wrap:wrap; gap:12px;">
+    <div>
+      <div style="font-size:11px; opacity:0.75; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">${esc(cfg.companyName||'ProjFlow')}</div>
+      <div style="font-size:20px; font-weight:700; margin-bottom:2px;">${title}</div>
+      <div style="font-size:13px; opacity:0.85;">${subtitle}</div>
+    </div>
+    <div style="text-align:right; font-size:11px; opacity:0.75; line-height:1.8;">
+      ${cfg.companyName ? `<div>${esc(cfg.companyName)}</div>` : ''}
+      ${cfg.address ? `<div>${esc(cfg.address)}</div>` : ''}
+      ${cfg.website ? `<div>${esc(cfg.website)}</div>` : ''}
+      <div>Emitido em ${new Date().toLocaleDateString('pt-BR')}</div>
+    </div>
+  </div>`;
+}
+
+// ---------- RELATÓRIO 1: ALOCAÇÃO DA EQUIPE ----------
+function renderReportTeamAlloc(el) {
+  const key   = reportKey('team_alloc', isoDate(new Date()).slice(0,7));
+  const saved = getReportData(key);
+
+  const today = new Date();
+  const months = [];
+  for (let i = -2; i <= 3; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+    months.push(d);
+  }
+  const mNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+  // Compute hours per person per month
+  const data = {};
+  state.team.forEach(p => { data[p.id] = {}; months.forEach(m => { data[p.id][isoDate(m).slice(0,7)] = 0; }); });
+  state.activities.forEach(a => {
+    (a.allocations||[]).forEach(al => {
+      if (!al.personId || !al.start || !al.end) return;
+      const start = new Date(al.start); const end = new Date(al.end);
+      const days = Math.max(1, (end - start) / 86400000);
+      months.forEach(m => {
+        const mKey = isoDate(m).slice(0,7);
+        const mEnd = new Date(m.getFullYear(), m.getMonth()+1, 0);
+        const os = start > m ? start : m;
+        const oe = end < mEnd ? end : mEnd;
+        if (os <= oe && data[al.personId]) {
+          const overlap = (oe - os) / 86400000 + 1;
+          data[al.personId][mKey] = (data[al.personId][mKey]||0) + (parseFloat(al.hours)||0) * overlap / days;
+        }
+      });
+    });
+  });
+
+  let maxH = 0;
+  Object.values(data).forEach(d => Object.values(d).forEach(h => { if(h>maxH) maxH=h; }));
+
+  el.innerHTML = `
+    ${reportHeader('Alocação da Equipe', `Distribuição de carga — ${mNames[months[0].getMonth()]}/${months[0].getFullYear()} a ${mNames[months[5].getMonth()]}/${months[5].getFullYear()}`)}
+
+    <!-- Heatmap table -->
+    <div class="card" style="margin-bottom:20px; overflow-x:auto;">
+      <div class="card-title" style="margin-bottom:14px;">Mapa de Carga por Mês (horas)</div>
+      <table style="width:100%; border-collapse:collapse; min-width:500px;">
+        <thead><tr style="background:var(--surface2);">
+          <th style="padding:8px 12px; text-align:left; font-size:11px; color:var(--muted); font-weight:600;">Pessoa</th>
+          ${months.map(m => `<th style="padding:8px 8px; text-align:center; font-size:11px; color:var(--muted); font-weight:600;">
+            ${mNames[m.getMonth()]}<br><span style="font-size:10px;">${String(m.getFullYear()).slice(2)}</span>
+          </th>`).join('')}
+          <th style="padding:8px 8px; text-align:center; font-size:11px; color:var(--muted); font-weight:600;">Total</th>
+        </tr></thead>
+        <tbody>
+          ${state.team.map((p, pi) => {
+            const col = getPersonColor(pi);
+            const total = Object.values(data[p.id]||{}).reduce((s,h)=>s+h,0);
+            return `<tr style="border-top:1px solid var(--border);">
+              <td style="padding:8px 12px; white-space:nowrap;">
+                <div style="display:flex; align-items:center; gap:7px;">
+                  <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(p.name)}</div>
+                  <span style="font-size:13px;">${esc(p.name.split(' ')[0])} ${esc(p.name.split(' ').slice(-1)[0])}</span>
+                </div>
+              </td>
+              ${months.map(m => {
+                const h = data[p.id]?.[isoDate(m).slice(0,7)] || 0;
+                const intensity = maxH > 0 ? Math.min(h/maxH, 1) : 0;
+                const alpha = h > 0 ? 0.15 + intensity*0.7 : 0;
+                const bg = h > 0 ? `rgba(${parseInt(col.slice(1,3),16)},${parseInt(col.slice(3,5),16)},${parseInt(col.slice(5,7),16)},${alpha.toFixed(2)})` : 'var(--surface2)';
+                const isCurrentMonth = isoDate(m).slice(0,7) === isoDate(today).slice(0,7);
+                return `<td style="padding:6px 8px; text-align:center;">
+                  <div style="display:inline-flex; align-items:center; justify-content:center; width:52px; height:32px;
+                    border-radius:6px; background:${bg}; font-size:11px; font-family:var(--mono);
+                    ${isCurrentMonth ? 'border:1px solid rgba(251,191,36,0.5);' : ''}">
+                    ${h > 0 ? Math.round(h)+'h' : '—'}
+                  </div>
+                </td>`;
+              }).join('')}
+              <td style="padding:6px 8px; text-align:center; font-family:var(--mono); font-size:12px; font-weight:600; color:${col};">${Math.round(total)}h</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Per person detail cards -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; margin-bottom:24px;">
+      ${state.team.map((p, pi) => {
+        const col  = getPersonColor(pi);
+        const acts = state.activities.filter(a => actPersonIds(a).includes(p.id));
+        const totalH = acts.reduce((s,a) => { const al=(a.allocations||[]).find(x=>x.personId===p.id); return s+(al?parseFloat(al.hours)||0:0); }, 0);
+        const doneH  = acts.filter(a=>a.status==='concluido').reduce((s,a) => { const al=(a.allocations||[]).find(x=>x.personId===p.id); return s+(al?parseFloat(al.hours)||0:0); }, 0);
+        const lates  = acts.filter(a=>isLate(a)).length;
+        const pct    = totalH > 0 ? Math.round(doneH/totalH*100) : 0;
+        const projs  = [...new Set(acts.map(a => {
+          const d = state.deliveries.find(d=>d.id===a.deliveryId);
+          return d?.projectId;
+        }).filter(Boolean))].map(id => state.projects.find(p=>p.id===id)?.name).filter(Boolean);
+        return `<div class="card">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+            <div class="avatar" style="background:${col}22;color:${col};width:38px;height:38px;font-size:14px;">${initials(p.name)}</div>
+            <div>
+              <div style="font-weight:600;">${esc(p.name)}</div>
+              <div style="font-size:11px; color:var(--muted);">${esc(p.role||'—')}</div>
+            </div>
+          </div>
+          <div class="grid-3" style="margin-bottom:10px;">
+            <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">HORAS</div><div style="font-size:16px;font-weight:700;color:${col};">${Math.round(totalH)}h</div></div>
+            <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">PROGRESSO</div><div style="font-size:16px;font-weight:700;">${pct}%</div></div>
+            <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">ATRASADAS</div><div style="font-size:16px;font-weight:700;color:${lates>0?'var(--red)':'var(--muted)'};">${lates}</div></div>
+          </div>
+          <div style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;margin-bottom:8px;">
+            <div style="height:100%;width:${pct}%;background:${col};border-radius:2px;"></div>
+          </div>
+          ${projs.length ? `<div style="font-size:11px; color:var(--muted); line-height:1.7;">${projs.map(n=>`<span style="background:var(--surface2);padding:2px 7px;border-radius:10px;margin-right:4px;">${esc(n.slice(0,25))}</span>`).join('')}</div>` : ''}
+        </div>`;
+      }).join('')}
+    </div>
+
+    <!-- Analysis field -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title" style="margin-bottom:10px;">Análise do Gestor</div>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">Escreva suas observações sobre a distribuição atual da equipe, riscos e recomendações.</div>
+      <textarea class="form-control" id="report-alloc-analysis" rows="6" placeholder="Análise sobre a alocação da equipe..."
+        style="resize:vertical;"
+        onchange="saveReportData('${key}',{analysis:this.value})">${esc(saved.analysis||'')}</textarea>
+    </div>
+
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn btn-primary" onclick="exportReportTeamAllocWord('${key}')">↓ Exportar Word</button>
+    </div>
+  `;
+}
+
+// ---------- RELATÓRIO 2: SEMANAL DE PROJETO ----------
+function renderReportWeeklySetup(el) {
+  const today = new Date();
+  const monday = getMonday(today);
+  const defaultWeek = isoDate(monday);
+
+  el.innerHTML = `
+    ${reportHeader('Relatório Semanal de Projeto', 'Selecione o projeto e a semana')}
+    <div class="card">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Projeto *</label>
+          <select class="form-control" id="rw-project">
+            <option value="">— Selecionar projeto —</option>
+            ${state.projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Semana (início na segunda-feira)</label>
+          <input type="date" class="form-control" id="rw-week" value="${defaultWeek}" />
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="renderReportWeekly(document.getElementById('report-content'))">Gerar Relatório →</button>
+    </div>
+  `;
+}
+
+function renderReportWeekly(el) {
+  const projId = parseInt(document.getElementById('rw-project')?.value) || null;
+  const weekInput = document.getElementById('rw-week')?.value;
+  if (!projId) { showToast('Selecione um projeto'); return; }
+  if (!weekInput) { showToast('Selecione a semana'); return; }
+
+  const proj = state.projects.find(p => p.id === projId);
+  const weekMon = getMonday(new Date(weekInput + 'T12:00:00'));
+  const weekSun = new Date(weekMon); weekSun.setDate(weekMon.getDate() + 6);
+  const nextMon = new Date(weekSun); nextMon.setDate(weekSun.getDate() + 1);
+  const nextSun = new Date(nextMon); nextSun.setDate(nextMon.getDate() + 6);
+
+  const key   = reportKey('weekly', projId, isoDate(weekMon));
+  const saved = getReportData(key);
+
+  const deliveries = state.deliveries.filter(d => d.projectId === projId);
+  const allActs    = state.activities.filter(a => {
+    if (a.deliveryId) return deliveries.some(d => d.id === a.deliveryId);
+    const pkg = (state.packages||[]).find(p => p.id === a.packageId);
+    return pkg && deliveries.some(d => d.id === pkg.deliveryId);
+  });
+
+  // Activities updated in this week (by checking date range overlap)
+  const thisWeekActs = allActs.filter(a => {
+    const r = actDateRange(a);
+    if (!r.start && !r.end) return false;
+    const aS = r.start ? new Date(r.start) : new Date(r.end);
+    const aE = r.end   ? new Date(r.end)   : new Date(r.start);
+    return aS <= weekSun && aE >= weekMon;
+  });
+
+  // Activities for next week
+  const nextWeekActs = allActs.filter(a => {
+    const r = actDateRange(a);
+    if (!r.start && !r.end) return false;
+    const aS = r.start ? new Date(r.start) : new Date(r.end);
+    const aE = r.end   ? new Date(r.end)   : new Date(r.start);
+    return aS <= nextSun && aE >= nextMon;
+  });
+
+  const selectedThisWeek = new Set(saved.selectedThisWeek || thisWeekActs.map(a=>a.id));
+  const selectedNextWeek = new Set(saved.selectedNextWeek || nextWeekActs.map(a=>a.id));
+
+  const mNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const fmt = d => `${d.getDate()} ${mNames[d.getMonth()]}`;
+
+  const actRow = (a, setName, selected) => {
+    const range   = actDateRange(a);
+    const allocs  = a.allocations||[];
+    const people  = allocs.map(al=>state.team.find(p=>p.id===al.personId)).filter(Boolean);
+    const checked = selected.has(a.id);
+    return `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:8px 12px;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" ${checked?'checked':''} style="accent-color:var(--accent);"
+            onchange="toggleReportActivity('${key}','${setName}',${a.id},this.checked)" />
+          <span style="font-size:13px;">${esc(a.name)}</span>
+        </label>
+      </td>
+      <td style="padding:8px; font-size:12px; color:var(--muted);">${people.map(p=>p.name.split(' ')[0]).join(', ')||'—'}</td>
+      <td style="padding:8px; font-size:12px; color:var(--muted);">${fmtDate(range.end)}</td>
+      <td style="padding:8px;">${getStatusBadge(a.status)}</td>
+      <td style="padding:8px; text-align:center; font-size:12px; color:var(--muted);">${a.progress||0}%</td>
+    </tr>`;
+  };
+
+  el.innerHTML = `
+    ${reportHeader(`Relatório Semanal — ${esc(proj?.name||'')}`, `Semana de ${fmt(weekMon)} a ${fmt(weekSun)} de ${weekMon.getFullYear()}`)}
+
+    <div style="display:flex; gap:10px; margin-bottom:20px; align-items:center; flex-wrap:wrap;">
+      <button class="btn btn-ghost btn-sm" onclick="shiftReportWeek(-1)">‹ Semana anterior</button>
+      <span style="font-size:13px; font-weight:500;">${fmt(weekMon)} – ${fmt(weekSun)}</span>
+      <button class="btn btn-ghost btn-sm" onclick="shiftReportWeek(1)">Próxima semana ›</button>
+      <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="exportReportWeeklyWord('${key}')">↓ Exportar Word</button>
+    </div>
+
+    <!-- Realizadas esta semana -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:4px;">✅ Realizadas nesta semana</div>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">Selecione as atividades executadas no período ${fmt(weekMon)}–${fmt(weekSun)}.</div>
+      ${thisWeekActs.length ? `<table style="width:100%; border-collapse:collapse;">
+        <thead><tr style="background:var(--surface2);">
+          <th style="padding:8px 12px; text-align:left; font-size:11px; color:var(--muted);">Atividade</th>
+          <th style="padding:8px; font-size:11px; color:var(--muted);">Responsável</th>
+          <th style="padding:8px; font-size:11px; color:var(--muted);">Prazo</th>
+          <th style="padding:8px; font-size:11px; color:var(--muted);">Status</th>
+          <th style="padding:8px; font-size:11px; color:var(--muted); text-align:center;">Progresso</th>
+        </tr></thead>
+        <tbody>${thisWeekActs.map(a => actRow(a,'selectedThisWeek',selectedThisWeek)).join('')}</tbody>
+      </table>` : `<div style="color:var(--muted); font-size:13px;">Nenhuma atividade com prazo nesta semana.</div>`}
+    </div>
+
+    <!-- Previstas próxima semana -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:4px;">📅 Previstas para a próxima semana</div>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">Selecione as atividades planejadas para ${fmt(nextMon)}–${fmt(nextSun)}.</div>
+      ${nextWeekActs.length ? `<table style="width:100%; border-collapse:collapse;">
+        <thead><tr style="background:var(--surface2);">
+          <th style="padding:8px 12px; text-align:left; font-size:11px; color:var(--muted);">Atividade</th>
+          <th style="padding:8px; font-size:11px; color:var(--muted);">Responsável</th>
+          <th style="padding:8px; font-size:11px; color:var(--muted);">Prazo</th>
+          <th style="padding:8px; font-size:11px; color:var(--muted);">Status</th>
+          <th style="padding:8px; font-size:11px; color:var(--muted); text-align:center;">Progresso</th>
+        </tr></thead>
+        <tbody>${nextWeekActs.map(a => actRow(a,'selectedNextWeek',selectedNextWeek)).join('')}</tbody>
+      </table>` : `<div style="color:var(--muted); font-size:13px;">Nenhuma atividade prevista para a próxima semana.</div>`}
+    </div>
+
+    <!-- Pendências e Alertas -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px;">⏳ Pendências</div>
+        <textarea class="form-control" rows="5" placeholder="Liste as pendências em aberto..." style="resize:vertical;"
+          onchange="saveReportData('${key}',{pendencies:this.value})">${esc(saved.pendencies||'')}</textarea>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px;">🚨 Pontos de Alerta</div>
+        <textarea class="form-control" rows="5" placeholder="Riscos, desvios, situações de atenção..." style="resize:vertical;"
+          onchange="saveReportData('${key}',{alerts:this.value})">${esc(saved.alerts||'')}</textarea>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title" style="margin-bottom:8px;">📝 Observações Gerais</div>
+      <textarea class="form-control" rows="4" placeholder="Contexto geral, encaminhamentos, decisões tomadas..." style="resize:vertical;"
+        onchange="saveReportData('${key}',{notes:this.value})">${esc(saved.notes||'')}</textarea>
+    </div>
+
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="renderReportWeeklySetup(document.getElementById('report-content'))">← Voltar</button>
+      <button class="btn btn-primary" onclick="exportReportWeeklyWord('${key}')">↓ Exportar Word</button>
+    </div>
+  `;
+
+  // Store current context for week navigation
+  _currentReport = { type:'weekly', projId, weekMon: isoDate(weekMon) };
+}
+
+function toggleReportActivity(key, setName, actId, checked) {
+  const saved = getReportData(key);
+  let set = new Set(saved[setName] || []);
+  if (checked) set.add(actId); else set.delete(actId);
+  saveReportData(key, { [setName]: [...set] });
+}
+
+function shiftReportWeek(dir) {
+  const el = document.getElementById('rw-week');
+  if (el) {
+    const d = new Date(el.value + 'T12:00:00');
+    d.setDate(d.getDate() + dir * 7);
+    el.value = isoDate(getMonday(d));
+  }
+  renderReportWeekly(document.getElementById('report-content'));
+}
+
+// ---------- RELATÓRIO 3: FATO RELEVANTE INDIVIDUAL ----------
+function renderReportFactSingleSetup(el) {
+  const facts = (state.facts||[]);
+  el.innerHTML = `
+    ${reportHeader('Relatório de Fato Relevante', 'Selecione o fato')}
+    <div class="card">
+      <div class="form-group">
+        <label class="form-label">Fato Relevante *</label>
+        <select class="form-control" id="rfs-fact">
+          <option value="">— Selecionar fato —</option>
+          ${facts.map(f => {
+            const p = state.projects.find(p=>p.id===f.projectId);
+            return `<option value="${f.id}">${esc(f.title)} — ${esc(p?.name||'')}</option>`;
+          }).join('')}
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="renderReportFactSingle(document.getElementById('report-content'))">Gerar Relatório →</button>
+    </div>
+  `;
+}
+
+function renderReportFactSingle(el) {
+  const factId = document.getElementById('rfs-fact')?.value;
+  if (!factId) { showToast('Selecione um fato'); return; }
+  const f = (state.facts||[]).find(x => String(x.id) === String(factId));
+  if (!f) return;
+  const proj  = state.projects.find(p => p.id === f.projectId);
+  const owner = state.team.find(p => p.id === f.ownerId);
+  const key   = reportKey('fact_single', factId);
+  const saved = getReportData(key);
+
+  const impactLabels = { financeiro:'💰 Financeiro', cronograma:'📅 Cronograma', escopo:'📋 Escopo', reputacional:'🏆 Reputacional' };
+  const statusLabel  = { aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Em monitoramento' };
+  const actions = f.actions||[];
+  const doneAct = actions.filter(a=>a.done).length;
+
+  // Whys with support for old and new format
+  const isOldFmt = f.whys?.length && typeof f.whys[0] === 'string';
+  const defaultQs = ['Por quê o fato ocorreu?','Por quê isso aconteceu?','Por quê isso ocorreu?','Por quê isso se deu?','Por quê isso é assim?'];
+  const whyPairs = isOldFmt
+    ? (f.whys||[]).map((ans,i) => ({ question: defaultQs[i]||`Por quê ${i+1}?`, answer: ans }))
+    : (f.whys||[]);
+  const filledWhys = whyPairs.filter(w => w.answer);
+  const rootCause  = [...filledWhys].reverse().find(w => w.answer);
+
+  el.innerHTML = `
+    ${reportHeader(`Fato Relevante — ${esc(f.title)}`, `${esc(proj?.name||'—')} · ${fmtDate(f.date)} · ${statusLabel[f.status]||f.status}`)}
+
+    <!-- Identificação -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:12px;">Identificação</div>
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:12px;">
+        <div><div style="font-size:10px;color:var(--muted);">PROJETO</div><div style="font-size:13px;font-weight:500;">${esc(proj?.name||'—')}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);">DATA</div><div style="font-size:13px;">${fmtDate(f.date)}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);">RESPONSÁVEL</div><div style="font-size:13px;">${esc(owner?.name||'—')}</div></div>
+        <div><div style="font-size:10px;color:var(--muted);">STATUS</div><div><span class="badge ${f.status==='aberto'?'badge-red':f.status==='resolvido'?'badge-green':'badge-amber'}">${statusLabel[f.status]||f.status}</span></div></div>
+        <div style="grid-column:2/-1;"><div style="font-size:10px;color:var(--muted);">IMPACTOS</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;">${(f.impacts||[]).map(i=>`<span class="badge badge-gray">${impactLabels[i]||i}</span>`).join('')}</div></div>
+      </div>
+    </div>
+
+    <!-- Descrição -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:8px;">Descrição do Fato</div>
+      <div style="font-size:13px;line-height:1.7;">${esc(f.desc||'—').replace(/\n/g,'<br>')}</div>
+      ${f.impactDesc ? `<div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">DESCRIÇÃO DOS IMPACTOS</div>
+        <div style="font-size:13px;line-height:1.7;">${esc(f.impactDesc).replace(/\n/g,'<br>')}</div>
+      </div>` : ''}
+    </div>
+
+    <!-- 5 Porquês -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:12px;">Análise de Causa — 5 Porquês</div>
+      ${filledWhys.map((w,i) => `<div style="display:flex;gap:10px;margin-bottom:12px;align-items:flex-start;">
+        <div style="width:24px;height:24px;border-radius:50%;background:${i===filledWhys.length-1?'var(--teal)':'var(--accent)'};color:#fff;
+          display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${i+1}</div>
+        <div style="flex:1;">
+          <div style="font-size:12px;font-weight:600;margin-bottom:3px;">${esc(w.question)}</div>
+          <div style="font-size:13px;color:var(--muted);padding:6px 10px;background:var(--surface2);border-radius:var(--radius-sm);">${esc(w.answer)}</div>
+        </div>
+      </div>`).join('')}
+      ${rootCause ? `<div style="margin-top:8px;padding:10px 14px;background:rgba(45,212,191,0.06);border-radius:var(--radius-sm);border-left:3px solid var(--teal);">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:3px;">CAUSA RAIZ IDENTIFICADA</div>
+        <div style="font-size:13px;font-weight:600;color:var(--teal);">${esc(rootCause.answer)}</div>
+      </div>` : ''}
+    </div>
+
+    <!-- Plano de Ação -->
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div class="card-title">Plano de Ação</div>
+        <span style="font-size:12px;color:var(--muted);">${doneAct}/${actions.length} concluídas</span>
+      </div>
+      ${actions.length ? `<table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="background:var(--surface2);">
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--muted);">Ação</th>
+          <th style="padding:8px;font-size:11px;color:var(--muted);">Responsável</th>
+          <th style="padding:8px;font-size:11px;color:var(--muted);">Prazo</th>
+          <th style="padding:8px;font-size:11px;color:var(--muted);">Status</th>
+        </tr></thead>
+        <tbody>${actions.map(a => `<tr style="border-top:1px solid var(--border);">
+          <td style="padding:8px 12px;font-size:13px;${a.done?'text-decoration:line-through;color:var(--muted);':''}">${esc(a.what)}</td>
+          <td style="padding:8px;font-size:12px;color:var(--muted);">${esc(a.who||'—')}</td>
+          <td style="padding:8px;font-size:12px;color:var(--muted);">${fmtDate(a.when)}</td>
+          <td style="padding:8px;"><span class="badge ${a.done?'badge-green':'badge-gray'}">${a.done?'✓ Feito':'Pendente'}</span></td>
+        </tr>`).join('')}</tbody>
+      </table>` : `<div style="color:var(--muted);font-size:13px;">Nenhuma ação cadastrada.</div>`}
+    </div>
+
+    <!-- Análise Crítica -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title" style="margin-bottom:8px;">Análise Crítica</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Avaliação qualitativa do gestor sobre o fato, suas causas, impactos reais e lições aprendidas.</div>
+      <textarea class="form-control" rows="6" placeholder="Descreva sua análise crítica sobre o fato relevante..." style="resize:vertical;"
+        onchange="saveReportData('${key}',{criticalAnalysis:this.value})">${esc(saved.criticalAnalysis||'')}</textarea>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="renderReportFactSingleSetup(document.getElementById('report-content'))">← Voltar</button>
+      <button class="btn btn-primary" onclick="exportReportFactSingleWord('${key}','${factId}')">↓ Exportar Word</button>
+    </div>
+  `;
+}
+
+// ---------- RELATÓRIO 4: CONSOLIDADO DE FATOS ----------
+function renderReportFactConsol(el) {
+  const facts = (state.facts||[]);
+  const key   = reportKey('fact_consol', 'all');
+  const saved = getReportData(key);
+
+  const byStatus  = { aberto:0, em_tratamento:0, resolvido:0, monitoramento:0 };
+  const byImpact  = { financeiro:0, cronograma:0, escopo:0, reputacional:0 };
+  const byProject = {};
+
+  facts.forEach(f => {
+    if (byStatus[f.status] !== undefined) byStatus[f.status]++;
+    (f.impacts||[]).forEach(i => { if (byImpact[i] !== undefined) byImpact[i]++; });
+    const p = state.projects.find(p=>p.id===f.projectId);
+    const pn = p?.name || 'Sem projeto';
+    byProject[pn] = (byProject[pn]||0) + 1;
+  });
+
+  const open = facts.filter(f => f.status !== 'resolvido');
+  const totalActions = facts.reduce((s,f)=>s+(f.actions||[]).length,0);
+  const doneActions  = facts.reduce((s,f)=>s+(f.actions||[]).filter(a=>a.done).length,0);
+  const actionPct    = totalActions > 0 ? Math.round(doneActions/totalActions*100) : 0;
+
+  const statusLabel = { aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Monitoramento' };
+  const impactLabel = { financeiro:'💰 Financeiro', cronograma:'📅 Cronograma', escopo:'📋 Escopo', reputacional:'🏆 Reputacional' };
+
+  el.innerHTML = `
+    ${reportHeader('Relatório Consolidado de Fatos Relevantes', `${facts.length} fatos registrados · ${open.length} em aberto · Emitido em ${new Date().toLocaleDateString('pt-BR')}`)}
+
+    <!-- KPIs -->
+    <div class="grid-4" style="margin-bottom:20px;">
+      <div class="stat"><div class="stat-label">Total de Fatos</div><div class="stat-value">${facts.length}</div></div>
+      <div class="stat" style="${byStatus.aberto>0?'border-color:rgba(248,113,113,0.3);':''}">
+        <div class="stat-label">Abertos</div>
+        <div class="stat-value" style="color:${byStatus.aberto>0?'var(--red)':'var(--muted)'};">${byStatus.aberto}</div>
+      </div>
+      <div class="stat"><div class="stat-label">Plano de Ação</div><div class="stat-value">${actionPct}%</div><div class="stat-sub">${doneActions}/${totalActions} ações</div></div>
+      <div class="stat"><div class="stat-label">Resolvidos</div><div class="stat-value" style="color:var(--green);">${byStatus.resolvido}</div></div>
+    </div>
+
+    <!-- Por Status e Impacto -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px;">Distribuição por Status</div>
+        ${Object.entries(byStatus).map(([s,n]) => {
+          const pct = facts.length > 0 ? Math.round(n/facts.length*100) : 0;
+          const col = s==='aberto'?'var(--red)':s==='em_tratamento'?'var(--amber)':s==='resolvido'?'var(--green)':'var(--blue)';
+          return `<div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+              <span style="font-size:12px;">${statusLabel[s]}</span>
+              <span style="font-size:12px;font-weight:600;color:${col};">${n}</span>
+            </div>
+            <div style="height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;">
+              <div style="height:100%;width:${pct}%;background:${col};border-radius:3px;"></div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px;">Distribuição por Impacto</div>
+        ${Object.entries(byImpact).filter(([,n])=>n>0).map(([i,n]) => {
+          const pct = facts.length > 0 ? Math.round(n/facts.length*100) : 0;
+          return `<div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+              <span style="font-size:12px;">${impactLabel[i]}</span>
+              <span style="font-size:12px;font-weight:600;">${n}</span>
+            </div>
+            <div style="height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;">
+              <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:3px;"></div>
+            </div>
+          </div>`;
+        }).join('') || `<div style="color:var(--muted);font-size:13px;">Nenhum impacto registrado.</div>`}
+      </div>
+    </div>
+
+    <!-- Timeline de fatos abertos -->
+    ${open.length ? `<div class="card" style="margin-bottom:20px;">
+      <div class="card-title" style="margin-bottom:12px;">Fatos em Aberto</div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="background:var(--surface2);">
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--muted);">Fato</th>
+          <th style="padding:8px;font-size:11px;color:var(--muted);">Projeto</th>
+          <th style="padding:8px;font-size:11px;color:var(--muted);">Data</th>
+          <th style="padding:8px;font-size:11px;color:var(--muted);">Impactos</th>
+          <th style="padding:8px;font-size:11px;color:var(--muted);">Status</th>
+          <th style="padding:8px;font-size:11px;color:var(--muted);text-align:center;">Ações</th>
+        </tr></thead>
+        <tbody>${open.sort((a,b)=>{const o={aberto:0,em_tratamento:1,monitoramento:2};return (o[a.status]??3)-(o[b.status]??3);})
+          .map(f => {
+            const p = state.projects.find(p=>p.id===f.projectId);
+            const acts = f.actions||[];
+            const done = acts.filter(a=>a.done).length;
+            const pct  = acts.length > 0 ? Math.round(done/acts.length*100) : 0;
+            return `<tr style="border-top:1px solid var(--border);">
+              <td style="padding:8px 12px;font-size:13px;font-weight:500;">${esc(f.title)}</td>
+              <td style="padding:8px;font-size:12px;color:var(--muted);">${esc(p?.name?.slice(0,20)||'—')}</td>
+              <td style="padding:8px;font-size:12px;color:var(--muted);">${fmtDate(f.date)}</td>
+              <td style="padding:8px;font-size:11px;">${(f.impacts||[]).map(i=>`<span class="badge badge-gray" style="font-size:10px;">${{financeiro:'💰',cronograma:'📅',escopo:'📋',reputacional:'🏆'}[i]||i}</span>`).join(' ')}</td>
+              <td style="padding:8px;"><span class="badge ${f.status==='aberto'?'badge-red':f.status==='em_tratamento'?'badge-amber':'badge-blue'}">${statusLabel[f.status]||f.status}</span></td>
+              <td style="padding:8px;text-align:center;">
+                <div style="display:flex;align-items:center;gap:6px;justify-content:center;">
+                  <div class="progress-wrap" style="width:50px;"><div class="progress-bar ${pct===100?'green':pct>0?'amber':'red'}" style="width:${pct}%;"></div></div>
+                  <span style="font-size:11px;color:var(--muted);">${pct}%</span>
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>` : `<div style="padding:16px;background:var(--surface2);border-radius:var(--radius);margin-bottom:20px;font-size:13px;color:var(--green);">✓ Nenhum fato em aberto.</div>`}
+
+    <!-- Análise Crítica -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title" style="margin-bottom:8px;">Análise Crítica Consolidada</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Análise integrada dos fatos relevantes, padrões identificados, tendências e recomendações.</div>
+      <textarea class="form-control" rows="7" placeholder="Descreva a análise crítica consolidada de todos os fatos relevantes..." style="resize:vertical;"
+        onchange="saveReportData('${key}',{criticalAnalysis:this.value})">${esc(saved.criticalAnalysis||'')}</textarea>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-primary" onclick="exportReportFactConsolWord('${key}')">↓ Exportar Word</button>
+    </div>
+  `;
+}
+
+// ============================================================
+//  EXPORTAÇÃO WORD — gerada via docx-js injetado no browser
+// ============================================================
+async function _loadDocxLib() {
+  if (window.docx) return true;
+  return new Promise(resolve => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js';
+    s.onload  = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+
+function _docxHeader(title, subtitle) {
+  const { Paragraph, TextRun, AlignmentType } = window.docx;
+  const cfg = state.config || {};
+  return [
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 },
+      children: [new TextRun({ text: cfg.companyName || 'ProjFlow', bold: true, size: 28, color: '6C63FF' })] }),
+    cfg.companySub ? new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 },
+      children: [new TextRun({ text: cfg.companySub, size: 20, color: '888888' })] }) : null,
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 },
+      children: [new TextRun({ text: cfg.address || '', size: 18, color: '888888' })] }),
+    new Paragraph({ border: { bottom: { style: 'single', size: 6, color: '6C63FF', space: 1 } },
+      spacing: { after: 240 }, children: [] }),
+    new Paragraph({ spacing: { after: 80 },
+      children: [new TextRun({ text: title, bold: true, size: 32 })] }),
+    new Paragraph({ spacing: { after: 240 },
+      children: [new TextRun({ text: subtitle, size: 22, color: '555555' })] }),
+  ].filter(Boolean);
+}
+
+function _docxSection(title) {
+  const { Paragraph, TextRun } = window.docx;
+  return new Paragraph({ spacing: { before: 240, after: 120 },
+    children: [new TextRun({ text: title, bold: true, size: 24, color: '6C63FF' })] });
+}
+
+function _docxText(text) {
+  const { Paragraph, TextRun } = window.docx;
+  return (text||'').split('\n').filter(Boolean).map(line =>
+    new Paragraph({ spacing: { after: 80 },
+      children: [new TextRun({ text: line, size: 22 })] })
+  );
+}
+
+function _docxTable(headers, rows, colWidths) {
+  const { Table, TableRow, TableCell, Paragraph, TextRun, BorderStyle, WidthType, ShadingType, VerticalAlign } = window.docx;
+  const border = { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' };
+  const borders = { top: border, bottom: border, left: border, right: border };
+  const totalW = colWidths.reduce((a,b)=>a+b,0);
+  const mkCell = (text, w, isHeader=false) => new TableCell({
+    borders, width: { size: w, type: WidthType.DXA },
+    margins: { top: 80, bottom: 80, left: 120, right: 120 },
+    shading: isHeader ? { fill: 'EEF2FF', type: ShadingType.CLEAR } : undefined,
+    children: [new Paragraph({ children: [new TextRun({ text: String(text||''), bold: isHeader, size: isHeader?18:20 })] })]
+  });
+  return new Table({
+    width: { size: totalW, type: WidthType.DXA },
+    columnWidths: colWidths,
+    rows: [
+      new TableRow({ children: headers.map((h,i) => mkCell(h, colWidths[i], true)) }),
+      ...rows.map(row => new TableRow({ children: row.map((c,i) => mkCell(c, colWidths[i])) }))
+    ]
+  });
+}
+
+async function exportReportTeamAllocWord(key) {
+  showToast('Gerando documento Word...');
+  const ok = await _loadDocxLib();
+  if (!ok) { showToast('Erro ao carregar biblioteca docx'); return; }
+  const { Document, Packer, Paragraph, TextRun } = window.docx;
+  const saved = getReportData(key);
+
+  const children = [
+    ..._docxHeader('Relatório de Alocação da Equipe', `Emitido em ${new Date().toLocaleDateString('pt-BR')}`),
+    _docxSection('1. Distribuição de Horas por Pessoa'),
+    _docxTable(
+      ['Pessoa', 'Cargo', 'Horas Alocadas', 'Progresso', 'Atrasadas'],
+      state.team.map(p => {
+        const acts = state.activities.filter(a => actPersonIds(a).includes(p.id));
+        const totalH = acts.reduce((s,a)=>{const al=(a.allocations||[]).find(x=>x.personId===p.id);return s+(al?parseFloat(al.hours)||0:0);},0);
+        const doneH  = acts.filter(a=>a.status==='concluido').reduce((s,a)=>{const al=(a.allocations||[]).find(x=>x.personId===p.id);return s+(al?parseFloat(al.hours)||0:0);},0);
+        const pct    = totalH > 0 ? Math.round(doneH/totalH*100) : 0;
+        const lates  = acts.filter(a=>isLate(a)).length;
+        return [p.name, p.role||'—', Math.round(totalH)+'h', pct+'%', String(lates)];
+      }),
+      [3000, 2000, 1500, 1500, 1361]
+    ),
+    new Paragraph({ spacing: { after: 0 }, children: [] }),
+    _docxSection('2. Projetos por Pessoa'),
+    ...state.team.flatMap(p => {
+      const acts = state.activities.filter(a => actPersonIds(a).includes(p.id));
+      const projs = [...new Set(acts.map(a => {
+        const d = state.deliveries.find(d=>d.id===a.deliveryId);
+        return d?.projectId;
+      }).filter(Boolean))].map(id => state.projects.find(p=>p.id===id)?.name).filter(Boolean);
+      return [
+        new Paragraph({ spacing: { before:120, after:60 }, children: [new TextRun({ text: p.name, bold: true, size: 22 })] }),
+        new Paragraph({ spacing: { after:80 }, children: [new TextRun({ text: projs.join(', ') || 'Nenhum projeto', size: 20, color: '555555' })] }),
+      ];
+    }),
+    _docxSection('3. Análise do Gestor'),
+    ..._docxText(saved.analysis || 'Não preenchido.'),
+  ];
+
+  const doc = new Document({ sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } }, children }] });
+  const buf = await Packer.toBuffer(doc);
+  _downloadDocx(buf, `Alocacao_Equipe_${new Date().toISOString().slice(0,10)}.docx`);
+}
+
+async function exportReportWeeklyWord(key) {
+  showToast('Gerando documento Word...');
+  const ok = await _loadDocxLib();
+  if (!ok) { showToast('Erro ao carregar biblioteca docx'); return; }
+  const { Document, Packer, Paragraph, TextRun } = window.docx;
+  const saved = getReportData(key);
+  const parts = key.split('_');
+  const projId   = parseInt(parts[2]);
+  const weekDate = parts[3];
+  const proj     = state.projects.find(p => p.id === projId);
+  const weekMon  = new Date(weekDate + 'T12:00:00');
+  const weekSun  = new Date(weekMon); weekSun.setDate(weekMon.getDate()+6);
+  const mNames   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const fmt      = d => `${d.getDate()} ${mNames[d.getMonth()]} ${d.getFullYear()}`;
+
+  const thisWeekIds = new Set(saved.selectedThisWeek||[]);
+  const nextWeekIds = new Set(saved.selectedNextWeek||[]);
+  const thisActs = state.activities.filter(a => thisWeekIds.has(a.id));
+  const nextActs = state.activities.filter(a => nextWeekIds.has(a.id));
+
+  const actTableRows = (acts) => acts.map(a => {
+    const allocs = a.allocations||[];
+    const people = allocs.map(al=>state.team.find(p=>p.id===al.personId)).filter(Boolean);
+    const r = actDateRange(a);
+    const statusMap = { nao_iniciado:'Não iniciado', em_andamento:'Em andamento', concluido:'Concluído', atrasado:'Atrasado', bloqueado:'Bloqueado' };
+    return [a.name, people.map(p=>p.name).join(', ')||'—', fmtDate(r.end), statusMap[a.status]||a.status, (a.progress||0)+'%'];
+  });
+
+  const children = [
+    ..._docxHeader(`Relatório Semanal — ${proj?.name||''}`, `Semana de ${fmt(weekMon)} a ${fmt(weekSun)}`),
+    _docxSection('1. Atividades Realizadas nesta Semana'),
+    thisActs.length ? _docxTable(['Atividade','Responsável','Prazo','Status','Progresso'], actTableRows(thisActs), [3500,1800,1000,1200,861]) : new Paragraph({ children: [new TextRun({ text: 'Nenhuma atividade selecionada.', color: '888888', size: 20 })] }),
+    new Paragraph({ spacing:{after:0}, children:[] }),
+    _docxSection('2. Previstas para a Próxima Semana'),
+    nextActs.length ? _docxTable(['Atividade','Responsável','Prazo','Status','Progresso'], actTableRows(nextActs), [3500,1800,1000,1200,861]) : new Paragraph({ children: [new TextRun({ text: 'Nenhuma atividade selecionada.', color: '888888', size: 20 })] }),
+    new Paragraph({ spacing:{after:0}, children:[] }),
+    _docxSection('3. Pendências'),
+    ..._docxText(saved.pendencies || 'Nenhuma pendência registrada.'),
+    _docxSection('4. Pontos de Alerta'),
+    ..._docxText(saved.alerts || 'Nenhum ponto de alerta.'),
+    _docxSection('5. Observações Gerais'),
+    ..._docxText(saved.notes || '—'),
+  ];
+
+  const doc = new Document({ sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } }, children }] });
+  const buf = await Packer.toBuffer(doc);
+  _downloadDocx(buf, `Relatorio_Semanal_${proj?.name?.slice(0,20)||'Projeto'}_${weekDate}.docx`);
+}
+
+async function exportReportFactSingleWord(key, factId) {
+  showToast('Gerando documento Word...');
+  const ok = await _loadDocxLib();
+  if (!ok) { showToast('Erro ao carregar biblioteca docx'); return; }
+  const { Document, Packer, Paragraph, TextRun } = window.docx;
+  const f = (state.facts||[]).find(x => String(x.id) === String(factId));
+  if (!f) return;
+  const saved = getReportData(key);
+  const proj  = state.projects.find(p => p.id === f.projectId);
+  const owner = state.team.find(p => p.id === f.ownerId);
+  const impactLabels = { financeiro:'Financeiro', cronograma:'Cronograma', escopo:'Escopo', reputacional:'Reputacional' };
+  const statusLabel  = { aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Em monitoramento' };
+
+  const isOldFmt = f.whys?.length && typeof f.whys[0] === 'string';
+  const defaultQs = ['Por quê o fato ocorreu?','Por quê isso aconteceu?','Por quê isso ocorreu?','Por quê isso se deu?','Por quê isso é assim?'];
+  const whyPairs = isOldFmt ? (f.whys||[]).map((ans,i)=>({question:defaultQs[i]||`Por quê ${i+1}?`,answer:ans})) : (f.whys||[]);
+  const filledWhys = whyPairs.filter(w=>w.answer);
+
+  const children = [
+    ..._docxHeader(`Fato Relevante — ${f.title}`, `${proj?.name||'—'} · ${fmtDate(f.date)}`),
+    _docxSection('1. Identificação'),
+    _docxTable(['Campo','Valor'],
+      [['Projeto',proj?.name||'—'],['Data',fmtDate(f.date)],['Status',statusLabel[f.status]||f.status],
+       ['Responsável',owner?.name||'—'],['Impactos',(f.impacts||[]).map(i=>impactLabels[i]||i).join(', ')||'—']],
+      [2500, 6861]),
+    new Paragraph({spacing:{after:0},children:[]}),
+    _docxSection('2. Descrição do Fato'),
+    ..._docxText(f.desc || '—'),
+    f.impactDesc ? _docxSection('3. Descrição dos Impactos') : null,
+    ...(f.impactDesc ? _docxText(f.impactDesc) : []),
+    _docxSection('4. Análise de Causa — 5 Porquês'),
+    ...filledWhys.flatMap((w,i) => [
+      new Paragraph({ spacing:{before:120,after:40}, children:[new TextRun({text:`${i+1}. ${w.question}`,bold:true,size:22})] }),
+      new Paragraph({ spacing:{after:80}, children:[new TextRun({text:w.answer,size:20,color:'555555'})] }),
+    ]),
+    _docxSection('5. Plano de Ação'),
+    (f.actions||[]).length ? _docxTable(['Ação','Responsável','Prazo','Status'],
+      (f.actions||[]).map(a=>[a.what,a.who||'—',fmtDate(a.when),a.done?'Concluído':'Pendente']),
+      [4500,1800,1300,1761]) : new Paragraph({children:[new TextRun({text:'Nenhuma ação cadastrada.',size:20,color:'888888'})]}),
+    new Paragraph({spacing:{after:0},children:[]}),
+    _docxSection('6. Análise Crítica'),
+    ..._docxText(saved.criticalAnalysis || 'Não preenchida.'),
+  ].filter(Boolean);
+
+  const doc = new Document({ sections:[{ properties:{page:{size:{width:11906,height:16838},margin:{top:1440,right:1440,bottom:1440,left:1440}}}, children }] });
+  const buf = await Packer.toBuffer(doc);
+  _downloadDocx(buf, `Fato_Relevante_${f.title.slice(0,30).replace(/\s+/g,'_')}.docx`);
+}
+
+async function exportReportFactConsolWord(key) {
+  showToast('Gerando documento Word...');
+  const ok = await _loadDocxLib();
+  if (!ok) { showToast('Erro ao carregar biblioteca docx'); return; }
+  const { Document, Packer, Paragraph, TextRun } = window.docx;
+  const facts  = (state.facts||[]);
+  const saved  = getReportData(key);
+  const open   = facts.filter(f=>f.status!=='resolvido');
+  const statusLabel = { aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Monitoramento' };
+  const impactLabel = { financeiro:'Financeiro', cronograma:'Cronograma', escopo:'Escopo', reputacional:'Reputacional' };
+
+  const byStatus = {};
+  const byImpact = {};
+  facts.forEach(f => {
+    byStatus[f.status] = (byStatus[f.status]||0) + 1;
+    (f.impacts||[]).forEach(i => { byImpact[i] = (byImpact[i]||0) + 1; });
+  });
+
+  const children = [
+    ..._docxHeader('Relatório Consolidado de Fatos Relevantes', `${facts.length} fatos registrados · ${open.length} em aberto · ${new Date().toLocaleDateString('pt-BR')}`),
+    _docxSection('1. Resumo Executivo'),
+    _docxTable(['Indicador','Valor'],
+      [['Total de fatos',String(facts.length)],['Fatos em aberto',String(facts.filter(f=>f.status==='aberto').length)],
+       ['Em tratamento',String(byStatus['em_tratamento']||0)],['Resolvidos',String(byStatus['resolvido']||0)],
+       ['Em monitoramento',String(byStatus['monitoramento']||0)]],
+      [5000, 4361]),
+    new Paragraph({spacing:{after:0},children:[]}),
+    _docxSection('2. Distribuição por Impacto'),
+    _docxTable(['Tipo de Impacto','Quantidade'],
+      Object.entries(byImpact).map(([i,n])=>[impactLabel[i]||i,String(n)]),
+      [6000,3361]),
+    new Paragraph({spacing:{after:0},children:[]}),
+    _docxSection('3. Fatos em Aberto'),
+    open.length ? _docxTable(
+      ['Fato','Projeto','Data','Impactos','Status','Ações (%)'],
+      open.map(f => {
+        const p = state.projects.find(p=>p.id===f.projectId);
+        const acts = f.actions||[];
+        const done = acts.filter(a=>a.done).length;
+        const pct  = acts.length > 0 ? Math.round(done/acts.length*100) : 0;
+        return [f.title,p?.name?.slice(0,25)||'—',fmtDate(f.date),(f.impacts||[]).map(i=>impactLabel[i]||i).join(', '),statusLabel[f.status]||f.status,`${pct}%`];
+      }),
+      [2800,1800,900,1500,1200,661]) : new Paragraph({children:[new TextRun({text:'Nenhum fato em aberto.',size:20,color:'888888'})]}),
+    new Paragraph({spacing:{after:0},children:[]}),
+    _docxSection('4. Análise Crítica Consolidada'),
+    ..._docxText(saved.criticalAnalysis || 'Não preenchida.'),
+  ];
+
+  const doc = new Document({ sections:[{ properties:{page:{size:{width:11906,height:16838},margin:{top:1440,right:1440,bottom:1440,left:1440}}}, children }] });
+  const buf = await Packer.toBuffer(doc);
+  _downloadDocx(buf, `Fatos_Relevantes_Consolidado_${new Date().toISOString().slice(0,10)}.docx`);
+}
+
+function _downloadDocx(buffer, filename) {
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+  showToast(`✓ ${filename} baixado!`);
 }
 
 // ============================================================
