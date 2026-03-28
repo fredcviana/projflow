@@ -1268,9 +1268,11 @@ function loadState() {
     const raw = localStorage.getItem('projflow_v2');
     if (raw) {
       const s = JSON.parse(raw);
-      if (!s.packages)   s.packages   = [];
-      if (!s.templates)  s.templates  = [];
-      if (!s.facts)      s.facts      = [];
+      if (!s.packages)          s.packages          = [];
+      if (!s.templates)         s.templates         = [];
+      if (!s.facts)             s.facts             = [];
+      if (!s.sprints)           s.sprints           = [];
+      if (!s.sprintActivities)  s.sprintActivities  = {};
       // Migrate old single-person activities to allocations array
       s.activities = (s.activities || []).map(a => {
         if (!a.allocations) {
@@ -1283,7 +1285,7 @@ function loadState() {
       return s;
     }
   } catch(e) {}
-  return { projects: [], deliveries: [], packages: [], activities: [], team: [], templates: [], facts: [], nextId: 1 };
+  return { projects: [], deliveries: [], packages: [], activities: [], team: [], templates: [], facts: [], sprints: [], sprintActivities: {}, nextId: 1 };
 }
 
 function saveState() {
@@ -5171,25 +5173,62 @@ let currentSprintId = null;
 let currentFactId   = null;
 
 async function loadSprints() {
-  if (!sb) return;
+  if (!state.sprints) state.sprints = [];
+  if (!state.sprintActivities) state.sprintActivities = {};
+
+  if (!sb) {
+    // Use local state only
+    _sprints = [...(state.sprints||[])];
+    Object.assign(_sprintActivities, state.sprintActivities||{});
+    return;
+  }
+
   try {
-    const { data: sprints } = await sb.from('projflow_sprints').select('*').order('start_date', { ascending: false });
-    const { data: acts }    = await sb.from('projflow_sprint_activities').select('*');
-    _sprints = sprints || [];
+    const { data: sprints, error: e1 } = await sb.from('projflow_sprints').select('*').order('start_date', { ascending: false });
+    const { data: acts,    error: e2 } = await sb.from('projflow_sprint_activities').select('*');
+
+    if (e1) throw e1;
+
+    // Merge Supabase sprints with any local-only sprints
+    const sbIds = new Set((sprints||[]).map(s => s.id));
+    const localOnly = (state.sprints||[]).filter(s => !sbIds.has(s.id));
+
+    _sprints = [...(sprints||[]), ...localOnly];
+
+    // Build activity map from Supabase + local
     _sprintActivities = {};
     (acts||[]).forEach(r => {
       if (!_sprintActivities[r.sprint_id]) _sprintActivities[r.sprint_id] = [];
       _sprintActivities[r.sprint_id].push(r.activity_id);
     });
-  } catch(e) { console.warn('loadSprints:', e); }
+    // Merge local sprint activities
+    Object.entries(state.sprintActivities||{}).forEach(([sid, aids]) => {
+      if (!_sprintActivities[sid]) _sprintActivities[sid] = [];
+      aids.forEach(id => { if (!_sprintActivities[sid].includes(id)) _sprintActivities[sid].push(id); });
+    });
+
+    // Sync back to state
+    state.sprints = _sprints;
+    state.sprintActivities = _sprintActivities;
+
+  } catch(e) {
+    console.warn('loadSprints error (using local):', e.message);
+    _sprints = [...(state.sprints||[])];
+    Object.assign(_sprintActivities, state.sprintActivities||{});
+  }
 }
 
 function getActiveSprint(projectId) {
-  return _sprints.find(s => s.project_id === projectId && s.status === 'ativo') || null;
+  const all = _sprints.length ? _sprints : (state.sprints||[]);
+  return all.find(s => s.project_id === projectId && s.status === 'ativo') || null;
 }
 
 function getSprintActivities(sprintId) {
-  return _sprintActivities[sprintId] || [];
+  // Check both _sprintActivities (in-memory) and state.sprintActivities (persisted)
+  const fromMem   = _sprintActivities[sprintId] || [];
+  const fromState = (state.sprintActivities||{})[sprintId] || [];
+  const merged = [...new Set([...fromMem, ...fromState])];
+  return merged;
 }
 
 function renderSprints() {
@@ -5514,73 +5553,179 @@ function openEditSprint(id) {
 async function saveSprint() {
   const name = document.getElementById('sp-name').value.trim();
   if (!name) { alert('Informe o nome do sprint.'); return; }
-  const start = document.getElementById('sp-start').value;
-  const end   = document.getElementById('sp-end').value;
-  if (!start || !end) { alert('Informe as datas do sprint.'); return; }
+  const start     = document.getElementById('sp-start').value;
+  const end       = document.getElementById('sp-end').value;
+  if (!start || !end) { alert('Informe as datas de início e término do sprint.'); return; }
   const projectId = parseInt(document.getElementById('sp-project').value) || null;
+  if (!projectId) { alert('Selecione o projeto.'); return; }
   const editId    = document.getElementById('sp-id').value;
+  const goal      = document.getElementById('sp-goal').value.trim();
 
-  if (!sb) { showToast('Conecte ao Supabase primeiro'); return; }
+  const payload = { name, goal, start_date: start, end_date: end, project_id: projectId };
 
-  const payload = { name, goal: document.getElementById('sp-goal').value, start_date: start, end_date: end, project_id: projectId };
+  if (!state.sprints) state.sprints = [];
 
-  if (editId) {
-    await sb.from('projflow_sprints').update(payload).eq('id', editId);
+  if (sb) {
+    try {
+      if (editId) {
+        const { error } = await sb.from('projflow_sprints').update(payload).eq('id', editId);
+        if (error) throw error;
+        // update local
+        const idx = _sprints.findIndex(s => s.id === editId);
+        if (idx >= 0) _sprints[idx] = { ..._sprints[idx], ...payload };
+        const li = state.sprints.findIndex(s => s.id === editId);
+        if (li >= 0) state.sprints[li] = { ...state.sprints[li], ...payload };
+      } else {
+        const { data, error } = await sb.from('projflow_sprints')
+          .insert({ ...payload, status: 'planejamento' }).select().single();
+        if (error) throw error;
+        _sprints.unshift(data);
+        state.sprints.unshift(data);
+      }
+    } catch(e) {
+      // Supabase failed (table may not exist yet) — save locally
+      console.warn('Sprint Supabase error, saving locally:', e.message);
+      _saveSprintLocally(payload, editId);
+    }
   } else {
-    await sb.from('projflow_sprints').insert({ ...payload, status: 'planejamento' });
+    _saveSprintLocally(payload, editId);
   }
+
   closeModal('modal-sprint');
-  await loadSprints();
+  saveState();
   render();
   showToast('✓ Sprint salvo!');
 }
 
-async function activateSprint(id) {
-  if (!sb) return;
-  // Deactivate other active sprints of same project
-  const s = _sprints.find(x => x.id === id);
-  if (s) {
-    await sb.from('projflow_sprints').update({ status: 'planejamento' })
-      .eq('project_id', s.project_id).eq('status', 'ativo');
+function _saveSprintLocally(payload, editId) {
+  if (!state.sprints) state.sprints = [];
+  if (editId) {
+    const li = state.sprints.findIndex(s => s.id === editId);
+    if (li >= 0) state.sprints[li] = { ...state.sprints[li], ...payload };
+    const si = _sprints.findIndex(s => s.id === editId);
+    if (si >= 0) _sprints[si] = { ..._sprints[si], ...payload };
+  } else {
+    const newSprint = {
+      id: 'local-' + Date.now(),
+      ...payload,
+      status: 'planejamento',
+      created_at: new Date().toISOString()
+    };
+    state.sprints.unshift(newSprint);
+    _sprints.unshift(newSprint);
   }
-  await sb.from('projflow_sprints').update({ status: 'ativo' }).eq('id', id);
-  await loadSprints();
+}
+
+async function activateSprint(id) {
+  if (!state.sprints) state.sprints = [];
+  const allSprints = _sprints.length ? _sprints : state.sprints;
+  const s = allSprints.find(x => x.id === id);
+
+  // Deactivate other active sprints of same project locally
+  allSprints.forEach(sp => {
+    if (sp.project_id === s?.project_id && sp.status === 'ativo') sp.status = 'planejamento';
+  });
+  state.sprints.forEach(sp => {
+    if (sp.project_id === s?.project_id && sp.status === 'ativo') sp.status = 'planejamento';
+  });
+
+  // Activate this sprint locally
+  const si = allSprints.findIndex(x => x.id === id);
+  if (si >= 0) allSprints[si].status = 'ativo';
+  const li = state.sprints.findIndex(x => x.id === id);
+  if (li >= 0) state.sprints[li].status = 'ativo';
+
+  if (sb) {
+    try {
+      await sb.from('projflow_sprints').update({ status: 'planejamento' })
+        .eq('project_id', s?.project_id).eq('status', 'ativo');
+      await sb.from('projflow_sprints').update({ status: 'ativo' }).eq('id', id);
+    } catch(e) { console.warn('activateSprint Supabase error:', e.message); }
+  }
+
+  saveState();
   render();
   showToast('✓ Sprint ativado!');
 }
 
 async function closeSprint(id) {
-  if (!confirm('Fechar este sprint? Atividades não concluídas voltam ao backlog.')) return;
-  if (!sb) return;
-  await sb.from('projflow_sprints').update({ status: 'concluido', closed_at: new Date().toISOString() }).eq('id', id);
-  await loadSprints();
+  if (!confirm('Fechar este sprint?')) return;
+  if (!state.sprints) state.sprints = [];
+
+  const allSprints = _sprints.length ? _sprints : state.sprints;
+  const si = allSprints.findIndex(x => x.id === id);
+  if (si >= 0) { allSprints[si].status = 'concluido'; allSprints[si].closed_at = new Date().toISOString(); }
+  const li = state.sprints.findIndex(x => x.id === id);
+  if (li >= 0) { state.sprints[li].status = 'concluido'; state.sprints[li].closed_at = new Date().toISOString(); }
+
+  if (sb) {
+    try {
+      await sb.from('projflow_sprints').update({ status: 'concluido', closed_at: new Date().toISOString() }).eq('id', id);
+    } catch(e) { console.warn('closeSprint Supabase error:', e.message); }
+  }
+
+  saveState();
   navigate('sprints');
   showToast('✓ Sprint fechado!');
 }
 
 async function deleteSprint(id) {
-  if (!confirm('Excluir este sprint? As atividades voltam ao backlog.')) return;
-  if (!sb) return;
-  await sb.from('projflow_sprints').delete().eq('id', id);
-  await loadSprints();
+  if (!confirm('Excluir este sprint?')) return;
+  if (!state.sprints) state.sprints = [];
+
+  _sprints = _sprints.filter(s => s.id !== id);
+  state.sprints = state.sprints.filter(s => s.id !== id);
+  delete _sprintActivities[id];
+
+  if (sb) {
+    try { await sb.from('projflow_sprints').delete().eq('id', id); }
+    catch(e) { console.warn('deleteSprint Supabase error:', e.message); }
+  }
+
+  saveState();
   render();
 }
 
 async function addToSprint(sprintId, activityId) {
-  if (!sb) return;
-  await sb.from('projflow_sprint_activities').upsert({ sprint_id: sprintId, activity_id: activityId });
   if (!_sprintActivities[sprintId]) _sprintActivities[sprintId] = [];
-  if (!_sprintActivities[sprintId].includes(activityId)) _sprintActivities[sprintId].push(activityId);
+  if (!_sprintActivities[sprintId].includes(activityId)) {
+    _sprintActivities[sprintId].push(activityId);
+  }
+
+  // Also persist in state
+  if (!state.sprintActivities) state.sprintActivities = {};
+  if (!state.sprintActivities[sprintId]) state.sprintActivities[sprintId] = [];
+  if (!state.sprintActivities[sprintId].includes(activityId)) {
+    state.sprintActivities[sprintId].push(activityId);
+  }
+
+  if (sb) {
+    try {
+      await sb.from('projflow_sprint_activities')
+        .upsert({ sprint_id: sprintId, activity_id: activityId });
+    } catch(e) { console.warn('addToSprint Supabase error:', e.message); }
+  }
+
+  saveState();
   renderSprintDetail();
   showToast('✓ Atividade adicionada ao sprint');
 }
 
 async function removeFromSprint(sprintId, activityId) {
-  if (!sb) return;
-  await sb.from('projflow_sprint_activities').delete().eq('sprint_id', sprintId).eq('activity_id', activityId);
-  if (_sprintActivities[sprintId]) {
-    _sprintActivities[sprintId] = _sprintActivities[sprintId].filter(id => id !== activityId);
+  _sprintActivities[sprintId] = (_sprintActivities[sprintId]||[]).filter(id => id !== activityId);
+
+  if (state.sprintActivities?.[sprintId]) {
+    state.sprintActivities[sprintId] = state.sprintActivities[sprintId].filter(id => id !== activityId);
   }
+
+  if (sb) {
+    try {
+      await sb.from('projflow_sprint_activities')
+        .delete().eq('sprint_id', sprintId).eq('activity_id', activityId);
+    } catch(e) { console.warn('removeFromSprint Supabase error:', e.message); }
+  }
+
+  saveState();
   renderSprintDetail();
   showToast('Atividade removida do sprint');
 }
