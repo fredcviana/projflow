@@ -1418,6 +1418,13 @@ function navigate(page, id) {
 }
 
 function render() {
+  // ── ACCESS GATE: block everything until logged in ──────────
+  if (!sbUser) {
+    _showLoginWall();
+    saveState();
+    return;
+  }
+
   const pages = {
     dashboard: renderDashboard,
     projects: renderProjects,
@@ -5154,7 +5161,7 @@ async function sbInit() {
     sbUpdatePanel();
     sbSubscribeRealtime();
     _updateNavVisibility();
-    // Trigger daily check-in if not done yet (after 1s delay)
+    render(); // render after data loaded
     setTimeout(() => {
       if (sbUser && !hasCheckedInToday()) {
         const person = currentPerson();
@@ -5163,6 +5170,7 @@ async function sbInit() {
     }, 1200);
   } else {
     sbUpdatePanel();
+    render(); // will show login wall
   }
 }
 
@@ -5214,6 +5222,12 @@ async function sbSignOut() {
   if (sbChannel) { sb.removeChannel(sbChannel); sbChannel = null; }
   sbUpdatePanel();
   showToast('Sessão encerrada');
+  // Show login wall
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar) sidebar.style.display = 'none';
+  const topbar = document.querySelector('.topbar');
+  if (topbar) topbar.style.display = 'none';
+  _showLoginWall();
 }
 
 async function sbLoadData() {
@@ -5319,6 +5333,131 @@ function sbUpdatePanel() {
         <span style="font-size:13px;">◎</span>
         <span>Fazer Login</span>
       </button>`;
+  }
+}
+
+function _showLoginWall() {
+  // Hide sidebar nav items, show only the logo + login prompt
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar) sidebar.style.display = 'none';
+
+  const content = document.getElementById('page-content');
+  const topbar  = document.querySelector('.topbar');
+  if (topbar) topbar.style.display = 'none';
+
+  // Show a centered login wall over everything
+  let wall = document.getElementById('login-wall');
+  if (!wall) {
+    wall = document.createElement('div');
+    wall.id = 'login-wall';
+    wall.style.cssText = `
+      position:fixed; inset:0; background:var(--bg);
+      display:flex; align-items:center; justify-content:center;
+      z-index:9999; flex-direction:column; gap:0;
+    `;
+    document.body.appendChild(wall);
+  }
+
+  const cfg = state.config || {};
+  wall.innerHTML = `
+    <div style="width:100%; max-width:420px; padding:40px 32px; text-align:center;">
+
+      <!-- Logo / Brand -->
+      <div style="margin-bottom:32px;">
+        <div style="font-size:36px; font-weight:800; letter-spacing:-2px; color:var(--accent); margin-bottom:6px;">
+          Proj<span style="color:var(--accent2);">·</span>Flow
+        </div>
+        ${cfg.companyName ? `<div style="font-size:13px; color:var(--muted);">${esc(cfg.companyName)}</div>` : ''}
+      </div>
+
+      <!-- Login Card -->
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:28px 24px; text-align:left;">
+        <div style="font-size:16px; font-weight:600; margin-bottom:4px;">Acesso ao sistema</div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:20px;">Entre com seu e-mail e senha cadastrados</div>
+
+        <div class="form-group">
+          <label class="form-label">E-mail</label>
+          <input class="form-control" id="wall-email" type="email" placeholder="seu@email.com"
+            onkeydown="if(event.key==='Enter') _wallSignIn()" />
+        </div>
+        <div class="form-group" style="margin-bottom:20px;">
+          <label class="form-label">Senha</label>
+          <input class="form-control" id="wall-password" type="password" placeholder="••••••••"
+            onkeydown="if(event.key==='Enter') _wallSignIn()" />
+        </div>
+        <div id="wall-error" style="display:none; color:var(--red); font-size:12px; margin-bottom:12px; padding:8px 10px; background:rgba(248,113,113,0.08); border-radius:var(--radius-sm);"></div>
+        <button class="btn btn-primary" id="wall-btn" style="width:100%; justify-content:center;" onclick="_wallSignIn()">
+          Entrar
+        </button>
+      </div>
+
+      <div style="font-size:11px; color:var(--muted); margin-top:20px;">
+        Acesso restrito. Entre em contato com o administrador para obter suas credenciais.
+      </div>
+    </div>
+  `;
+
+  // Focus email field
+  setTimeout(() => document.getElementById('wall-email')?.focus(), 100);
+}
+
+async function _wallSignIn() {
+  const email = document.getElementById('wall-email')?.value?.trim();
+  const pass  = document.getElementById('wall-password')?.value;
+  const btn   = document.getElementById('wall-btn');
+  const err   = document.getElementById('wall-error');
+
+  if (!email || !pass) {
+    err.textContent = 'Preencha e-mail e senha.';
+    err.style.display = 'block';
+    return;
+  }
+
+  btn.textContent = 'Entrando…';
+  btn.disabled = true;
+  err.style.display = 'none';
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+
+  btn.textContent = 'Entrar';
+  btn.disabled = false;
+
+  if (error) {
+    err.textContent = 'E-mail ou senha incorretos.';
+    err.style.display = 'block';
+    return;
+  }
+
+  sbUser = data.user;
+
+  // Remove wall, restore layout
+  const wall = document.getElementById('login-wall');
+  if (wall) wall.remove();
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar) sidebar.style.display = '';
+  const topbar = document.querySelector('.topbar');
+  if (topbar) topbar.style.display = '';
+
+  await sbLoadData();
+  await loadSprints();
+  await loadTodayCheckins();
+  sbUpdatePanel();
+  sbSubscribeRealtime();
+  _updateNavVisibility();
+
+  const person = state.team.find(p => p.email === sbUser.email);
+  if (person) {
+    localStorage.setItem('projflow_my_person', String(person.id));
+    showToast(`✓ Bem-vindo(a), ${person.name.split(' ')[0]}!`);
+    if (sbUser.email !== ADMIN_EMAIL) {
+      navigate('myview');
+    } else {
+      navigate('dashboard');
+    }
+    setTimeout(() => { if (!hasCheckedInToday()) openCheckinModal(); }, 800);
+  } else {
+    navigate('dashboard');
+    showToast('✓ Login realizado!');
   }
 }
 
@@ -8100,7 +8239,7 @@ function esc(s) {
 }
 
 // Init
-render();
+// Init — sbInit handles render() after auth check
 sbInit();
 </script>
 </body>
