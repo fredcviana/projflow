@@ -1270,7 +1270,7 @@ function navigate(page, id) {
   if (id) {
     if (page === 'project_detail') currentProjectId = typeof id === 'number' ? id : parseInt(id);
     if (page === 'sprint_detail')  currentSprintId  = id;
-    if (page === 'fact_detail')    currentFactId    = id;
+    if (page === 'fact_detail')    currentFactId    = String(id);
   }
   render();
 }
@@ -5147,26 +5147,28 @@ function getSprintActivities(sprintId) {
 function renderSprints() {
   document.getElementById('topbar-title').textContent = 'Sprints';
   document.getElementById('topbar-sub').textContent = 'Ciclos de trabalho da equipe';
-  document.getElementById('topbar-actions').innerHTML = canDo('create_project')
+  document.getElementById('topbar-actions').innerHTML = canDo('create_activity') || canDo('create_project')
     ? `<button class="btn btn-primary" onclick="openNewSprint()">+ Novo Sprint</button>` : '';
 
-  loadSprints().then(() => {
-    if (!_sprints.length) {
+  // Load from Supabase if available, else show local sprints from state
+  const doRender = () => {
+    const allSprints = _sprints.length ? _sprints : (state.sprints || []);
+
+    if (!allSprints.length) {
       document.getElementById('page-content').innerHTML = `
         <div class="empty"><div class="empty-icon">⚡</div>
         <div class="empty-text">Nenhum sprint criado</div>
-        <div class="empty-sub">Crie o primeiro sprint para organizar o trabalho da equipe</div></div>`;
+        <div class="empty-sub">Crie o primeiro sprint para organizar o trabalho da equipe por quinzena</div></div>`;
       return;
     }
 
     const statusLabel = { planejamento:'Planejamento', ativo:'Ativo', concluido:'Concluído' };
     const statusBadge = { planejamento:'badge-gray', ativo:'badge-green', concluido:'badge-blue' };
 
-    // Group by project
     const byProject = {};
-    _sprints.forEach(s => {
+    allSprints.forEach(s => {
       const proj = state.projects.find(p => p.id === s.project_id);
-      const key  = s.project_id;
+      const key  = s.project_id || 'sem_projeto';
       if (!byProject[key]) byProject[key] = { name: proj?.name || 'Sem projeto', sprints: [] };
       byProject[key].sprints.push(s);
     });
@@ -5178,28 +5180,28 @@ function renderSprints() {
         <div style="display:flex; flex-direction:column; gap:10px;">`;
 
       grp.sprints.forEach(s => {
-        const acts  = getSprintActivities(s.id);
-        const done  = acts.filter(id => state.activities.find(a => a.id === id && a.status === 'concluido')).length;
-        const pct   = acts.length > 0 ? Math.round(done/acts.length*100) : 0;
-        const today = new Date().toISOString().slice(0,10);
+        const actIds   = getSprintActivities(s.id);
+        const done     = actIds.filter(id => state.activities.find(a => a.id === id && a.status === 'concluido')).length;
+        const pct      = actIds.length > 0 ? Math.round(done/actIds.length*100) : 0;
+        const today    = new Date().toISOString().slice(0,10);
         const daysLeft = s.end_date ? Math.round((new Date(s.end_date)-new Date(today))/86400000) : null;
 
-        html += `<div class="card" style="cursor:pointer; border-color:${s.status==='ativo'?'rgba(52,211,153,0.3)':'var(--border)'};" onclick="navigate('sprint_detail','${s.id}')">
+        html += `<div class="card" style="cursor:pointer; border-left:3px solid ${s.status==='ativo'?'var(--green)':s.status==='concluido'?'var(--blue)':'var(--border)'};" onclick="navigate('sprint_detail','${s.id}')">
           <div style="display:flex; align-items:flex-start; gap:12px;">
             <div style="flex:1; min-width:0;">
               <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
                 <span style="font-size:14px; font-weight:500;">${esc(s.name)}</span>
                 <span class="badge ${statusBadge[s.status]||'badge-gray'}">${statusLabel[s.status]||s.status}</span>
-                ${s.status==='ativo' && daysLeft !== null ? `<span class="badge ${daysLeft<=3?'badge-red':daysLeft<=7?'badge-amber':'badge-gray'}">${daysLeft<0?Math.abs(daysLeft)+'d atrasado':daysLeft+'d restantes'}</span>` : ''}
+                ${s.status==='ativo' && daysLeft !== null ? `<span class="badge ${daysLeft<0?'badge-red':daysLeft<=3?'badge-amber':'badge-gray'}">${daysLeft<0?Math.abs(daysLeft)+'d atrasado':daysLeft===0?'Termina hoje':daysLeft+'d restantes'}</span>` : ''}
               </div>
               ${s.goal ? `<div style="font-size:12px; color:var(--muted); margin-bottom:8px;">${esc(s.goal)}</div>` : ''}
               <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">
-                ${fmtDate(s.start_date)} → ${fmtDate(s.end_date)} · ${acts.length} atividades · ${done} concluídas
+                ${fmtDate(s.start_date)} → ${fmtDate(s.end_date)} · ${actIds.length} atividades · ${done} concluídas
               </div>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <div class="progress-wrap" style="flex:1;"><div class="progress-bar ${pct===100?'green':pct>60?'':pct>30?'amber':'red'}" style="width:${pct}%;"></div></div>
+              ${actIds.length ? `<div style="display:flex; align-items:center; gap:8px;">
+                <div class="progress-wrap" style="flex:1; max-width:200px;"><div class="progress-bar ${pct===100?'green':pct>60?'':pct>30?'amber':'red'}" style="width:${pct}%;"></div></div>
                 <span style="font-size:11px; color:var(--muted);">${pct}%</span>
-              </div>
+              </div>` : ''}
             </div>
             <div style="display:flex; gap:6px; flex-shrink:0;" onclick="event.stopPropagation()">
               ${s.status==='planejamento' ? `<button class="btn btn-success btn-sm" onclick="activateSprint('${s.id}')">▶ Ativar</button>` : ''}
@@ -5214,14 +5216,21 @@ function renderSprints() {
     });
 
     document.getElementById('page-content').innerHTML = html;
-  });
+  };
+
+  if (sb) {
+    loadSprints().then(doRender).catch(() => doRender());
+  } else {
+    doRender();
+  }
 }
 
 function renderSprintDetail() {
-  const s = _sprints.find(x => x.id === currentSprintId);
+  const allSprints = _sprints.length ? _sprints : (state.sprints || []);
+  const s = allSprints.find(x => x.id === currentSprintId);
   if (!s) { navigate('sprints'); return; }
 
-  const proj  = state.projects.find(p => p.id === s.project_id);
+  const proj   = state.projects.find(p => p.id === s.project_id);
   const actIds = getSprintActivities(s.id);
   const spActs = actIds.map(id => state.activities.find(a => a.id === id)).filter(Boolean);
   const done   = spActs.filter(a => a.status === 'concluido').length;
@@ -5233,25 +5242,50 @@ function renderSprintDetail() {
   document.getElementById('topbar-sub').textContent = proj?.name || '';
   document.getElementById('topbar-actions').innerHTML = `
     <button class="btn btn-ghost btn-sm" onclick="navigate('sprints')">← Voltar</button>
-    ${canDo('create_activity') ? `<button class="btn btn-ghost btn-sm" onclick="openSprintActivityPicker('${s.id}')">+ Adicionar atividades</button>` : ''}
-    ${s.status==='ativo' ? `<button class="btn btn-ghost btn-sm" onclick="closeSprint('${s.id}')">✓ Fechar Sprint</button>` : ''}
+    ${s.status !== 'concluido' ? `<button class="btn btn-ghost btn-sm" onclick="closeSprint('${s.id}')">✓ Fechar Sprint</button>` : ''}
   `;
 
-  // All project activities not yet in sprint
+  // All activities of this project
   const allProjActs = state.activities.filter(a => {
-    const d = state.deliveries.find(d => d.id === a.deliveryId);
-    const pkg = (state.packages||[]).find(p => p.id === a.packageId);
-    const delivProjId = d?.projectId || state.deliveries.find(dd => dd.id === pkg?.deliveryId)?.projectId;
-    return delivProjId === s.project_id;
+    const d   = a.deliveryId ? state.deliveries.find(d => d.id === a.deliveryId) : null;
+    const pkg = a.packageId  ? (state.packages||[]).find(p => p.id === a.packageId) : null;
+    const d2  = pkg ? state.deliveries.find(d => d.id === pkg.deliveryId) : null;
+    const projId = d?.projectId || d2?.projectId;
+    return projId === s.project_id;
   });
-  const notInSprint = allProjActs.filter(a => !actIds.includes(a.id));
+
+  // Backlog = not yet in this sprint
+  const backlog = allProjActs.filter(a => !actIds.includes(a.id));
+
+  // Filter backlog by sprint period (activities that overlap with sprint dates)
+  const spStart = s.start_date ? new Date(s.start_date) : null;
+  const spEnd   = s.end_date   ? new Date(s.end_date)   : null;
+
+  const inPeriod = backlog.filter(a => {
+    const range  = actDateRange(a);
+    if (!range.start && !range.end) return true; // no dates = always show
+    const aStart = range.start ? new Date(range.start) : null;
+    const aEnd   = range.end   ? new Date(range.end)   : null;
+    if (!spStart || !spEnd) return true;
+    // Overlap: activity starts before sprint ends AND ends after sprint starts
+    const starts = aStart || aEnd;
+    const ends   = aEnd   || aStart;
+    return starts <= spEnd && ends >= spStart;
+  });
+
+  const outsidePeriod = backlog.filter(a => !inPeriod.includes(a));
 
   document.getElementById('page-content').innerHTML = `
+    <!-- KPIs -->
     <div class="grid-4" style="margin-bottom:24px;">
       <div class="stat"><div class="stat-label">Atividades</div><div class="stat-value">${spActs.length}</div><div class="stat-sub">${done} concluídas</div></div>
       <div class="stat"><div class="stat-label">Progresso</div><div class="stat-value">${pct}%</div><div class="stat-sub">${Math.round(doneH)}h / ${Math.round(totalH)}h</div></div>
-      <div class="stat"><div class="stat-label">Período</div><div class="stat-value" style="font-size:16px;">${fmtDate(s.start_date)}</div><div class="stat-sub">até ${fmtDate(s.end_date)}</div></div>
-      <div class="stat"><div class="stat-label">Status</div><div class="stat-value" style="font-size:16px; color:${s.status==='ativo'?'var(--green)':s.status==='concluido'?'var(--blue)':'var(--muted)'};">${s.status==='ativo'?'Ativo':s.status==='concluido'?'Concluído':'Planejamento'}</div></div>
+      <div class="stat"><div class="stat-label">Período</div><div class="stat-value" style="font-size:15px;">${fmtDate(s.start_date)}</div><div class="stat-sub">até ${fmtDate(s.end_date)}</div></div>
+      <div class="stat"><div class="stat-label">Status</div>
+        <div class="stat-value" style="font-size:15px; color:${s.status==='ativo'?'var(--green)':s.status==='concluido'?'var(--blue)':'var(--muted)'};">
+          ${s.status==='ativo'?'Ativo':s.status==='concluido'?'Concluído':'Planejamento'}
+        </div>
+      </div>
     </div>
 
     ${s.goal ? `<div class="card" style="margin-bottom:20px; border-left:3px solid var(--accent);">
@@ -5259,72 +5293,146 @@ function renderSprintDetail() {
       <div style="font-size:14px;">${esc(s.goal)}</div>
     </div>` : ''}
 
-    <div class="section-title" style="margin-bottom:12px;">Atividades do Sprint</div>
+    <!-- Atividades do Sprint -->
+    <div class="section-title" style="margin-bottom:12px;">Atividades do Sprint (${spActs.length})</div>
     ${spActs.length ? `
-    <div class="card" style="padding:0; overflow:hidden; margin-bottom:20px;">
+    <div class="card" style="padding:0; overflow:hidden; margin-bottom:28px;">
       <div style="overflow-x:auto;">
-        <table style="min-width:700px;">
-          <thead><tr>
-            <th style="padding:12px 16px;">Atividade</th>
-            <th>Responsável</th>
-            <th>Horas</th>
-            <th>Prazo</th>
-            <th>Progresso</th>
-            <th>Status</th>
-            <th></th>
+        <table style="width:100%; min-width:650px; border-collapse:collapse;">
+          <thead><tr style="background:var(--surface2);">
+            <th style="padding:10px 16px; text-align:left; font-size:11px; font-weight:600; color:var(--muted);">Atividade</th>
+            <th style="padding:10px 8px; font-size:11px; font-weight:600; color:var(--muted);">Responsável</th>
+            <th style="padding:10px 8px; font-size:11px; font-weight:600; color:var(--muted);">Horas</th>
+            <th style="padding:10px 8px; font-size:11px; font-weight:600; color:var(--muted);">Prazo</th>
+            <th style="padding:10px 8px; font-size:11px; font-weight:600; color:var(--muted); min-width:120px;">Progresso</th>
+            <th style="padding:10px 8px; font-size:11px; font-weight:600; color:var(--muted);">Status</th>
+            <th style="padding:10px 8px;"></th>
           </tr></thead>
           <tbody>
             ${spActs.map(a => {
               const allocs = a.allocations||[];
               const personHTML = allocs.length
-                ? allocs.map(al => { const p=state.team.find(x=>x.id===al.personId); const pi=state.team.findIndex(x=>x.id===al.personId); const c=pi>=0?getPersonColor(pi):'#7a7a8a'; return p?`<div class="avatar avatar-sm" style="background:${c}22;color:${c};display:inline-flex;" title="${p.name}">${initials(p.name)}</div>`:'' }).join('')
-                : '<span style="color:var(--muted);">—</span>';
+                ? allocs.map(al => {
+                    const p  = state.team.find(x=>x.id===al.personId);
+                    const pi = state.team.findIndex(x=>x.id===al.personId);
+                    const c  = pi>=0?getPersonColor(pi):'#7a7a8a';
+                    return p ? `<div class="avatar avatar-sm" style="background:${c}22;color:${c};" title="${p.name}">${initials(p.name)}</div>` : '';
+                  }).join('')
+                : '<span style="color:var(--muted);font-size:12px;">—</span>';
               const range = actDateRange(a);
-              const prog = a.progress||0;
-              return `<tr>
+              const prog  = a.progress||0;
+              const late  = isLate(a);
+              return `<tr style="border-top:1px solid var(--border);">
                 <td style="padding:10px 16px; font-weight:500; font-size:13px;">${esc(a.name)}</td>
-                <td><div style="display:flex;gap:4px;flex-wrap:wrap;">${personHTML}</div></td>
-                <td style="font-family:var(--mono);font-size:12px;">${Math.round(actTotalHours(a))}h</td>
-                <td style="font-size:12px;color:var(--muted);">${fmtDate(range.end)}</td>
-                <td style="min-width:100px;">
+                <td style="padding:8px;"><div style="display:flex;gap:3px;flex-wrap:wrap;">${personHTML}</div></td>
+                <td style="padding:8px; font-family:var(--mono); font-size:12px;">${Math.round(actTotalHours(a))}h</td>
+                <td style="padding:8px; font-size:12px; color:${late?'var(--red)':'var(--muted)'};">${fmtDate(range.end)}</td>
+                <td style="padding:8px;">
                   <div style="display:flex;align-items:center;gap:6px;">
                     <div class="progress-wrap" style="flex:1;"><div class="progress-bar ${prog===100?'green':prog>60?'':prog>30?'amber':'red'}" style="width:${prog}%;"></div></div>
+                    <span style="font-size:11px;color:var(--muted);min-width:28px;">${prog}%</span>
+                  </div>
+                </td>
+                <td style="padding:8px;">${getStatusBadge(late && a.status!=='concluido'?'atrasado':a.status)}</td>
+                <td style="padding:8px; white-space:nowrap;">
+                  <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:3px 7px;" onclick="openProgress(${a.id})">↻</button>
+                  <button class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 6px;" onclick="removeFromSprint('${s.id}',${a.id})">✕</button>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`
+    : `<div class="empty" style="margin-bottom:28px;"><div class="empty-text">Nenhuma atividade no sprint ainda</div></div>`}
+
+    <!-- Backlog: no período -->
+    ${inPeriod.length ? `
+    <div class="section-title" style="margin-bottom:8px;">
+      Backlog — Atividades no período do sprint (${inPeriod.length})
+    </div>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:12px;">
+      Atividades do cronograma cujo prazo se sobrepõe com ${fmtDate(s.start_date)} → ${fmtDate(s.end_date)}
+    </div>
+    <div class="card" style="padding:0; overflow:hidden; margin-bottom:20px;">
+      <div style="overflow-x:auto;">
+        <table style="width:100%; min-width:560px; border-collapse:collapse;">
+          <thead><tr style="background:var(--surface2);">
+            <th style="padding:10px 16px; text-align:left; font-size:11px; font-weight:600; color:var(--muted);">Atividade</th>
+            <th style="padding:10px 8px; font-size:11px; font-weight:600; color:var(--muted);">Responsável</th>
+            <th style="padding:10px 8px; font-size:11px; font-weight:600; color:var(--muted);">Prazo</th>
+            <th style="padding:10px 8px; font-size:11px; font-weight:600; color:var(--muted);">Horas</th>
+            <th style="padding:10px 8px; font-size:11px; font-weight:600; color:var(--muted);">Progresso</th>
+            <th style="padding:10px 8px;"></th>
+          </tr></thead>
+          <tbody>
+            ${inPeriod.map(a => {
+              const range  = actDateRange(a);
+              const allocs = a.allocations||[];
+              const personHTML = allocs.length
+                ? allocs.map(al => { const p=state.team.find(x=>x.id===al.personId); const pi=state.team.findIndex(x=>x.id===al.personId); const c=pi>=0?getPersonColor(pi):'#7a7a8a'; return p?`<div class="avatar avatar-sm" style="background:${c}22;color:${c};" title="${p.name}">${initials(p.name)}</div>`:''; }).join('')
+                : '<span style="color:var(--muted);font-size:12px;">—</span>';
+              const prog = a.progress||0;
+              return `<tr style="border-top:1px solid var(--border);">
+                <td style="padding:9px 16px; font-size:13px; font-weight:500;">${esc(a.name)}</td>
+                <td style="padding:8px;"><div style="display:flex;gap:3px;">${personHTML}</div></td>
+                <td style="padding:8px; font-size:12px; color:var(--muted);">${fmtDate(range.start)} → ${fmtDate(range.end)}</td>
+                <td style="padding:8px; font-family:var(--mono); font-size:12px;">${Math.round(actTotalHours(a))}h</td>
+                <td style="padding:8px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div class="progress-wrap" style="flex:1; min-width:60px;"><div class="progress-bar ${prog===100?'green':prog>30?'amber':'red'}" style="width:${prog}%;"></div></div>
                     <span style="font-size:11px;color:var(--muted);">${prog}%</span>
                   </div>
                 </td>
-                <td>${getStatusBadge(a.status)}</td>
-                <td>
-                  <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:3px 7px;" onclick="openProgress(${a.id})">↻</button>
-                  ${canDo('edit_activity') ? `<button class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 6px;" onclick="removeFromSprint('${s.id}',${a.id})">✕</button>` : ''}
+                <td style="padding:8px;">
+                  <button class="btn btn-primary btn-sm" style="font-size:11px; white-space:nowrap;" onclick="addToSprint('${s.id}',${a.id})">+ Sprint</button>
                 </td>
               </tr>`;
             }).join('')}
           </tbody>
         </table>
       </div>
-    </div>` : `<div class="empty" style="margin-bottom:20px;"><div class="empty-text">Nenhuma atividade no sprint</div><div class="empty-sub">Clique em "+ Adicionar atividades" para selecionar do cronograma</div></div>`}
+    </div>` : `<div style="padding:16px; background:var(--surface2); border-radius:var(--radius); margin-bottom:20px; font-size:13px; color:var(--muted);">
+      ✓ Todas as atividades do período já estão no sprint.
+    </div>`}
 
-    ${notInSprint.length && canDo('create_activity') ? `
-    <div class="section-title" style="margin-bottom:12px;">Backlog — Atividades disponíveis para o sprint</div>
-    <div class="card" style="padding:0; overflow:hidden;">
-      <div style="overflow-x:auto;">
-        <table style="min-width:600px;">
-          <thead><tr><th style="padding:10px 16px;">Atividade</th><th>Prazo</th><th>Horas</th><th></th></tr></thead>
-          <tbody>
-            ${notInSprint.map(a => {
-              const range = actDateRange(a);
-              return `<tr>
-                <td style="padding:8px 16px;font-size:13px;">${esc(a.name)}</td>
-                <td style="font-size:12px;color:var(--muted);">${fmtDate(range.end)}</td>
-                <td style="font-family:var(--mono);font-size:12px;">${Math.round(actTotalHours(a))}h</td>
-                <td><button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="addToSprint('${s.id}',${a.id})">+ Adicionar ao sprint</button></td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
+    <!-- Backlog: fora do período (colapsado) -->
+    ${outsidePeriod.length ? `
+    <div style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:10px;" onclick="toggleOutsidePeriod()">
+      <div class="section-title" style="margin:0;">Outras atividades do projeto (${outsidePeriod.length})</div>
+      <span id="outside-toggle" style="font-size:12px; color:var(--muted);">▶ expandir</span>
+    </div>
+    <div id="outside-period-list" style="display:none;">
+      <div class="card" style="padding:0; overflow:hidden; margin-bottom:20px;">
+        <div style="overflow-x:auto;">
+          <table style="width:100%; min-width:560px; border-collapse:collapse;">
+            <tbody>
+              ${outsidePeriod.map(a => {
+                const range = actDateRange(a);
+                return `<tr style="border-top:1px solid var(--border);">
+                  <td style="padding:9px 16px; font-size:13px;">${esc(a.name)}</td>
+                  <td style="padding:8px; font-size:12px; color:var(--muted);">${fmtDate(range.start)} → ${fmtDate(range.end)}</td>
+                  <td style="padding:8px; font-family:var(--mono); font-size:12px;">${Math.round(actTotalHours(a))}h</td>
+                  <td style="padding:8px;">
+                    <button class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="addToSprint('${s.id}',${a.id})">+ Sprint</button>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>` : ''}
   `;
+}
+
+function toggleOutsidePeriod() {
+  const el  = document.getElementById('outside-period-list');
+  const tog = document.getElementById('outside-toggle');
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  tog.textContent  = open ? '▶ expandir' : '▼ recolher';
 }
 
 function openNewSprint() {
@@ -5717,7 +5825,7 @@ function renderFacts() {
       const doneAct = actions.filter(a => a.done).length;
 
       return `<div class="card" style="cursor:pointer; border-left:3px solid ${f.status==='aberto'?'var(--red)':f.status==='em_tratamento'?'var(--amber)':f.status==='resolvido'?'var(--green)':'var(--blue)'};"
-        onclick="navigate('fact_detail', ${f.id})">
+        onclick="navigate('fact_detail', String(${f.id}))">
         <div style="display:flex; align-items:flex-start; gap:12px;">
           <div style="flex:1; min-width:0;">
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:5px; flex-wrap:wrap;">
@@ -5750,7 +5858,7 @@ function renderFacts() {
 }
 
 function renderFactDetail() {
-  const f = (state.facts||[]).find(x => x.id === currentFactId);
+  const f = (state.facts||[]).find(x => String(x.id) === String(currentFactId));
   if (!f) { navigate('facts'); return; }
 
   const proj  = state.projects.find(p => p.id === f.projectId);
@@ -5883,7 +5991,7 @@ function openNewFact() {
 }
 
 function openEditFact(id) {
-  const f = (state.facts||[]).find(x => x.id === id);
+  const f = (state.facts||[]).find(x => String(x.id) === String(id));
   if (!f) return;
   document.getElementById('fact-modal-title').textContent = 'Editar Fato Relevante';
   document.getElementById('fact-title').value = f.title || '';
@@ -5996,13 +6104,13 @@ function saveFact() {
 
 function deleteFact(id) {
   if (!confirm('Excluir este fato relevante?')) return;
-  state.facts = (state.facts||[]).filter(f => f.id !== id);
+  state.facts = (state.facts||[]).filter(f => String(f.id) !== String(id));
   saveState();
   render();
 }
 
 function toggleFactAction(factId, actionIdx) {
-  const f = (state.facts||[]).find(x => x.id === factId);
+  const f = (state.facts||[]).find(x => String(x.id) === String(factId));
   if (!f || !f.actions) return;
   f.actions[actionIdx].done = !f.actions[actionIdx].done;
   saveState();
