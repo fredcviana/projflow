@@ -498,6 +498,9 @@ window.navigate = function() {};
     <div class="nav-item" onclick="navigate('facts')">
       <span class="nav-icon">⚠</span><span>Fatos Relevantes</span>
     </div>
+    <div class="nav-item" onclick="navigate('logbook')">
+      <span class="nav-icon">📒</span><span>Diário de Bordo</span>
+    </div>
     <div class="nav-item" onclick="navigate('team')">
       <span class="nav-icon">◎</span><span>Equipe</span>
     </div>
@@ -1064,6 +1067,80 @@ window.navigate = function() {};
   </div>
 </div>
 
+<!-- Modal Alinhamento -->
+<div class="modal-overlay" id="modal-alignment">
+  <div class="modal modal-wide" style="width:640px;">
+    <div class="modal-title" id="alignment-modal-title">Novo Registro de Alinhamento</div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Projeto *</label>
+        <select class="form-control" id="al-project"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo de Alinhamento *</label>
+        <select class="form-control" id="al-type">
+          <option value="equipe">👥 Com a equipe</option>
+          <option value="cliente">🤝 Com o cliente</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Data *</label>
+        <input class="form-control" id="al-date" type="date" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Participantes</label>
+        <input class="form-control" id="al-participants" placeholder="Ex: Fred, Ana, Cliente CMOC..." />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">O que foi alinhado? *</label>
+      <textarea class="form-control" id="al-content" rows="4" placeholder="Descreva os pontos discutidos, decisões tomadas, encaminhamentos..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Este alinhamento gera impacto em:</label>
+      <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:6px;">
+        <label style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 8px; background:var(--surface2); border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--border); text-align:center;" id="al-impact-lbl-escopo">
+          <input type="checkbox" id="al-impact-escopo" onchange="toggleAlImpact('escopo')" style="width:16px;height:16px;accent-color:var(--accent);" />
+          <span style="font-size:12px; font-weight:500;">📋 Escopo</span>
+        </label>
+        <label style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 8px; background:var(--surface2); border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--border); text-align:center;" id="al-impact-lbl-cronograma">
+          <input type="checkbox" id="al-impact-cronograma" onchange="toggleAlImpact('cronograma')" style="width:16px;height:16px;accent-color:var(--accent);" />
+          <span style="font-size:12px; font-weight:500;">📅 Cronograma</span>
+        </label>
+        <label style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 8px; background:var(--surface2); border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--border); text-align:center;" id="al-impact-lbl-medicao">
+          <input type="checkbox" id="al-impact-medicao" onchange="toggleAlImpact('medicao')" style="width:16px;height:16px;accent-color:var(--accent);" />
+          <span style="font-size:12px; font-weight:500;">📊 Medição</span>
+        </label>
+        <label style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 8px; background:var(--surface2); border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--border); text-align:center;" id="al-impact-lbl-custo">
+          <input type="checkbox" id="al-impact-custo" onchange="toggleAlImpact('custo')" style="width:16px;height:16px;accent-color:var(--accent);" />
+          <span style="font-size:12px; font-weight:500;">💰 Custo</span>
+        </label>
+        <label style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 8px; background:var(--surface2); border-radius:var(--radius-sm); cursor:pointer; border:1px solid var(--border); text-align:center;" id="al-impact-lbl-na">
+          <input type="checkbox" id="al-impact-na" onchange="toggleAlImpact('na')" style="width:16px;height:16px;accent-color:var(--accent);" />
+          <span style="font-size:12px; font-weight:500;">— N/A</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Encaminhamentos / Próximos passos</label>
+      <textarea class="form-control" id="al-actions" rows="2" placeholder="O que ficou definido para fazer após este alinhamento..."></textarea>
+    </div>
+
+    <input type="hidden" id="al-id" />
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-alignment')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveAlignment()">Salvar Alinhamento</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Sprint -->
 <div class="modal-overlay" id="modal-sprint">
   <div class="modal modal-wide">
@@ -1273,6 +1350,7 @@ function loadState() {
       if (!s.facts)             s.facts             = [];
       if (!s.sprints)           s.sprints           = [];
       if (!s.sprintActivities)  s.sprintActivities  = {};
+      if (!s.logbookEntries)    s.logbookEntries    = [];
       // Migrate old single-person activities to allocations array
       s.activities = (s.activities || []).map(a => {
         if (!a.allocations) {
@@ -1285,7 +1363,7 @@ function loadState() {
       return s;
     }
   } catch(e) {}
-  return { projects: [], deliveries: [], packages: [], activities: [], team: [], templates: [], facts: [], sprints: [], sprintActivities: {}, nextId: 1 };
+  return { projects: [], deliveries: [], packages: [], activities: [], team: [], templates: [], facts: [], sprints: [], sprintActivities: {}, logbookEntries: [], nextId: 1 };
 }
 
 function saveState() {
@@ -1313,7 +1391,7 @@ let currentProjectId = null;
 function navigate(page, id) {
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  const map = { dashboard: 0, projects: 1, activities: 2, myview: 3, approvals: 4, sprints: 5, facts: 6, team: 7, library: 8, settings: 9 };
+  const map = { dashboard: 0, projects: 1, activities: 2, myview: 3, approvals: 4, sprints: 5, facts: 6, logbook: 7, team: 8, library: 9, settings: 10 };
   if (map[page] !== undefined) {
     document.querySelectorAll('.nav-item')[map[page]]?.classList.add('active');
   }
@@ -1337,6 +1415,7 @@ function render() {
     sprint_detail: renderSprintDetail,
     facts: renderFacts,
     fact_detail: renderFactDetail,
+    logbook: renderLogbook,
     team: renderTeam,
     library: renderLibrary,
     settings: renderSettings,
@@ -6309,6 +6388,348 @@ function toggleFactAction(factId, actionIdx) {
   saveState();
   renderFactDetail();
   showToast(f.actions[actionIdx].done ? '✓ Ação concluída!' : 'Ação reaberta');
+}
+
+// ============================================================
+//  DIÁRIO DE BORDO
+// ============================================================
+let _logbookProject = null; // currently selected project filter
+
+const alImpactLabel = {
+  escopo: '📋 Escopo', cronograma: '📅 Cronograma',
+  medicao: '📊 Medição', custo: '💰 Custo', na: '— N/A'
+};
+
+function renderLogbook() {
+  document.getElementById('topbar-title').textContent = 'Diário de Bordo';
+  document.getElementById('topbar-sub').textContent = 'Histórico do projeto — checkins, fatos e alinhamentos';
+  document.getElementById('topbar-actions').innerHTML = `
+    <button class="btn btn-primary" onclick="openNewAlignment()">+ Registro de Alinhamento</button>
+  `;
+
+  if (!state.logbookEntries) state.logbookEntries = [];
+
+  const savedProj = _logbookProject || localStorage.getItem('projflow_logbook_project') || '';
+
+  document.getElementById('page-content').innerHTML = `
+    <!-- Project filter -->
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
+      <div style="font-size:13px; color:var(--muted);">Projeto:</div>
+      <select class="form-control" id="logbook-project-filter" style="width:280px;"
+        onchange="setLogbookProject(this.value)">
+        <option value="">— Todos os projetos —</option>
+        ${state.projects.map(p => `<option value="${p.id}" ${String(p.id)===String(savedProj)?'selected':''}>${esc(p.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div id="logbook-content"></div>
+  `;
+
+  _renderLogbookContent(savedProj ? parseInt(savedProj) : null);
+}
+
+function setLogbookProject(val) {
+  _logbookProject = val || null;
+  localStorage.setItem('projflow_logbook_project', val);
+  _renderLogbookContent(val ? parseInt(val) : null);
+}
+
+async function _renderLogbookContent(projectId) {
+  const el = document.getElementById('logbook-content');
+  if (!el) return;
+
+  // Build unified timeline entries
+  const entries = [];
+
+  // 1. Alignment records from state
+  (state.logbookEntries||[]).forEach(e => {
+    if (!projectId || e.projectId === projectId) {
+      entries.push({ ...e, _type: 'alignment', _date: e.date });
+    }
+  });
+
+  // 2. Fatos Relevantes
+  (state.facts||[]).forEach(f => {
+    if (!projectId || f.projectId === projectId) {
+      entries.push({ ...f, _type: 'fact', _date: f.date || f.createdAt?.slice(0,10) });
+    }
+  });
+
+  // 3. Check-ins from Supabase
+  let checkins = [];
+  if (sb) {
+    try {
+      let query = sb.from('projflow_checkins').select('*').order('check_date', { ascending: false }).limit(100);
+      const { data } = await query;
+      checkins = data || [];
+    } catch(e) { checkins = []; }
+  }
+
+  // Filter checkins by project if needed
+  if (projectId) {
+    // Keep checkins from people allocated to this project
+    const projActPersonIds = new Set();
+    state.activities.forEach(a => {
+      const d   = a.deliveryId ? state.deliveries.find(d => d.id === a.deliveryId) : null;
+      const pkg = a.packageId  ? (state.packages||[]).find(p => p.id === a.packageId) : null;
+      const d2  = pkg ? state.deliveries.find(d => d.id === pkg.deliveryId) : null;
+      if ((d?.projectId || d2?.projectId) === projectId) {
+        actPersonIds(a).forEach(id => projActPersonIds.add(id));
+      }
+    });
+    checkins = checkins.filter(c => projActPersonIds.has(c.person_id));
+  }
+
+  checkins.forEach(c => {
+    entries.push({ ...c, _type: 'checkin', _date: c.check_date });
+  });
+
+  // Sort all entries by date descending
+  entries.sort((a, b) => {
+    const da = a._date || '0000-00-00';
+    const db = b._date || '0000-00-00';
+    return db.localeCompare(da);
+  });
+
+  if (!entries.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📒</div>
+      <div class="empty-text">Nenhum registro encontrado</div>
+      <div class="empty-sub">${projectId ? 'Sem registros para este projeto.' : 'Selecione um projeto ou crie um novo registro.'}</div>
+    </div>`;
+    return;
+  }
+
+  // Group by date
+  const byDate = {};
+  entries.forEach(e => {
+    const d = e._date || 'Sem data';
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push(e);
+  });
+
+  let html = '<div style="position:relative;">';
+
+  // Timeline line
+  html += `<div style="position:absolute; left:107px; top:0; bottom:0; width:2px; background:var(--border); z-index:0;"></div>`;
+
+  Object.entries(byDate).forEach(([date, dayEntries]) => {
+    const label = date !== 'Sem data' ? (() => {
+      const d = new Date(date + 'T12:00:00');
+      const days = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+      const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+      return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    })() : 'Sem data';
+
+    html += `<div style="display:flex; gap:0; margin-bottom:4px; align-items:flex-start;">
+      <!-- Date label -->
+      <div style="width:110px; flex-shrink:0; padding-right:16px; padding-top:12px; text-align:right; position:relative; z-index:1;">
+        <div style="font-size:11px; font-weight:600; color:var(--accent2); line-height:1.3;">${label}</div>
+      </div>
+      <!-- Entries for this day -->
+      <div style="flex:1; padding-left:20px; position:relative;">`;
+
+    dayEntries.forEach(e => {
+      if (e._type === 'alignment') {
+        html += _renderAlignmentCard(e);
+      } else if (e._type === 'fact') {
+        html += _renderFactLogCard(e);
+      } else if (e._type === 'checkin') {
+        html += _renderCheckinCard(e);
+      }
+    });
+
+    html += `</div></div>`;
+  });
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function _renderAlignmentCard(e) {
+  const proj    = state.projects.find(p => p.id === e.projectId);
+  const impacts = (e.impacts||[]).map(i => alImpactLabel[i]||i).join(' · ');
+  const typeCol  = e.type === 'cliente' ? 'var(--teal)' : 'var(--blue)';
+  const typeIcon = e.type === 'cliente' ? '🤝' : '👥';
+  const typeLabel = e.type === 'cliente' ? 'Alinhamento com cliente' : 'Alinhamento com equipe';
+
+  return `<div style="background:var(--surface); border:1px solid var(--border); border-left:3px solid ${typeCol};
+    border-radius:var(--radius); padding:14px 16px; margin-bottom:10px; position:relative;">
+    <!-- dot on timeline -->
+    <div style="position:absolute; left:-26px; top:14px; width:10px; height:10px; border-radius:50%;
+      background:${typeCol}; border:2px solid var(--bg); z-index:2;"></div>
+
+    <div style="display:flex; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+          <span style="font-size:13px; font-weight:600;">${typeIcon} ${typeLabel}</span>
+          ${proj ? `<span style="font-size:11px; color:var(--accent2);">${esc(proj.name)}</span>` : ''}
+          ${impacts ? `<span style="font-size:11px; color:var(--muted);">${impacts}</span>` : ''}
+        </div>
+        ${e.participants ? `<div style="font-size:11px; color:var(--muted); margin-bottom:6px;">👤 ${esc(e.participants)}</div>` : ''}
+        <div style="font-size:13px; line-height:1.6; margin-bottom:${e.actions?'8px':'0'};">${esc(e.content||'').replace(/\n/g,'<br>')}</div>
+        ${e.actions ? `<div style="padding:8px 10px; background:var(--surface2); border-radius:var(--radius-sm); font-size:12px; color:var(--muted);">
+          <span style="font-weight:600;">Encaminhamentos:</span> ${esc(e.actions).replace(/\n/g,'<br>')}
+        </div>` : ''}
+      </div>
+      <div style="display:flex; gap:5px; flex-shrink:0;">
+        <button class="btn btn-ghost btn-sm" onclick="openEditAlignment('${e.id}')">✎</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteAlignment('${e.id}')">✕</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function _renderFactLogCard(f) {
+  const proj    = state.projects.find(p => p.id === f.projectId);
+  const impacts = (f.impacts||[]).map(i => ({ financeiro:'💰', cronograma:'📅', escopo:'📋', reputacional:'🏆' }[i]||i)).join(' ');
+  const statusColor = { aberto:'var(--red)', em_tratamento:'var(--amber)', resolvido:'var(--green)', monitoramento:'var(--blue)' };
+  const col = statusColor[f.status] || 'var(--muted)';
+
+  return `<div style="background:var(--surface); border:1px solid var(--border); border-left:3px solid ${col};
+    border-radius:var(--radius); padding:14px 16px; margin-bottom:10px; position:relative; cursor:pointer;"
+    onclick="navigate('fact_detail', ${f.id})">
+    <div style="position:absolute; left:-26px; top:14px; width:10px; height:10px; border-radius:50%;
+      background:${col}; border:2px solid var(--bg); z-index:2;"></div>
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+      <span style="font-size:11px; background:rgba(248,113,113,0.15); color:var(--red); padding:2px 8px; border-radius:10px; font-weight:600;">⚠ Fato Relevante</span>
+      ${proj ? `<span style="font-size:11px; color:var(--accent2);">${esc(proj.name)}</span>` : ''}
+      ${impacts ? `<span style="font-size:13px;">${impacts}</span>` : ''}
+      <span class="badge ${f.status==='aberto'?'badge-red':f.status==='resolvido'?'badge-green':f.status==='em_tratamento'?'badge-amber':'badge-blue'}" style="font-size:10px;">${{ aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Monitoramento' }[f.status]||f.status}</span>
+    </div>
+    <div style="font-size:13px; font-weight:500;">${esc(f.title)}</div>
+    ${f.desc ? `<div style="font-size:12px; color:var(--muted); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(f.desc)}</div>` : ''}
+  </div>`;
+}
+
+function _renderCheckinCard(c) {
+  const person = state.team.find(p => p.id === c.person_id);
+  const pIdx   = state.team.findIndex(p => p.id === c.person_id);
+  const col    = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+
+  return `<div style="background:var(--surface); border:1px solid var(--border); border-left:3px solid ${col};
+    border-radius:var(--radius); padding:12px 16px; margin-bottom:10px; position:relative;">
+    <div style="position:absolute; left:-26px; top:12px; width:10px; height:10px; border-radius:50%;
+      background:${col}; border:2px solid var(--bg); z-index:2;"></div>
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+      <div class="avatar avatar-sm" style="background:${col}22; color:${col};">${person ? initials(person.name) : '?'}</div>
+      <span style="font-size:13px; font-weight:500;">${person ? esc(person.name) : 'Desconhecido'}</span>
+      <span style="font-size:11px; background:rgba(96,165,250,0.12); color:var(--blue); padding:2px 8px; border-radius:10px;">☀️ Check-in</span>
+      ${c.has_impediment ? `<span style="font-size:11px; background:rgba(251,191,36,0.15); color:var(--amber); padding:2px 8px; border-radius:10px;">⚠ Impedimento</span>` : ''}
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:12px;">
+      ${c.did_yesterday ? `<div style="padding:8px 10px; background:var(--surface2); border-radius:var(--radius-sm);">
+        <div style="font-size:10px; color:var(--muted); margin-bottom:3px;">FEZ ONTEM</div>
+        <div style="line-height:1.5;">${esc(c.did_yesterday)}</div>
+      </div>` : ''}
+      ${c.will_do_today ? `<div style="padding:8px 10px; background:var(--surface2); border-radius:var(--radius-sm);">
+        <div style="font-size:10px; color:var(--green); margin-bottom:3px;">FARÁ HOJE</div>
+        <div style="line-height:1.5;">${esc(c.will_do_today)}</div>
+      </div>` : ''}
+      ${c.impediment ? `<div style="padding:8px 10px; background:rgba(251,191,36,0.06); border-radius:var(--radius-sm); grid-column:1/-1; border:1px solid rgba(251,191,36,0.2);">
+        <div style="font-size:10px; color:var(--amber); margin-bottom:3px;">IMPEDIMENTO</div>
+        <div style="line-height:1.5;">${esc(c.impediment)}</div>
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
+// ---- Alignment CRUD ----
+function openNewAlignment(projectId) {
+  document.getElementById('alignment-modal-title').textContent = 'Novo Registro de Alinhamento';
+  document.getElementById('al-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('al-content').value = '';
+  document.getElementById('al-participants').value = '';
+  document.getElementById('al-actions').value = '';
+  document.getElementById('al-type').value = 'equipe';
+  document.getElementById('al-id').value = '';
+  ['escopo','cronograma','medicao','custo','na'].forEach(t => {
+    const cb = document.getElementById(`al-impact-${t}`);
+    if (cb) { cb.checked = false; toggleAlImpact(t); }
+  });
+  const projSel = document.getElementById('al-project');
+  projSel.innerHTML = '<option value="">— Selecionar projeto —</option>' +
+    state.projects.map(p => `<option value="${p.id}" ${String(p.id)===String(projectId||_logbookProject||'')?'selected':''}>${esc(p.name)}</option>`).join('');
+  openModal('modal-alignment');
+}
+
+function openEditAlignment(id) {
+  const e = (state.logbookEntries||[]).find(x => String(x.id) === String(id));
+  if (!e) return;
+  document.getElementById('alignment-modal-title').textContent = 'Editar Alinhamento';
+  document.getElementById('al-date').value = e.date || '';
+  document.getElementById('al-content').value = e.content || '';
+  document.getElementById('al-participants').value = e.participants || '';
+  document.getElementById('al-actions').value = e.actions || '';
+  document.getElementById('al-type').value = e.type || 'equipe';
+  document.getElementById('al-id').value = id;
+  ['escopo','cronograma','medicao','custo','na'].forEach(t => {
+    const cb = document.getElementById(`al-impact-${t}`);
+    if (cb) { cb.checked = (e.impacts||[]).includes(t); toggleAlImpact(t); }
+  });
+  const projSel = document.getElementById('al-project');
+  projSel.innerHTML = '<option value="">— Selecionar projeto —</option>' +
+    state.projects.map(p => `<option value="${p.id}" ${p.id===e.projectId?'selected':''}>${esc(p.name)}</option>`).join('');
+  openModal('modal-alignment');
+}
+
+function toggleAlImpact(type) {
+  const cb  = document.getElementById(`al-impact-${type}`);
+  const lbl = document.getElementById(`al-impact-lbl-${type}`);
+  if (!cb || !lbl) return;
+  // If N/A is checked, uncheck others; if other is checked, uncheck N/A
+  if (type === 'na' && cb.checked) {
+    ['escopo','cronograma','medicao','custo'].forEach(t => {
+      const o = document.getElementById(`al-impact-${t}`);
+      if (o) { o.checked = false; toggleAlImpact(t); }
+    });
+  } else if (type !== 'na' && cb.checked) {
+    const na = document.getElementById('al-impact-na');
+    if (na) { na.checked = false; toggleAlImpact('na'); }
+  }
+  lbl.style.border = cb.checked ? '1px solid var(--accent)' : '1px solid var(--border)';
+  lbl.style.background = cb.checked ? 'rgba(108,99,255,0.1)' : 'var(--surface2)';
+}
+
+function saveAlignment() {
+  const content = document.getElementById('al-content').value.trim();
+  if (!content) { alert('Descreva o que foi alinhado.'); return; }
+  const projectId = parseInt(document.getElementById('al-project').value) || null;
+  if (!projectId) { alert('Selecione o projeto.'); return; }
+
+  const impacts = ['escopo','cronograma','medicao','custo','na']
+    .filter(t => document.getElementById(`al-impact-${t}`)?.checked);
+
+  if (!state.logbookEntries) state.logbookEntries = [];
+  const editId = document.getElementById('al-id').value;
+
+  const data = {
+    projectId,
+    type:         document.getElementById('al-type').value,
+    date:         document.getElementById('al-date').value,
+    participants: document.getElementById('al-participants').value.trim(),
+    content,
+    impacts,
+    actions:      document.getElementById('al-actions').value.trim(),
+    updatedAt:    new Date().toISOString(),
+  };
+
+  if (editId) {
+    const idx = state.logbookEntries.findIndex(x => String(x.id) === String(editId));
+    if (idx >= 0) state.logbookEntries[idx] = { ...state.logbookEntries[idx], ...data };
+  } else {
+    state.logbookEntries.push({ id: uid(), createdAt: new Date().toISOString(), ...data });
+  }
+
+  closeModal('modal-alignment');
+  saveState();
+  render();
+  showToast('✓ Alinhamento registrado!');
+}
+
+function deleteAlignment(id) {
+  if (!confirm('Excluir este registro de alinhamento?')) return;
+  state.logbookEntries = (state.logbookEntries||[]).filter(e => String(e.id) !== String(id));
+  saveState();
+  render();
 }
 
 // ============================================================
