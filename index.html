@@ -668,7 +668,7 @@ window.navigate = function() {};
         oninput="document.getElementById('progress-label').textContent=this.value+'%'" />
     </div>
     <div class="form-group">
-      <label class="form-label">Status</label>
+      <label class="form-label" id="progress-status-label">Status</label>
       <select class="form-control" id="progress-status">
         <option value="nao_iniciado">Não iniciado</option>
         <option value="em_andamento">Em andamento</option>
@@ -2317,10 +2317,10 @@ function renderDeliveryCard(d, p) {
 
   if (!totalItems) {
     bodyHTML = `<div style="color:var(--muted); font-size:13px; padding:12px 0;">
-      Nenhum item. 
-      <a onclick="openNewActivity(${d.id})" style="color:var(--accent2); cursor:pointer;">+ Atividade direta</a>
+      Nenhum item.
+      ${canDo('create_activity') ? `<a onclick="openNewActivity(${d.id})" style="color:var(--accent2); cursor:pointer;">+ Atividade direta</a>
       &nbsp;·&nbsp;
-      <a onclick="openNewPackage(${d.id})" style="color:var(--teal); cursor:pointer;">+ Pacote de atividades</a>
+      <a onclick="openNewPackage(${d.id})" style="color:var(--teal); cursor:pointer;">+ Pacote de atividades</a>` : ''}
     </div>`;
   }
 
@@ -2339,12 +2339,14 @@ function renderDeliveryCard(d, p) {
           </div>
         </div>
         <div style="display:flex; gap:6px;" onclick="event.stopPropagation()">
+          ${canDo('create_activity') ? `
           <button class="btn btn-ghost btn-sm" style="color:var(--accent2);" onclick="openLibraryPicker(${d.id})">▣ Biblioteca</button>
           <button class="btn btn-ghost btn-sm" onclick="openNewPackage(${d.id})">+ Pacote</button>
           <button class="btn btn-ghost btn-sm" onclick="openNewActivity(${d.id})">+ Atividade</button>
           <button class="btn btn-ghost btn-sm" style="color:var(--teal);" onclick="openConvertDelivery(${d.id})" title="Converter em Pacote de Atividades">⇄ Converter</button>
           <button class="btn btn-ghost btn-sm" onclick="openEditDelivery(${d.id})">✎</button>
           <button class="btn btn-danger btn-sm" onclick="deleteDelivery(${d.id})">✕</button>
+          ` : ''}
         </div>
       </div>
       <div class="delivery-body" id="body-${d.id}">
@@ -2380,14 +2382,14 @@ function renderPackageCard(pkg, d) {
           <div>Início</div><div>Término</div><div>Progresso</div><div>Status</div>
         </div>
         ${acts.map((a, idx) => renderActivityRowInPackage(a, idx, acts)).join('')}
-        <div style="margin-top:10px;">
+        ${canDo('create_activity') ? `<div style="margin-top:10px;">
           <a onclick="openNewActivityInPackage(${pkg.id}, ${d.id})" style="font-size:12px; color:var(--teal); cursor:pointer;">+ Adicionar atividade ao pacote</a>
-        </div>
+        </div>` : ''}
       </div>`;
   } else {
     actsHTML = `<div style="padding:12px 16px; color:var(--muted); font-size:13px;">
       Nenhuma atividade.
-      <a onclick="openNewActivityInPackage(${pkg.id}, ${d.id})" style="color:var(--teal); cursor:pointer;">+ Adicionar</a>
+      ${canDo('create_activity') ? `<a onclick="openNewActivityInPackage(${pkg.id}, ${d.id})" style="color:var(--teal); cursor:pointer;">+ Adicionar</a>` : ''}
     </div>`;
   }
 
@@ -2414,8 +2416,8 @@ function renderPackageCard(pkg, d) {
           <div style="min-width:80px;">
             <div class="progress-wrap"><div class="progress-bar ${pct===100?'green':pct>60?'':pct>30?'amber':'red'}" style="width:${pct}%; background:var(--teal);"></div></div>
           </div>
-          <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:3px 8px;" onclick="openEditPackage(${pkg.id})">✎</button>
-          <button class="btn btn-danger btn-sm" style="font-size:11px; padding:3px 7px;" onclick="deletePackage(${pkg.id})">✕</button>
+          ${canDo('edit_package') ? `<button class="btn btn-ghost btn-sm" style="font-size:11px; padding:3px 8px;" onclick="openEditPackage(${pkg.id})">✎</button>` : ''}
+          ${canDo('delete_package') ? `<button class="btn btn-danger btn-sm" style="font-size:11px; padding:3px 7px;" onclick="deletePackage(${pkg.id})">✕</button>` : ''}
         </div>
       </div>
       <div class="delivery-body" id="body-pkg-${pkg.id}">
@@ -2471,8 +2473,8 @@ function renderActivityRowInPackage(a, idx, allActs) {
       <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
         ${statusBadge}
         <button class="btn btn-ghost btn-sm" style="padding:3px 7px;font-size:11px;" onclick="openProgress(${a.id})">↻</button>
-        <button class="btn btn-ghost btn-sm" style="padding:3px 6px;font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>
-        <button class="btn btn-danger btn-sm" style="padding:3px 6px;font-size:11px;" onclick="deleteActivity(${a.id})">✕</button>
+        ${canDo('edit_activity') ? `<button class="btn btn-ghost btn-sm" style="padding:3px 6px;font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>` : ''}
+        ${canDo('delete_activity') ? `<button class="btn btn-danger btn-sm" style="padding:3px 6px;font-size:11px;" onclick="deleteActivity(${a.id})">✕</button>` : ''}
       </div>
     </div>`;
 }
@@ -2522,8 +2524,8 @@ function renderActivityRow(a) {
       <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
         ${statusBadge}
         <button class="btn btn-ghost btn-sm" style="padding:3px 8px; font-size:11px;" onclick="openProgress(${a.id})">↻</button>
-        <button class="btn btn-ghost btn-sm" style="padding:3px 7px; font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>
-        <button class="btn btn-danger btn-sm" style="padding:3px 7px; font-size:11px;" onclick="deleteActivity(${a.id})">✕</button>
+        ${canDo('edit_activity') ? `<button class="btn btn-ghost btn-sm" style="padding:3px 7px; font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>` : ''}
+        ${canDo('delete_activity') ? `<button class="btn btn-danger btn-sm" style="padding:3px 7px; font-size:11px;" onclick="deleteActivity(${a.id})">✕</button>` : ''}
       </div>
     </div>`;
 }
@@ -2739,7 +2741,7 @@ function renderActList(acts) {
                 <td>${getStatusBadge(a.effStatus)}</td>
                 <td style="white-space:nowrap;">
                   <button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:11px;" onclick="openProgress(${a.id})">↻</button>
-                  <button class="btn btn-ghost btn-sm" style="padding:3px 7px;font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>
+                  ${canDo('edit_activity') ? `<button class="btn btn-ghost btn-sm" style="padding:3px 7px;font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>` : ''}
                 </td>
               </tr>`;
             }).join('')}
@@ -4686,6 +4688,11 @@ function deleteActivity(id) {
 //  MODALS: PROGRESS
 // ============================================================
 function openProgress(id) {
+  // Analista só vê slider e nota — sem acesso ao seletor de status
+  const prof = currentProfile();
+  const statusRow = document.getElementById('progress-status-label')?.closest('.form-group');
+  if (statusRow) statusRow.style.display = prof === 'analista' ? 'none' : '';
+
   const a = state.activities.find(x => x.id === id);
   if (!a) return;
   const allocs = a.allocations && a.allocations.length
@@ -4710,15 +4717,30 @@ function openProgress(id) {
 }
 
 function saveProgress() {
+  if (!sbUser) { showToast('Faça login para atualizar'); return; }
   const id = parseInt(document.getElementById('progress-activity-id').value);
   const a = state.activities.find(x => x.id === id);
   if (!a) return;
+
+  const profile = currentProfile();
+  // Analista só atualiza suas próprias atividades
+  if (profile === 'analista' && !isMyActivity(id)) {
+    showToast('Você só pode atualizar suas próprias atividades'); return;
+  }
+
   a.progress = parseInt(document.getElementById('progress-slider').value);
-  a.status = document.getElementById('progress-status').value;
-  a.note = document.getElementById('progress-note').value;
-  if (a.progress === 100 && a.status !== 'concluido') a.status = 'concluido';
+  a.status   = document.getElementById('progress-status').value;
+  a.note     = document.getElementById('progress-note').value;
+
+  // NUNCA auto-concluir: analista precisa passar pelo fluxo de aprovação.
+  // Gerente/Líder podem marcar concluído diretamente.
+  if (profile === 'analista') {
+    // Impede que analista marque como concluído diretamente
+    if (a.status === 'concluido') a.status = 'em_andamento';
+    // Remove dropdown de status para analista (só mostra progresso)
+  }
+
   closeModal('modal-progress');
-  // Team member: push update to Supabase realtime
   if (sb && sbUser && sbUser.email !== ADMIN_EMAIL) {
     sbSaveActivityUpdate(a.id, a.progress, a.status, a.note);
   }
@@ -6432,6 +6454,7 @@ async function submitApprovalRequest() {
   const a = state.activities.find(x => x.id === id);
   if (!a) return;
   a.approvalStatus = 'pending';
+  a.status = 'em_andamento'; // keep em_andamento — concluido only after approval
   a.approvalDesc   = desc;
   a.approvalLink   = document.getElementById('approval-link').value.trim();
   a.status         = 'em_andamento'; // stays in progress until approved
@@ -6565,7 +6588,9 @@ const impactLabel     = { financeiro:'💰 Financeiro', cronograma:'📅 Cronogr
 function renderFacts() {
   document.getElementById('topbar-title').textContent = 'Fatos Relevantes';
   document.getElementById('topbar-sub').textContent = 'Ocorrências e não-conformidades dos projetos';
-  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="openNewFact()">+ Novo Fato Relevante</button>`;
+  document.getElementById('topbar-actions').innerHTML = canDo('create_project')
+    ? `<button class="btn btn-primary" onclick="openNewFact()">+ Novo Fato Relevante</button>`
+    : '';
 
   if (!state.facts) state.facts = [];
 
@@ -6642,8 +6667,8 @@ function renderFacts() {
             </div>
           </div>
           <div style="display:flex; gap:5px; flex-shrink:0;" onclick="event.stopPropagation()">
-            <button class="btn btn-ghost btn-sm" onclick="openEditFact(${f.id})">✎</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteFact(${f.id})">✕</button>
+            ${canDo('create_project') ? `<button class="btn btn-ghost btn-sm" onclick="openEditFact(${f.id})">✎</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteFact(${f.id})">✕</button>` : ''}
           </div>
         </div>
         ${actions.length ? `<div style="margin-top:10px;">
@@ -6673,7 +6698,7 @@ function renderFactDetail() {
   document.getElementById('topbar-sub').textContent = proj?.name || 'Fato Relevante';
   document.getElementById('topbar-actions').innerHTML = `
     <button class="btn btn-ghost btn-sm" onclick="navigate('facts')">← Voltar</button>
-    <button class="btn btn-ghost btn-sm" onclick="openEditFact(${f.id})">✎ Editar</button>
+    ${canDo('create_project') ? `<button class="btn btn-ghost btn-sm" onclick="openEditFact(${f.id})">✎ Editar</button>` : ''}
   `;
 
   document.getElementById('page-content').innerHTML = `
@@ -6761,7 +6786,7 @@ function renderFactDetail() {
       <div class="card">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
           <div class="card-title">Plano de Ação</div>
-          <button class="btn btn-ghost btn-sm" onclick="openEditFact(${f.id})">+ Editar</button>
+          ${canDo('create_project') ? `<button class="btn btn-ghost btn-sm" onclick="openEditFact(${f.id})">+ Editar</button>` : ''}
         </div>
         ${!actions.length ? `<div style="color:var(--muted); font-size:13px;">Nenhuma ação cadastrada.</div>` :
         actions.map((a,i) => `
@@ -7587,7 +7612,7 @@ function renderReportTeamAlloc(el) {
       <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">Escreva suas observações sobre a distribuição atual da equipe, riscos e recomendações.</div>
       <textarea class="form-control" id="report-alloc-analysis" rows="6" placeholder="Análise sobre a alocação da equipe..."
         style="resize:vertical;"
-        onchange="saveReportData('${key}',{analysis:this.value})">${esc(saved.analysis||'')}</textarea>
+        oninput="saveReportData('${key}',{analysis:this.value})">${esc(saved.analysis||'')}</textarea>
     </div>
 
     <div style="display:flex; gap:10px; justify-content:flex-end;">
@@ -7678,7 +7703,7 @@ function renderReportWeekly(el) {
       <td style="padding:8px 12px;">
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
           <input type="checkbox" ${checked?'checked':''} style="accent-color:var(--accent);"
-            onchange="toggleReportActivity('${key}','${setName}',${a.id},this.checked)" />
+            oninput="toggleReportActivity('${key}','${setName}',${a.id},this.checked)" />
           <span style="font-size:13px;">${esc(a.name)}</span>
         </label>
       </td>
@@ -7736,19 +7761,19 @@ function renderReportWeekly(el) {
       <div class="card">
         <div class="card-title" style="margin-bottom:8px;">⏳ Pendências</div>
         <textarea class="form-control" rows="5" placeholder="Liste as pendências em aberto..." style="resize:vertical;"
-          onchange="saveReportData('${key}',{pendencies:this.value})">${esc(saved.pendencies||'')}</textarea>
+          oninput="saveReportData('${key}',{pendencies:this.value})">${esc(saved.pendencies||'')}</textarea>
       </div>
       <div class="card">
         <div class="card-title" style="margin-bottom:8px;">🚨 Pontos de Alerta</div>
         <textarea class="form-control" rows="5" placeholder="Riscos, desvios, situações de atenção..." style="resize:vertical;"
-          onchange="saveReportData('${key}',{alerts:this.value})">${esc(saved.alerts||'')}</textarea>
+          oninput="saveReportData('${key}',{alerts:this.value})">${esc(saved.alerts||'')}</textarea>
       </div>
     </div>
 
     <div class="card" style="margin-bottom:20px;">
       <div class="card-title" style="margin-bottom:8px;">📝 Observações Gerais</div>
       <textarea class="form-control" rows="4" placeholder="Contexto geral, encaminhamentos, decisões tomadas..." style="resize:vertical;"
-        onchange="saveReportData('${key}',{notes:this.value})">${esc(saved.notes||'')}</textarea>
+        oninput="saveReportData('${key}',{notes:this.value})">${esc(saved.notes||'')}</textarea>
     </div>
 
     <div style="display:flex; gap:10px; justify-content:flex-end;">
@@ -7892,7 +7917,7 @@ function renderReportFactSingle(el) {
       <div class="card-title" style="margin-bottom:8px;">Análise Crítica</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Avaliação qualitativa do gestor sobre o fato, suas causas, impactos reais e lições aprendidas.</div>
       <textarea class="form-control" rows="6" placeholder="Descreva sua análise crítica sobre o fato relevante..." style="resize:vertical;"
-        onchange="saveReportData('${key}',{criticalAnalysis:this.value})">${esc(saved.criticalAnalysis||'')}</textarea>
+        oninput="saveReportData('${key}',{criticalAnalysis:this.value})">${esc(saved.criticalAnalysis||'')}</textarea>
     </div>
 
     <div style="display:flex;gap:10px;justify-content:flex-end;">
@@ -8018,7 +8043,7 @@ function renderReportFactConsol(el) {
       <div class="card-title" style="margin-bottom:8px;">Análise Crítica Consolidada</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Análise integrada dos fatos relevantes, padrões identificados, tendências e recomendações.</div>
       <textarea class="form-control" rows="7" placeholder="Descreva a análise crítica consolidada de todos os fatos relevantes..." style="resize:vertical;"
-        onchange="saveReportData('${key}',{criticalAnalysis:this.value})">${esc(saved.criticalAnalysis||'')}</textarea>
+        oninput="saveReportData('${key}',{criticalAnalysis:this.value})">${esc(saved.criticalAnalysis||'')}</textarea>
     </div>
 
     <div style="display:flex;gap:10px;justify-content:flex-end;">
@@ -8259,80 +8284,4 @@ async function exportReportFactConsolWord(key) {
     ..._docxHeader('Relatório Consolidado de Fatos Relevantes', `${facts.length} fatos registrados · ${open.length} em aberto · ${new Date().toLocaleDateString('pt-BR')}`),
     _docxSection('1. Resumo Executivo'),
     _docxTable(['Indicador','Valor'],
-      [['Total de fatos',String(facts.length)],['Fatos em aberto',String(facts.filter(f=>f.status==='aberto').length)],
-       ['Em tratamento',String(byStatus['em_tratamento']||0)],['Resolvidos',String(byStatus['resolvido']||0)],
-       ['Em monitoramento',String(byStatus['monitoramento']||0)]],
-      [5000, 4361]),
-    new Paragraph({spacing:{after:0},children:[]}),
-    _docxSection('2. Distribuição por Impacto'),
-    _docxTable(['Tipo de Impacto','Quantidade'],
-      Object.entries(byImpact).map(([i,n])=>[impactLabel[i]||i,String(n)]),
-      [6000,3361]),
-    new Paragraph({spacing:{after:0},children:[]}),
-    _docxSection('3. Fatos em Aberto'),
-    open.length ? _docxTable(
-      ['Fato','Projeto','Data','Impactos','Status','Ações (%)'],
-      open.map(f => {
-        const p = state.projects.find(p=>p.id===f.projectId);
-        const acts = f.actions||[];
-        const done = acts.filter(a=>a.done).length;
-        const pct  = acts.length > 0 ? Math.round(done/acts.length*100) : 0;
-        return [f.title,p?.name?.slice(0,25)||'—',fmtDate(f.date),(f.impacts||[]).map(i=>impactLabel[i]||i).join(', '),statusLabel[f.status]||f.status,`${pct}%`];
-      }),
-      [2800,1800,900,1500,1200,661]) : new Paragraph({children:[new TextRun({text:'Nenhum fato em aberto.',size:20,color:'888888'})]}),
-    new Paragraph({spacing:{after:0},children:[]}),
-    _docxSection('4. Análise Crítica Consolidada'),
-    ..._docxText(saved.criticalAnalysis || 'Não preenchida.'),
-  ];
-
-  const doc = new Document({ sections:[{ properties:{page:{size:{width:11906,height:16838},margin:{top:1440,right:1440,bottom:1440,left:1440}}}, children }] });
-  const buf = await Packer.toBlob(doc);
-  _downloadDocx(buf, `Fatos_Relevantes_Consolidado_${new Date().toISOString().slice(0,10)}.docx`);
-}
-
-function _downloadDocx(buffer, filename) {
-  // buffer is already a Blob when using Packer.toBlob()
-  const blob = buffer instanceof Blob ? buffer : new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-  showToast(`✓ ${filename} baixado!`);
-}
-
-// ============================================================
-//  HELPERS
-// ============================================================
-function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-
-document.querySelectorAll('.modal-overlay').forEach(el => {
-  el.addEventListener('click', function(e) {
-    if (e.target === el) el.classList.remove('open');
-  });
-});
-
-function initials(name) {
-  if (!name) return '?';
-  const parts = name.trim().split(' ');
-
-  if (parts.length === 1) return parts[0].slice(0,2).toUpperCase();
-  return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
-}
-
-function fmtDate(str) {
-  if (!str) return '—';
-  const [y, m, d] = str.split('-');
-  return `${d}/${m}/${y}`;
-}
-
-function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// Init
-// Init — sbInit handles render() after auth check
-sbInit();
-</script>
-</body>
-</html>
+      [['Total de fatos',String(facts
