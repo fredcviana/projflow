@@ -1262,7 +1262,8 @@ const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsIn
 const ADMIN_EMAIL = 'frederico.viana@hidrobr.com'; // gestor principal
 
 let sb = null;        // Supabase client
-let sbUser = null;    // logged in user
+let sbUser        = null;  // logged in user
+let _serverProfile = null; // profile loaded from Supabase projflow_profiles table
 let sbDataId = null;  // row id in projflow_data
 let sbSyncTimer = null;
 let sbChannel = null; // realtime channel
@@ -1272,14 +1273,54 @@ let sbChannel = null; // realtime channel
 // ============================================================
 function currentProfile() {
   if (!sbUser) return 'analista';
+  // Admin email is the ultimate fallback for the system owner
   if (sbUser.email === ADMIN_EMAIL) return 'gerente';
-  const person = state.team.find(p => p.email === sbUser.email);
+  // Server-side profile is authoritative (loaded from Supabase, not localStorage)
+  if (_serverProfile) return _serverProfile;
+  // Fallback: team record profile (less secure, but works before projflow_profiles table exists)
+  const person = currentPerson();
   return person?.profile || 'analista';
+}
+
+async function _loadServerProfile() {
+  if (!sb || !sbUser) return;
+  try {
+    const { data } = await sb
+      .from('projflow_profiles')
+      .select('profile, person_id')
+      .eq('user_id', sbUser.id)
+      .single();
+    if (data?.profile) {
+      _serverProfile = data.profile;
+    } else {
+      // Table may not exist yet — fall back to team record
+      _serverProfile = null;
+    }
+  } catch(e) {
+    // projflow_profiles table may not exist yet — silent fallback
+    _serverProfile = null;
+  }
+}
+
+async function _upsertServerProfile(profile, personId) {
+  if (!sb || !sbUser) return;
+  try {
+    await sb.from('projflow_profiles').upsert({
+      user_id: sbUser.id,
+      profile,
+      person_id: personId || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
+  } catch(e) { /* table may not exist yet */ }
 }
 
 function currentPerson() {
   if (!sbUser) return null;
-  return state.team.find(p => p.email === sbUser.email) || null;
+  // Always match by email — never by localStorage-stored id
+  return state.team.find(p =>
+    p.email && sbUser.email &&
+    p.email.toLowerCase() === sbUser.email.toLowerCase()
+  ) || null;
 }
 
 function canDo(action) {
@@ -1892,7 +1933,7 @@ function renderHeatmap(overrideStart, overrideEnd) {
           <div class="heatmap-cell" style="background:${bg}; color:${textCol}; width:${cellW}px; height:${cellW}px; line-height:${cellW}px; font-size:${cellW>36?10:9}px;">
             ${h>0 ? Math.round(h)+'h' : ''}
           </div>
-          ${h>0?`<div class="tooltip">${p.name}<br>${monthNames[m.getMonth()]}/${m.getFullYear()}: <b>${Math.round(h)}h</b></div>`:''}
+          ${h>0?`<div class="tooltip">${esc(p.name)}<br>${monthNames[m.getMonth()]}/${m.getFullYear()}: <b>${Math.round(h)}h</b></div>`:''}
         </div>
       </td>`;
     });
@@ -2047,7 +2088,7 @@ function renderHeatmapWeekly(overrideStart, overrideEnd) {
           <div class="heatmap-cell" style="background:${bg}; color:${textCol}; ${border} width:${cellW}px; height:${cellW}px; line-height:${cellW}px; font-size:${cellW>40?10:9}px; box-sizing:border-box;">
             ${h>0 ? Math.round(h)+'h' : ''}
           </div>
-          ${h>0?`<div class="tooltip">${p.name}<br>Semana ${label}<br><b>${Math.round(h)}h</b></div>`:''}
+          ${h>0?`<div class="tooltip">${esc(p.name)}<br>Semana ${label}<br><b>${Math.round(h)}h</b></div>`:''}
         </div>
       </td>`;
     });
@@ -2118,7 +2159,7 @@ function renderProjects() {
                     const li = state.team.findIndex(t => t.id === l.id);
                     const col = li >= 0 ? getPersonColor(li) : '#7a7a8a';
                     return `<div class="avatar avatar-sm tooltip-wrap" style="background:${col}22;color:${col};"
-                      title="${l.name}">${initials(l.name)}
+                      title="${esc(l.name)}">${initials(l.name)}
                       <div class="tooltip">${esc(l.name)} — Líder Técnico</div>
                     </div>`;
                   }).join('')
@@ -2456,7 +2497,7 @@ function renderActivityRow(a) {
           <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(p.name)}</div>
           <span style="font-size:11px; white-space:nowrap;">${p.name.split(' ')[0]}</span>
           <span style="font-size:10px; color:var(--muted); font-family:var(--mono);">${al.hours||0}h</span>
-          <div class="tooltip">${p.name}<br>${fmtDate(al.start)||'—'} → ${fmtDate(al.end)||'—'}<br>${al.hours||0}h</div>
+          <div class="tooltip">${esc(p.name)}<br>${fmtDate(al.start)||'—'} → ${fmtDate(al.end)||'—'}<br>${al.hours||0}h</div>
         </div>` : '';
       }).join('');
 
@@ -4022,7 +4063,7 @@ function renderSettings() {
           <div style="margin-bottom:16px;">
             <div style="font-size:12px; font-weight:500; color:var(--muted); margin-bottom:8px;">SENHA TEMPORÁRIA PARA TODOS</div>
             <div style="display:flex; gap:8px; align-items:center;">
-              <input class="form-control" id="bulk-password" type="text" placeholder="Ex: Equipe@2025" style="max-width:220px;" value="Projflow@2025" />
+              <input class="form-control" id="bulk-password" type="text" placeholder="Ex: Equipe@2025" style="max-width:220px;" value="" />
               <span style="font-size:11px; color:var(--muted);">Cada pessoa troca depois do primeiro login</span>
             </div>
           </div>
@@ -4191,6 +4232,8 @@ function openEditProject(id) {
 }
 
 function saveProject() {
+  if (!sbUser) return;
+  if (!canDo('create_project') && !canEditProject(editingProjectId)) { showToast('Sem permissão'); return; }
   const name = document.getElementById('p-name').value.trim();
   if (!name) { alert('Informe o nome do projeto.'); return; }
   if (editingProjectId) {
@@ -4218,6 +4261,7 @@ function saveProject() {
 }
 
 function deleteProject(id) {
+  if (!sbUser || !canDo('create_project')) { showToast('Sem permissão'); return; }
   if (!confirm('Excluir projeto e todas suas entregas, pacotes e atividades?')) return;
   const deliveries = state.deliveries.filter(d => d.projectId === id);
   const delIds = deliveries.map(d => d.id);
@@ -4315,7 +4359,7 @@ function executeConvertDelivery() {
   state.deliveries = state.deliveries.filter(x => x.id !== deliveryId);
 
   closeModal('modal-convert-delivery');
-  showToast(`✓ "${d.name}" convertida em pacote com sucesso!`);
+  showToast(`✓ "${esc(d.name)}" convertida em pacote com sucesso!`);
   render();
 }
 
@@ -4355,6 +4399,7 @@ function populatePersonSelectPkg(selectedId) {
 }
 
 function savePackage() {
+  if (!sbUser || !canDo('create_package')) { showToast('Sem permissão'); return; }
   const name = document.getElementById('pkg-name').value.trim();
   if (!name) { alert('Informe o nome do pacote.'); return; }
   const editId = parseInt(document.getElementById('pkg-id').value) || 0;
@@ -4378,6 +4423,7 @@ function savePackage() {
 }
 
 function deletePackage(id) {
+  if (!sbUser || !canDo('delete_package')) { showToast('Sem permissão'); return; }
   if (!confirm('Excluir pacote? As atividades dentro dele também serão excluídas.')) return;
   state.activities = state.activities.filter(a => a.packageId !== id);
   state.packages = (state.packages||[]).filter(p => p.id !== id);
@@ -4409,6 +4455,9 @@ function openEditDelivery(id) {
 }
 
 function saveDelivery() {
+  if (!sbUser) return;
+  const _dProjId = parseInt(document.getElementById('d-project-id')?.value) || editingDeliveryProjectId;
+  if (!canDo('create_delivery') && !canEditProject(_dProjId)) { showToast('Sem permissão'); return; }
   const name = document.getElementById('d-name').value.trim();
   if (!name) { alert('Informe o nome da entrega.'); return; }
   const pidRaw = parseInt(document.getElementById('d-project-id').value);
@@ -4433,6 +4482,7 @@ function saveDelivery() {
 }
 
 function deleteDelivery(id) {
+  if (!sbUser || !canDo('delete_delivery')) { showToast('Sem permissão'); return; }
   if (!confirm('Excluir entrega e todos seus pacotes e atividades?')) return;
   const pkgIds = (state.packages||[]).filter(p => p.deliveryId === id).map(p => p.id);
   state.activities = state.activities.filter(a => a.deliveryId !== id && !pkgIds.includes(a.packageId));
@@ -4581,6 +4631,7 @@ function populatePersonSelect(selectedId) {
 }
 
 function saveActivity() {
+  if (!sbUser || !canDo('create_activity')) { showToast('Sem permissão'); return; }
   const name = document.getElementById('a-name').value.trim();
   if (!name) { alert('Informe o nome da atividade.'); return; }
   const editId     = parseInt(document.getElementById('a-activity-id').value) || 0;
@@ -4625,6 +4676,7 @@ function saveActivity() {
 }
 
 function deleteActivity(id) {
+  if (!sbUser || !canDo('delete_activity')) { showToast('Sem permissão'); return; }
   if (!confirm('Excluir atividade?')) return;
   state.activities = state.activities.filter(a => a.id !== id);
   render();
@@ -4701,30 +4753,44 @@ function openEditPerson(id) {
 }
 
 function savePerson() {
+  if (!sbUser || !canDo('manage_team')) { showToast('Sem permissão'); return; }
   const name = document.getElementById('per-name').value.trim();
   if (!name) { alert('Informe o nome.'); return; }
   const profile = document.getElementById('per-profile').value || 'analista';
+  const email   = document.getElementById('per-email').value.trim();
   if (editingPersonId) {
     const p = state.team.find(x => x.id === editingPersonId);
     p.name = name;
     p.role = document.getElementById('per-role').value;
-    p.email = document.getElementById('per-email').value;
+    p.email = email;
     p.weeklyHours = parseInt(document.getElementById('per-weekly').value) || 40;
     p.profile = profile;
+    // If editing self, update server profile immediately
+    if (sbUser && email === sbUser.email) {
+      _serverProfile = profile;
+      _upsertServerProfile(profile, p.id);
+    }
   } else {
-    state.team.push({
+    const newPerson = {
       id: uid(), name,
       role: document.getElementById('per-role').value,
-      email: document.getElementById('per-email').value,
+      email,
       weeklyHours: parseInt(document.getElementById('per-weekly').value) || 40,
       profile,
-    });
+    };
+    state.team.push(newPerson);
+    // If new person matches logged-in user, sync profile
+    if (sbUser && email === sbUser.email) {
+      _serverProfile = profile;
+      _upsertServerProfile(profile, newPerson.id);
+    }
   }
   closeModal('modal-person');
   render();
 }
 
 function deletePerson(id) {
+  if (!sbUser || !canDo('manage_team')) { showToast('Sem permissão'); return; }
   if (!confirm('Remover pessoa? As atividades alocadas para ela ficarão sem responsável.')) return;
   state.activities.forEach(a => { if (a.personId === id) a.personId = null; });
   state.team = state.team.filter(p => p.id !== id);
@@ -5156,6 +5222,7 @@ async function sbInit() {
   if (session) {
     sbUser = session.user;
     await sbLoadData();
+    await _loadServerProfile();
     await loadSprints();
     await loadTodayCheckins();
     sbUpdatePanel();
@@ -5219,6 +5286,7 @@ async function sbSignIn() {
 async function sbSignOut() {
   await sb.auth.signOut();
   sbUser = null;
+  _serverProfile = null; // clear server-side profile
   if (sbChannel) { sb.removeChannel(sbChannel); sbChannel = null; }
   sbUpdatePanel();
   showToast('Sessão encerrada');
@@ -5439,6 +5507,15 @@ async function _wallSignIn() {
   if (topbar) topbar.style.display = '';
 
   await sbLoadData();
+  await _loadServerProfile();
+  // If no server profile yet, sync from team record and upsert
+  if (!_serverProfile && sbUser.email !== ADMIN_EMAIL) {
+    const person = state.team.find(p => p.email === sbUser.email);
+    if (person?.profile) {
+      _serverProfile = person.profile;
+      await _upsertServerProfile(person.profile, person.id);
+    }
+  }
   await loadSprints();
   await loadTodayCheckins();
   sbUpdatePanel();
@@ -5776,7 +5853,7 @@ function renderSprintDetail() {
                     const p  = state.team.find(x=>x.id===al.personId);
                     const pi = state.team.findIndex(x=>x.id===al.personId);
                     const c  = pi>=0?getPersonColor(pi):'#7a7a8a';
-                    return p ? `<div class="avatar avatar-sm" style="background:${c}22;color:${c};" title="${p.name}">${initials(p.name)}</div>` : '';
+                    return p ? `<div class="avatar avatar-sm" style="background:${c}22;color:${c};" title="${esc(p.name)}">${initials(p.name)}</div>` : '';
                   }).join('')
                 : '<span style="color:var(--muted);font-size:12px;">—</span>';
               const range = actDateRange(a);
@@ -5830,7 +5907,7 @@ function renderSprintDetail() {
               const range  = actDateRange(a);
               const allocs = a.allocations||[];
               const personHTML = allocs.length
-                ? allocs.map(al => { const p=state.team.find(x=>x.id===al.personId); const pi=state.team.findIndex(x=>x.id===al.personId); const c=pi>=0?getPersonColor(pi):'#7a7a8a'; return p?`<div class="avatar avatar-sm" style="background:${c}22;color:${c};" title="${p.name}">${initials(p.name)}</div>`:''; }).join('')
+                ? allocs.map(al => { const p=state.team.find(x=>x.id===al.personId); const pi=state.team.findIndex(x=>x.id===al.personId); const c=pi>=0?getPersonColor(pi):'#7a7a8a'; return p?`<div class="avatar avatar-sm" style="background:${c}22;color:${c};" title="${esc(p.name)}">${initials(p.name)}</div>`:''; }).join('')
                 : '<span style="color:var(--muted);font-size:12px;">—</span>';
               const prog = a.progress||0;
               return `<tr style="border-top:1px solid var(--border);">
@@ -6341,6 +6418,7 @@ function openRequestApproval(activityId) {
 }
 
 async function submitApprovalRequest() {
+  if (!sbUser) { showToast('Faça login para solicitar aprovação'); return; }
   const id   = parseInt(document.getElementById('approval-activity-id').value);
   const desc = document.getElementById('approval-desc').value.trim();
   if (!desc) { alert('Descreva o que foi entregue.'); return; }
@@ -6375,6 +6453,7 @@ function openReviewApproval(activityId) {
 }
 
 async function approveActivity() {
+  if (!sbUser || !canDo('approve_activities')) { showToast('Sem permissão'); return; }
   const id = parseInt(document.getElementById('review-activity-id').value);
   const a  = state.activities.find(x => x.id === id);
   if (!a) return;
@@ -6391,6 +6470,7 @@ async function approveActivity() {
 }
 
 async function rejectApproval() {
+  if (!sbUser || !canDo('approve_activities')) { showToast('Sem permissão'); return; }
   const comment = document.getElementById('review-comment').value.trim();
   if (!comment) { alert('Informe o motivo da revisão.'); return; }
   const id = parseInt(document.getElementById('review-activity-id').value);
@@ -6822,6 +6902,7 @@ function renderFactActionList() {
 }
 
 function saveFact() {
+  if (!sbUser) { showToast('Faça login para salvar'); return; }
   const title = document.getElementById('fact-title').value.trim();
   if (!title) { alert('Informe o título do fato relevante.'); return; }
   const projectId = parseInt(document.getElementById('fact-project').value) || null;
@@ -6861,6 +6942,7 @@ function saveFact() {
 }
 
 function deleteFact(id) {
+  if (!sbUser || !canDo('create_project')) { showToast('Sem permissão'); return; }
   if (!confirm('Excluir este fato relevante?')) return;
   state.facts = (state.facts||[]).filter(f => String(f.id) !== String(id));
   saveState();
@@ -7042,9 +7124,9 @@ function _renderAlignmentCard(e) {
     const p    = state.team.find(x => x.id === id);
     const pIdx = state.team.findIndex(x => x.id === id);
     const col  = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
-    return p ? `<div class="avatar avatar-sm tooltip-wrap" style="background:${col}22;color:${col};" title="${p.name}">
+    return p ? `<div class="avatar avatar-sm tooltip-wrap" style="background:${col}22;color:${col};" title="${esc(p.name)}">
       ${initials(p.name)}
-      <div class="tooltip">${p.name}</div>
+      <div class="tooltip">${esc(p.name)}</div>
     </div>` : '';
   }).join('');
 
@@ -7250,6 +7332,7 @@ function removeAlTeamMember(id) {
 }
 
 function saveAlignment() {
+  if (!sbUser) { showToast('Faça login para salvar'); return; }
   const content = document.getElementById('al-content').value.trim();
   if (!content) { alert('Descreva o que foi alinhado.'); return; }
   const projectId = parseInt(document.getElementById('al-project').value) || null;
@@ -7287,6 +7370,7 @@ function saveAlignment() {
 }
 
 function deleteAlignment(id) {
+  if (!sbUser) { showToast('Faça login para excluir'); return; }
   if (!confirm('Excluir este registro de alinhamento?')) return;
   state.logbookEntries = (state.logbookEntries||[]).filter(e => String(e.id) !== String(id));
   saveState();
