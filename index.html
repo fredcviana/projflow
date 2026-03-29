@@ -1,3 +1,39 @@
+<!--
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║  PROJFLOW — Sistema de Gestão de Projetos                       ║
+  ║  Versão: 2.0  |  Hidrobr Engenharia Consultoria                 ║
+  ╠══════════════════════════════════════════════════════════════════╣
+  ║  ARQUITETURA (single-page HTML, sem build step)                  ║
+  ║                                                                  ║
+  ║  ├─ <style>      CSS variables + layout + components            ║
+  ║  ├─ <body>       HTML estático: sidebar, modals, topbar          ║
+  ║  └─ <script>                                                     ║
+  ║       ├─ Stubs de segurança (carregamento antecipado)            ║
+  ║       ├─ CONSTANTS     STATUS, PROFILE, APPROVAL, LABELS        ║
+  ║       ├─ UTILITY       Helpers puros sem side effects            ║
+  ║       ├─ AUTH          currentProfile, canDo, guards             ║
+  ║       ├─ DATA STORE    state, loadState, saveState               ║
+  ║       ├─ RENDER ROUTER navigate, render                          ║
+  ║       ├─ RENDER *      Uma função por página/componente          ║
+  ║       ├─ CRUD *        save*/delete* com guards de auth          ║
+  ║       ├─ SUPABASE      sbInit, sync, auth                        ║
+  ║       ├─ RELATÓRIOS    renderReport*, exportReport*Word          ║
+  ║       └─ HELPERS       actTotalHours, fmtDate, esc, initials…   ║
+  ║                                                                  ║
+  ║  PADRÃO DE MUTAÇÃO DE ESTADO:                                    ║
+  ║    1. Guard: if (!sbUser || !canDo(...)) return;                 ║
+  ║    2. Validar campos com requireField()                          ║
+  ║    3. Mutar state.*                                              ║
+  ║    4. saveState()                                                ║
+  ║    5. render()                                                   ║
+  ║                                                                  ║
+  ║  SEGURANÇA:                                                      ║
+  ║    • Login obrigatório (render() bloqueia sem sbUser)            ║
+  ║    • Perfis carregados do Supabase (projflow_profiles)           ║
+  ║    • RLS habilitado em todas as tabelas Supabase                 ║
+  ║    • XSS: todos os campos passam por esc() antes de innerHTML    ║
+  ╚══════════════════════════════════════════════════════════════════╝
+-->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -8,8 +44,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // Proxy seguro — evita ReferenceError se usuário clicar antes do script principal carregar
-window.sbSignIn = function() { console.log('carregando...'); };
-window.sbSignOut = function() { console.log('carregando...'); };
+window.sbSignIn  = function() {};
+window.sbSignOut = function() {};
 window.openModal = function(id) { document.getElementById(id)?.classList.add('open'); };
 window.closeModal = function(id) { document.getElementById(id)?.classList.remove('open'); };
 window.navigate = function() {};
@@ -456,6 +492,46 @@ window.navigate = function() {};
   .c7 { background: #fb923c; color: #7c2d12; }
   .c8 { background: #e879f9; color: #4a044e; }
   .c9 { background: #4ade80; color: #14532d; }
+
+  /* ─── Utility classes ─────────────────────────────────────────────────── */
+  .text-muted   { color: var(--muted); }
+  .text-accent  { color: var(--accent); }
+  .text-accent2 { color: var(--accent2); }
+  .text-green   { color: var(--green); }
+  .text-red     { color: var(--red); }
+  .text-amber   { color: var(--amber); }
+  .text-teal    { color: var(--teal); }
+  .text-sm      { font-size: 12px; }
+  .text-xs      { font-size: 11px; }
+  .text-base    { font-size: 13px; }
+  .text-lg      { font-size: 14px; }
+  .fw-500       { font-weight: 500; }
+  .fw-600       { font-weight: 600; }
+  .fw-700       { font-weight: 700; }
+  .mt-4  { margin-top: 4px; }
+  .mt-8  { margin-top: 8px; }
+  .mt-12 { margin-top: 12px; }
+  .mt-16 { margin-top: 16px; }
+  .mb-4  { margin-bottom: 4px; }
+  .mb-8  { margin-bottom: 8px; }
+  .mb-12 { margin-bottom: 12px; }
+  .mb-16 { margin-bottom: 16px; }
+  .gap-6  { gap: 6px; }
+  .gap-8  { gap: 8px; }
+  .gap-10 { gap: 10px; }
+  .flex-center { display: flex; align-items: center; }
+  .flex-between { display: flex; align-items: center; justify-content: space-between; }
+  .flex-wrap { flex-wrap: wrap; }
+  .w-full { width: 100%; }
+  .cursor-pointer { cursor: pointer; }
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .surface2-bg { background: var(--surface2); }
+  .rounded { border-radius: var(--radius); }
+  .rounded-sm { border-radius: var(--radius-sm); }
+  .lh-6 { line-height: 1.6; }
+  .lh-7 { line-height: 1.7; }
+  .mono { font-family: var(--mono); }
+  .uppercase { text-transform: uppercase; letter-spacing: 0.5px; }
 </style>
 </head>
 <body>
@@ -1253,13 +1329,118 @@ window.navigate = function() {};
   </div>
 </div>
 
-<script>
+<script>// ============================================================
+//  PROJ·FLOW — Gestão de Projetos  (v2.0)
+//
+//  Single-file web app (HTML + CSS + JS, ~8600 lines)
+//
+//  ── Architecture ─────────────────────────────────────────
+//  State layer  : localStorage  +  Supabase (cloud sync)
+//  Data model   : projects → deliveries → packages → activities
+//                 team[]  sprints[]  facts[]  logbookEntries[]
+//                 reports{}  config{}  sprintActivities{}
+//
+//  Access control (3 roles, server-side via projflow_profiles):
+//    gerente  — full access to all features
+//    lider    — own linked projects only; can approve activities
+//    analista — read + update own activities; approval via request
+//
+//  Render loop  : navigate(page, id?) → render() → render<Page>()
+//  Mutations    : save*() → saveState() → sbSync() [1.5s debounce]
+//  Auth gate    : render() returns early if !sbUser → login wall
+//
+//  ── Key helpers ──────────────────────────────────────────
+//  esc(s)                  — XSS-safe HTML escape (use on all user data)
+//  fmtDate(iso)            — ISO date → DD/MM/YYYY
+//  uid()                   — monotonic integer ID from state.nextId
+//  actPersonIds(a)         — person IDs allocated to an activity
+//  actDateRange(a)         — { start, end } across all allocations
+//  actTotalHours(a)        — sum of allocated hours
+//  isLate(a)               — true if end < today && status != concluido
+//  resolveActivityProject(a) — { delivery, project, projectId }
+//  canDo(action)           — permission check for current user
+//  showToast(msg)          — brief notification toast
+//
+//  ── CDN dependencies (loaded at startup) ─────────────────
+//  Supabase JS  https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2
+//  SheetJS XLSX https://cdn.sheetjs.com/xlsx-0.20.3/...
+//  docx (UMD)   https://unpkg.com/docx@8.5.0/...  (lazy-loaded)
+// ============================================================
+
+
 // ============================================================
 //  SUPABASE CONFIG
 // ============================================================
 const SB_URL  = 'https://ydfytofjbpoqpsbryhyg.supabase.co';
 const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlkZnl0b2ZqYnBvcXBzYnJ5aHlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NzAxMjUsImV4cCI6MjA5MDE0NjEyNX0.C2EmgZUxO3x0vNpqtw0uzL4U4YGRBaL0XeIK7INjVzM';
 const ADMIN_EMAIL = 'frederico.viana@hidrobr.com'; // gestor principal
+
+// ============================================================
+//  CONSTANTS  (centralised — do not hardcode elsewhere)
+// ============================================================
+
+/** Activity status values */
+const STATUS = Object.freeze({
+  NOT_STARTED : 'nao_iniciado',
+  IN_PROGRESS : 'em_andamento',
+  DONE        : 'concluido',
+  LATE        : 'atrasado',
+  BLOCKED     : 'bloqueado',
+});
+
+/** User profiles */
+const PROFILE = Object.freeze({
+  MANAGER : 'gerente',
+  LEADER  : 'lider',
+  ANALYST : 'analista',
+});
+
+/** Approval workflow states */
+const APPROVAL = Object.freeze({
+  PENDING  : 'pending',
+  APPROVED : 'approved',
+  REVISION : 'revision',
+});
+
+/** Fact / event impact types */
+const IMPACT = Object.freeze({
+  FINANCIAL   : 'financeiro',
+  SCHEDULE    : 'cronograma',
+  SCOPE       : 'escopo',
+  REPUTATIONAL: 'reputacional',
+});
+
+/** Fact status values */
+const FACT_STATUS = Object.freeze({
+  OPEN        : 'aberto',
+  IN_TREATMENT: 'em_tratamento',
+  RESOLVED    : 'resolvido',
+  MONITORING  : 'monitoramento',
+});
+
+/** Human-readable labels */
+const LABELS = Object.freeze({
+  status: LABELS.status,
+  profile: {
+    gerente  : 'Gerente',
+    lider    : 'Líder Técnico',
+    analista : 'Analista',
+  },
+  impact: {
+    financeiro   : '💰 Financeiro',
+    cronograma   : '📅 Cronograma',
+    escopo       : '📋 Escopo',
+    reputacional : '🏆 Reputacional',
+  },
+  factStatus: {
+    aberto        : 'Aberto',
+    em_tratamento : 'Em tratamento',
+    resolvido     : 'Resolvido',
+    monitoramento : 'Em monitoramento',
+  },
+});
+
+
 
 let sb = null;        // Supabase client
 let sbUser        = null;  // logged in user
@@ -1271,6 +1452,14 @@ let sbChannel = null; // realtime channel
 // ============================================================
 //  ACCESS CONTROL
 // ============================================================
+/**
+ * Get the current user's role profile.
+ * Priority: ADMIN_EMAIL check → server profile (Supabase) → team record fallback.
+ * NEVER trust localStorage for profile — always use this function.
+ * @returns {'gerente'|'lider'|'analista'}
+ */
+/** Returns the access profile (gerente|lider|analista) for the logged-in user.
+ * Priority: ADMIN_EMAIL → Supabase projflow_profiles → team record fallback. */
 function currentProfile() {
   if (!sbUser) return 'analista';
   // Admin email is the ultimate fallback for the system owner
@@ -1314,6 +1503,7 @@ async function _upsertServerProfile(profile, personId) {
   } catch(e) { /* table may not exist yet */ }
 }
 
+/** Returns the team member record matching the logged-in user email, or null. */
 function currentPerson() {
   if (!sbUser) return null;
   // Always match by email — never by localStorage-stored id
@@ -1323,6 +1513,13 @@ function currentPerson() {
   ) || null;
 }
 
+/**
+ * Check if the current user has permission for a given action.
+ * Centralised permission matrix — all permission checks go through here.
+ * @param {string} action - Action key (see switch cases for valid values)
+ * @returns {boolean}
+ */
+/** Returns true if the current user has permission for the given action. */
 function canDo(action) {
   const profile = currentProfile();
   switch(action) {
@@ -1383,16 +1580,105 @@ function getProjectLeaders(projectId) {
 function isMyActivity(activityId) {
   const person = currentPerson();
   if (!person) return false;
-  const a = state.activities.find(x => x.id === activityId);
+  const a = getActivity(activityId);
   if (!a) return false;
   return actPersonIds(a).includes(person.id);
 }
 
+
+// ============================================================
+//  UTILITY HELPERS  (pure functions, no side effects, no state mutation)
+// ============================================================
+
+/**
+ * Safely find a project by id. Returns undefined if not found.
+ * Use this instead of state.projects.find() scattered everywhere.
+ */
+function getProject(id)  { return getProject(id); }
+function getDelivery(id) { return getDelivery(id); }
+function getPackage(id)  { return getPackage(id); }
+function getActivity(id) { return getActivity(id); }
+function getPerson(id)   { return getPerson(id); }
+function getFact(id)     { return (state.facts||[]).find(f => f.id === id); }
+function getSprint(id)   { return (state.sprints||[]).find(s => s.id === id); }
+
+/**
+ * Resolve the parent project of an activity, traversing delivery or package.
+ * Returns the project object or null.
+ */
+function getActivityProject(activity) {
+  if (!activity) return null;
+  let delivery = null;
+  if (activity.deliveryId) {
+    delivery = getDelivery(activity.deliveryId);
+  } else if (activity.packageId) {
+    const pkg = getPackage(activity.packageId);
+    delivery = pkg ? getDelivery(pkg.deliveryId) : null;
+  }
+  return delivery ? getProject(delivery.projectId) : null;
+}
+
+/**
+ * Return a toast with standard error styling.
+ * Wraps showToast so callers don't have to remember the ⚠ prefix.
+ */
+function showError(msg) { showToast('⚠ ' + msg); }
+function showSuccess(msg) { showToast('✓ ' + msg); }
+
+/**
+ * Guard helper: shows error and returns true if condition fails.
+ * Usage: if (guard(!sbUser, 'Faça login')) return;
+ */
+function guard(condition, message) {
+  if (condition) { showError(message); return true; }
+  return false;
+}
+
+/**
+ * Validate a required text field. Returns trimmed value or null.
+ * Usage: const name = requireField('input-id', 'Nome obrigatório'); if (!name) return;
+ */
+function requireField(elementId, errorMsg) {
+  const el = document.getElementById(elementId);
+  const val = el?.value?.trim() || '';
+  if (!val) { showError(errorMsg); return null; }
+  return val;
+}
+
+/**
+ * Safely get an integer from an input element. Returns NaN if invalid.
+ */
+function getIntField(elementId) {
+  return parseInt(document.getElementById(elementId)?.value || '0');
+}
+
+/**
+ * Deep clone an object via JSON (suitable for plain state objects).
+ */
+function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+/**
+ * Debounce: returns a function that delays invoking fn until after wait ms.
+ * Used to avoid excessive saveState() calls during rapid UI interaction.
+ */
+function debounce(fn, wait = 300) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), wait); };
+}
+
 // ============================================================
 //  DATA STORE
+//  state    → single source of truth (localStorage + Supabase sync)
+//  loadState()  → reads from localStorage with migration
+//  saveState()  → writes to localStorage (call after EVERY mutation)
+//  Only functions in CRUD sections should mutate state directly.
 // ============================================================
+
+/** Debounced saveState — use for high-frequency updates (e.g. slider, oninput). */
+const debouncedSave = debounce(saveState, 400);
 let state = loadState();
 
+/** Loads state from localStorage and runs migrations. Returns fresh default if none stored. */
 function loadState() {
   try {
     const raw = localStorage.getItem('projflow_v2');
@@ -1421,6 +1707,11 @@ function loadState() {
   return { projects: [], deliveries: [], packages: [], activities: [], team: [], templates: [], facts: [], sprints: [], sprintActivities: {}, logbookEntries: [], reports: {}, nextId: 1 };
 }
 
+/**
+ * Persist the current state to localStorage.
+ * Called after every state mutation. Supabase sync happens separately via sbSaveData().
+ * NOTE: Keep mutations small — this serializes the entire state object.
+ */
 function saveState() {
   localStorage.setItem('projflow_v2', JSON.stringify(state));
   // Debounce Supabase sync — only admin writes main data
@@ -1435,6 +1726,12 @@ function saveState() {
   }
 }
 
+/**
+ * Generate a unique integer ID for local state objects.
+ * Uses incrementing nextId counter persisted in state.
+ * @returns {number}
+ */
+/** Generates a monotonically increasing integer ID from state.nextId. */
 function uid() { return state.nextId++; }
 
 // ============================================================
@@ -1443,6 +1740,17 @@ function uid() { return state.nextId++; }
 let currentPage = 'dashboard';
 let currentProjectId = null;
 
+/**
+ * Navigate to a page. Updates currentPage and currentProjectId, then calls render().
+ * This is the ONLY function that should change the current page.
+ * @param {string} page - Page key (dashboard, projects, project_detail, etc.)
+ * @param {number} [id]  - Optional entity ID (e.g. project ID for project_detail)
+ */
+/**
+ * Navigate to a named page and optionally set a context ID.
+ * @param {string} page - Page key: dashboard|projects|project_detail|activities|...
+ * @param {number|string} [id] - Context (projectId, factId, etc.)
+ */
 function navigate(page, id) {
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -1458,6 +1766,15 @@ function navigate(page, id) {
   render();
 }
 
+/**
+ * Main render function. Routes to the correct page renderer based on currentPage.
+ * This is the ONLY entry point for UI updates — never update DOM directly.
+ * Blocked if user is not authenticated (shows login wall instead).
+ */
+/**
+ * Main render dispatcher. Guards access — shows login wall if !sbUser.
+ * Reads currentPage, calls the matching render<Page>() function.
+ */
 function render() {
   // ── ACCESS GATE: block everything until logged in ──────────
   if (!sbUser) {
@@ -1494,7 +1811,7 @@ function _updateNavVisibility() {
   const navApprovals = document.getElementById('nav-approvals');
   const navSprints   = document.getElementById('nav-sprints');
   if (navApprovals) {
-    const pending = state.activities.filter(a => a.approvalStatus === 'pending').length;
+    const pending = state.activities.filter(a => a.approvalStatus === APPROVAL.PENDING).length;
     navApprovals.style.display = (profile === 'gerente' || profile === 'lider') ? '' : 'none';
     navApprovals.querySelector('span:last-child').textContent =
       pending > 0 ? `Aprovações (${pending})` : 'Aprovações';
@@ -1504,6 +1821,7 @@ function _updateNavVisibility() {
 
 // ============================================================
 //  RENDER: DASHBOARD
+//  Renders project overview KPIs, activity status summary, heatmap and approval queue.
 // ============================================================
 function renderDashboard() {
   document.getElementById('topbar-title').textContent = 'Dashboard';
@@ -1511,12 +1829,12 @@ function renderDashboard() {
   document.getElementById('topbar-actions').innerHTML = '';
 
   const totalProjects   = state.projects.length;
-  const activeProjects  = state.projects.filter(p => p.status !== 'concluido').length;
+  const activeProjects  = state.projects.filter(p => p.status !== STATUS.DONE).length;
   const totalActivities = state.activities.length;
   const totalHours      = state.activities.reduce((s,a) => s+actTotalHours(a), 0);
-  const doneActivities  = state.activities.filter(a => a.status === 'concluido').length;
+  const doneActivities  = state.activities.filter(a => a.status === STATUS.DONE).length;
   const lateActivities  = state.activities.filter(a => isLate(a)).length;
-  const pendingApprovals = state.activities.filter(a => a.approvalStatus === 'pending').length;
+  const pendingApprovals = state.activities.filter(a => a.approvalStatus === APPROVAL.PENDING).length;
 
   const profile = currentProfile();
   const showApprovals = (profile === 'gerente' || profile === 'lider') && pendingApprovals > 0;
@@ -1722,8 +2040,15 @@ function heatmapUpdateFromInputs() {
   heatmapRefresh();
 }
 
+/**
+ * Determine if an activity is overdue.
+ * An activity is late if its end date has passed and it's not completed.
+ * @param {Object} a - Activity object
+ * @returns {boolean}
+ */
+/** Returns true if the activity's end date is in the past and status is not concluido. */
 function isLate(a) {
-  if (a.status === 'concluido') return false;
+  if (a.status === STATUS.DONE) return false;
   // Late if any allocation end date is past, or activity end date
   const end = a.end || (a.allocations||[]).map(al=>al.end).filter(Boolean).sort().pop();
   if (!end) return false;
@@ -1731,6 +2056,13 @@ function isLate(a) {
 }
 
 // Total hours across all allocations
+/**
+ * Calculate total allocated hours for an activity across all allocations.
+ * Supports both old format (single personId/hours) and new (allocations[]).
+ * @param {Object} a - Activity object
+ * @returns {number}
+ */
+/** Sums all allocated hours across an activity's allocations array. */
 function actTotalHours(a) {
   if (a.allocations && a.allocations.length) {
     return a.allocations.reduce((s, al) => s + (parseFloat(al.hours)||0), 0);
@@ -1739,12 +2071,25 @@ function actTotalHours(a) {
 }
 
 // All persons in an activity (for filtering/display)
+/**
+ * Get all person IDs allocated to an activity.
+ * @param {Object} a - Activity object
+ * @returns {number[]}
+ */
+/** Returns an array of person IDs allocated to an activity. */
 function actPersonIds(a) {
   if (a.allocations && a.allocations.length) return a.allocations.map(al => al.personId).filter(Boolean);
   return a.personId ? [a.personId] : [];
 }
 
 // Effective date range for activity (union of all allocations)
+/**
+ * Get the effective date range for an activity.
+ * Uses the earliest start and latest end across all allocations.
+ * @param {Object} a - Activity object
+ * @returns {{ start: string|null, end: string|null }}
+ */
+/** Returns the earliest start and latest end date across all allocations: { start, end }. */
 function actDateRange(a) {
   const starts = [], ends = [];
   if (a.start) starts.push(a.start);
@@ -1757,13 +2102,18 @@ function actDateRange(a) {
   return { start: starts[0]||'', end: ends[ends.length-1]||'' };
 }
 
+/**
+ * Return an HTML badge element for the given activity status.
+ * @param {string} status - One of STATUS constants
+ * @returns {string} HTML string
+ */
 function getStatusBadge(status) {
   const map = {
-    nao_iniciado: ['badge-gray', 'Não iniciado'],
-    em_andamento: ['badge-blue', 'Em andamento'],
-    concluido: ['badge-green', 'Concluído'],
-    atrasado: ['badge-red', 'Atrasado'],
-    bloqueado: ['badge-amber', 'Bloqueado'],
+    [STATUS.NOT_STARTED]: ['badge-gray',  'Não iniciado'],
+    [STATUS.IN_PROGRESS]: ['badge-blue',  'Em andamento'],
+    [STATUS.DONE]:        ['badge-green', 'Concluído'],
+    [STATUS.LATE]:        ['badge-red',   'Atrasado'],
+    [STATUS.BLOCKED]:     ['badge-amber', 'Bloqueado'],
   };
   const [cls, label] = map[status] || ['badge-gray', status || 'Não iniciado'];
   return `<span class="badge ${cls}">${label}</span>`;
@@ -1810,7 +2160,7 @@ function renderHoursByPerson() {
 function renderStatusSummary() {
   const s = { nao_iniciado:0, em_andamento:0, concluido:0, atrasado:0, bloqueado:0 };
   state.activities.forEach(a => {
-    const st = isLate(a) && a.status !== 'concluido' ? 'atrasado' : (a.status || 'nao_iniciado');
+    const st = isLate(a) && a.status !== STATUS.DONE ? 'atrasado' : (a.status || 'nao_iniciado');
     s[st] = (s[st]||0)+1;
   });
   const total = state.activities.length || 1;
@@ -2108,7 +2458,9 @@ function renderHeatmapWeekly(overrideStart, overrideEnd) {
 }
 
 // ============================================================
-//  RENDER: PROJECTS LIST
+//  RENDER: PROJECTS
+//  renderProjects()      → project list (filtered by profile)
+//  renderProjectDetail() → single project with deliveries/packages/activities tree LIST
 // ============================================================
 function renderProjects() {
   const profile = currentProfile();
@@ -2141,7 +2493,7 @@ function renderProjects() {
     const deliveries = state.deliveries.filter(d => d.projectId === p.id);
     const activities = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
     const totalH  = activities.reduce((s,a) => s+actTotalHours(a), 0);
-    const doneH   = activities.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
+    const doneH   = activities.filter(a => a.status === STATUS.DONE).reduce((s,a) => s+actTotalHours(a), 0);
     const pct     = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
     const lates   = activities.filter(a => isLate(a)).length;
     const leaders = getProjectLeaders(p.id);
@@ -2179,8 +2531,8 @@ function renderProjects() {
             </div>
           </div>
           ${canEdit ? `<div style="display:flex; gap:6px; flex-shrink:0;" onclick="event.stopPropagation()">
-            <button class="btn btn-ghost btn-sm" onclick="openEditProject(${p.id})">✎ Editar</button>
-            ${profile === 'gerente' ? `<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id})">✕</button>` : ''}
+            <button class="btn btn-ghost btn-sm" onclick="openEditProject(${p.id})" aria-label="Editar projeto">✎ Editar</button>
+            ${profile === 'gerente' ? `<button class="btn btn-danger btn-sm" onclick="deleteProject(${p.id})" aria-label="Excluir projeto">✕</button>` : ''}
           </div>` : ''}
         </div>
       </div>`;
@@ -2190,7 +2542,7 @@ function renderProjects() {
 }
 
 // ============================================================
-//  RENDER: PROJECT DETAIL
+//  RENDER — PROJECT DETAIL, DELIVERIES & ACTIVITIES
 // ============================================================
 function renderProjectDetail() {
   const p = state.projects.find(x => x.id === currentProjectId);
@@ -2211,7 +2563,7 @@ function renderProjectDetail() {
   const deliveries = state.deliveries.filter(d => d.projectId === p.id);
   const allActs    = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
   const totalH     = allActs.reduce((s,a) => s+actTotalHours(a), 0);
-  const doneH      = allActs.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
+  const doneH      = allActs.filter(a => a.status === STATUS.DONE).reduce((s,a) => s+actTotalHours(a), 0);
   const pct        = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
 
   let deliveriesHTML = '';
@@ -2256,7 +2608,7 @@ function renderProjectDetail() {
       <div class="stat">
         <div class="stat-label">Entregas</div>
         <div class="stat-value">${deliveries.length}</div>
-        <div class="stat-sub">${deliveries.filter(d => d.status === 'concluido').length} concluídas</div>
+        <div class="stat-sub">${deliveries.filter(d => d.status === STATUS.DONE).length} concluídas</div>
       </div>
       <div class="stat">
         <div class="stat-label">Atividades</div>
@@ -2292,7 +2644,7 @@ function renderDeliveryCard(d, p) {
   );
 
   const totalH = allActsUniq.reduce((s,a) => s+actTotalHours(a), 0);
-  const doneH  = allActsUniq.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
+  const doneH  = allActsUniq.filter(a => a.status === STATUS.DONE).reduce((s,a) => s+actTotalHours(a), 0);
   const pct    = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
   const lates  = allActsUniq.filter(a => isLate(a)).length;
   const totalItems = pkgs.length + directActs.length;
@@ -2345,7 +2697,7 @@ function renderDeliveryCard(d, p) {
           <button class="btn btn-ghost btn-sm" onclick="openNewActivity(${d.id})">+ Atividade</button>
           <button class="btn btn-ghost btn-sm" style="color:var(--teal);" onclick="openConvertDelivery(${d.id})" title="Converter em Pacote de Atividades">⇄ Converter</button>
           <button class="btn btn-ghost btn-sm" onclick="openEditDelivery(${d.id})">✎</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteDelivery(${d.id})">✕</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteDelivery(${d.id})" aria-label="Excluir">✕</button>
           ` : ''}
         </div>
       </div>
@@ -2359,14 +2711,14 @@ function renderPackageCard(pkg, d) {
   const acts = state.activities.filter(a => a.packageId === pkg.id)
     .sort((a,b) => (a.seqOrder||0) - (b.seqOrder||0));
   const totalH = acts.reduce((s,a) => s+actTotalHours(a), 0);
-  const doneH  = acts.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
+  const doneH  = acts.filter(a => a.status === STATUS.DONE).reduce((s,a) => s+actTotalHours(a), 0);
   const pct    = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
   const lates  = acts.filter(a => isLate(a)).length;
 
   // Consolidated status: blocked if any activity is blocked
-  const hasBlocked  = acts.some(a => a.status === 'bloqueado');
-  const hasLate     = acts.some(a => isLate(a) && a.status !== 'concluido');
-  const allDone     = acts.length > 0 && acts.every(a => a.status === 'concluido');
+  const hasBlocked  = acts.some(a => a.status === STATUS.BLOCKED);
+  const hasLate     = acts.some(a => isLate(a) && a.status !== STATUS.DONE);
+  const allDone     = acts.length > 0 && acts.every(a => a.status === STATUS.DONE);
   const pkgStatus   = allDone ? 'concluido' : hasBlocked ? 'bloqueado' : hasLate ? 'atrasado' : 'em_andamento';
 
   const personIdx = state.team.findIndex(p => p.id === pkg.personId);
@@ -2417,7 +2769,7 @@ function renderPackageCard(pkg, d) {
             <div class="progress-wrap"><div class="progress-bar ${pct===100?'green':pct>60?'':pct>30?'amber':'red'}" style="width:${pct}%; background:var(--teal);"></div></div>
           </div>
           ${canDo('edit_package') ? `<button class="btn btn-ghost btn-sm" style="font-size:11px; padding:3px 8px;" onclick="openEditPackage(${pkg.id})">✎</button>` : ''}
-          ${canDo('delete_package') ? `<button class="btn btn-danger btn-sm" style="font-size:11px; padding:3px 7px;" onclick="deletePackage(${pkg.id})">✕</button>` : ''}
+          ${canDo('delete_package') ? `<button class="btn btn-danger btn-sm" style="font-size:11px; padding:3px 7px;" onclick="deletePackage(${pkg.id})" aria-label="Excluir">✕</button>` : ''}
         </div>
       </div>
       <div class="delivery-body" id="body-pkg-${pkg.id}">
@@ -2433,8 +2785,8 @@ function renderActivityRowInPackage(a, idx, allActs) {
   const range  = actDateRange(a);
   const prog   = a.progress || 0;
   const late   = isLate(a);
-  const statusBadge = late && a.status !== 'concluido' ? `<span class="badge badge-red">Atrasado</span>` : getStatusBadge(a.status);
-  const prevDone = idx === 0 || allActs[idx-1].status === 'concluido';
+  const statusBadge = late && a.status !== STATUS.DONE ? `<span class="badge badge-red">Atrasado</span>` : getStatusBadge(a.status);
+  const prevDone = idx === 0 || allActs[idx-1].status === STATUS.DONE;
   const seqColor = idx === 0 ? 'var(--muted)' : prevDone ? 'var(--green)' : 'var(--amber)';
 
   const personHTML = allocs.length === 0
@@ -2474,7 +2826,7 @@ function renderActivityRowInPackage(a, idx, allActs) {
         ${statusBadge}
         <button class="btn btn-ghost btn-sm" style="padding:3px 7px;font-size:11px;" onclick="openProgress(${a.id})">↻</button>
         ${canDo('edit_activity') ? `<button class="btn btn-ghost btn-sm" style="padding:3px 6px;font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>` : ''}
-        ${canDo('delete_activity') ? `<button class="btn btn-danger btn-sm" style="padding:3px 6px;font-size:11px;" onclick="deleteActivity(${a.id})">✕</button>` : ''}
+        ${canDo('delete_activity') ? `<button class="btn btn-danger btn-sm" style="padding:3px 6px;font-size:11px;" onclick="deleteActivity(${a.id})" aria-label="Excluir">✕</button>` : ''}
       </div>
     </div>`;
 }
@@ -2486,7 +2838,7 @@ function renderActivityRow(a) {
   const prog   = a.progress || 0;
   const late   = isLate(a);
   const range  = actDateRange(a);
-  const statusBadge = late && a.status !== 'concluido' ? `<span class="badge badge-red">Atrasado</span>` : getStatusBadge(a.status);
+  const statusBadge = late && a.status !== STATUS.DONE ? `<span class="badge badge-red">Atrasado</span>` : getStatusBadge(a.status);
 
   // Build compact person list
   const personHTML = allocs.length === 0
@@ -2525,7 +2877,7 @@ function renderActivityRow(a) {
         ${statusBadge}
         <button class="btn btn-ghost btn-sm" style="padding:3px 8px; font-size:11px;" onclick="openProgress(${a.id})">↻</button>
         ${canDo('edit_activity') ? `<button class="btn btn-ghost btn-sm" style="padding:3px 7px; font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>` : ''}
-        ${canDo('delete_activity') ? `<button class="btn btn-danger btn-sm" style="padding:3px 7px; font-size:11px;" onclick="deleteActivity(${a.id})">✕</button>` : ''}
+        ${canDo('delete_activity') ? `<button class="btn btn-danger btn-sm" style="padding:3px 7px; font-size:11px;" onclick="deleteActivity(${a.id})" aria-label="Excluir">✕</button>` : ''}
       </div>
     </div>`;
 }
@@ -2543,7 +2895,8 @@ function toggleDelivery(id) {
 }
 
 // ============================================================
-//  RENDER: ACTIVITIES DASHBOARD
+//  RENDER: ACTIVITIES
+//  renderActivitiesDashboard() → tabbed activity view (list, timeline, by person) DASHBOARD
 // ============================================================
 function renderActivitiesDashboard() {
   document.getElementById('topbar-title').textContent = 'Atividades';
@@ -2582,7 +2935,7 @@ function renderActivitiesDashboard() {
     const person    = state.team.find(p => p.id === a.personId);
     const personIdx = state.team.findIndex(p => p.id === a.personId);
     const late      = isLate(a);
-    const effStatus = late && a.status !== 'concluido' ? 'atrasado' : (a.status || 'nao_iniciado');
+    const effStatus = late && a.status !== STATUS.DONE ? 'atrasado' : (a.status || 'nao_iniciado');
     return { ...a, delivery, pkg, project, person, personIdx, late, effStatus };
   });
 
@@ -2593,9 +2946,9 @@ function renderActivitiesDashboard() {
 
   // ---- KPIs ----
   const total   = acts.length;
-  const done    = acts.filter(a => a.effStatus === 'concluido').length;
-  const late    = acts.filter(a => a.effStatus === 'atrasado').length;
-  const ongoing = acts.filter(a => a.effStatus === 'em_andamento').length;
+  const done    = acts.filter(a => a.effStatus === STATUS.DONE).length;
+  const late    = acts.filter(a => a.effStatus === STATUS.LATE).length;
+  const ongoing = acts.filter(a => a.effStatus === STATUS.IN_PROGRESS).length;
   const totalH  = acts.reduce((s,a) => s+actTotalHours(a), 0);
   const doneH   = acts.filter(a=>a.effStatus==='concluido').reduce((s,a)=>s+actTotalHours(a),0);
   const avgProg = total ? Math.round(acts.reduce((s,a)=>s+(a.progress||0),0)/total) : 0;
@@ -2873,7 +3226,7 @@ function renderActTimeline(acts, minDate, maxDate, today) {
 }
 
 function getStatusLabel(s) {
-  const m = { nao_iniciado:'Não iniciado', em_andamento:'Em andamento', concluido:'Concluído', atrasado:'Atrasado', bloqueado:'Bloqueado' };
+  const m = LABELS.status;
   return m[s] || s;
 }
 
@@ -2941,7 +3294,7 @@ function renderActByPerson(personMap) {
 }
 
 // ============================================================
-//  RENDER: MINHA VISÃO (visão pessoal para a equipe)
+//  RENDER — MY VIEW (personal activity dashboard)
 // ============================================================
 function renderMyView() {
   document.getElementById('topbar-title').textContent = 'Minha Visão';
@@ -2983,7 +3336,7 @@ function setMyPerson(val) {
 }
 
 function renderMyActivities(personId) {
-  const person = state.team.find(p => p.id === personId);
+  const person = getPerson(personId);
   if (!person) return;
   const pIdx = state.team.findIndex(p => p.id === personId);
   const col  = getPersonColor(pIdx);
@@ -3019,7 +3372,7 @@ function renderMyActivities(personId) {
       // If work progress is behind time progress → insufficient
       const workProg = a.progress || 0;
       let timeStatus = 'ok'; // ok | warning | critical | late | done
-      if (a.status === 'concluido') {
+      if (a.status === STATUS.DONE) {
         timeStatus = 'done';
       } else if (!endDate || daysRemaining === null) {
         timeStatus = 'nodate';
@@ -3033,7 +3386,7 @@ function renderMyActivities(personId) {
         timeStatus = 'warning';
       }
 
-      const effStatus = isLate(a) && a.status !== 'concluido' ? 'atrasado' : (a.status || 'nao_iniciado');
+      const effStatus = isLate(a) && a.status !== STATUS.DONE ? 'atrasado' : (a.status || 'nao_iniciado');
 
       return { ...a, alloc, delivery, project, pkg, start, end, hours,
         startDate, endDate, daysTotal, daysRemaining, daysElapsed, timeProgress,
@@ -3050,7 +3403,7 @@ function renderMyActivities(personId) {
 
   // Compute KPIs
   const total    = myActs.length;
-  const done     = myActs.filter(a => a.effStatus === 'concluido').length;
+  const done     = myActs.filter(a => a.effStatus === STATUS.DONE).length;
   const late     = myActs.filter(a => a.timeStatus === 'late').length;
   const critical = myActs.filter(a => a.timeStatus === 'critical' || a.timeStatus === 'today').length;
   const totalH   = myActs.reduce((s,a) => s + a.hours, 0);
@@ -3066,9 +3419,9 @@ function renderMyActivities(personId) {
   });
 
   // Active / upcoming / done groups for timeline
-  const active   = sorted.filter(a => a.effStatus !== 'concluido' && a.startDate && a.startDate <= today);
-  const upcoming = sorted.filter(a => a.effStatus !== 'concluido' && a.startDate && a.startDate > today);
-  const finished = sorted.filter(a => a.effStatus === 'concluido');
+  const active   = sorted.filter(a => a.effStatus !== STATUS.DONE && a.startDate && a.startDate <= today);
+  const upcoming = sorted.filter(a => a.effStatus !== STATUS.DONE && a.startDate && a.startDate > today);
+  const finished = sorted.filter(a => a.effStatus === STATUS.DONE);
 
   el.innerHTML = `
 
@@ -3335,20 +3688,20 @@ function renderMyActivityCard(a, col) {
         <div class="progress-wrap"><div class="progress-bar green" style="width:100%;"></div></div>
       </div>` : ''}
 
-      ${a.effStatus !== 'concluido' ? `
+      ${a.effStatus !== STATUS.DONE ? `
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn btn-primary btn-sm" style="flex:1; justify-content:center;" onclick="openProgress(${a.id})">
           ↻ Atualizar andamento
         </button>
-        ${a.workProg === 100 && a.approvalStatus !== 'pending' && a.approvalStatus !== 'approved' ? `
+        ${a.workProg === 100 && a.approvalStatus !== APPROVAL.PENDING && a.approvalStatus !== APPROVAL.APPROVED ? `
         <button class="btn btn-success btn-sm" style="flex:1; justify-content:center;" onclick="openRequestApproval(${a.id})">
           ✓ Solicitar aprovação
         </button>` : ''}
-        ${a.approvalStatus === 'pending' ? `
+        ${a.approvalStatus === APPROVAL.PENDING ? `
         <div style="flex:1; text-align:center; padding:6px; background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.3); border-radius:var(--radius-sm); font-size:12px; color:var(--amber);">
           ⏳ Aguardando aprovação
         </div>` : ''}
-        ${a.approvalStatus === 'revision' ? `
+        ${a.approvalStatus === APPROVAL.REVISION ? `
         <div style="flex:1; padding:6px 10px; background:rgba(248,113,113,0.08); border:1px solid rgba(248,113,113,0.2); border-radius:var(--radius-sm); font-size:12px; color:var(--red);">
           ↩ Revisão solicitada${a.reviewerComment ? `<br><span style="font-size:11px; color:var(--muted);">${esc(a.reviewerComment)}</span>` : ''}
         </div>` : ''}
@@ -3360,7 +3713,7 @@ function renderMyActivityCard(a, col) {
 
 
 // ============================================================
-//  EXPORT EXCEL (XLSX via SheetJS)
+//  EXCEL EXPORT  (XLSX via SheetJS)
 // ============================================================
 function exportExcel() {
   // Load SheetJS if not already loaded
@@ -3378,7 +3731,7 @@ function exportExcel() {
 
 function _doExportXlsx() {
   const WB = XLSX.utils.book_new();
-  const statusMap = { nao_iniciado:'Não iniciado', em_andamento:'Em andamento', concluido:'Concluído', atrasado:'Atrasado', bloqueado:'Bloqueado' };
+  const statusMap = LABELS.status;
 
   // ── Aba 1: Todas as Atividades ──────────────────────────────
   const allRows = [['Projeto','Entrega','Atividade','Responsável','Cargo','Horas','Início','Término','Progresso (%)','Status','Observação']];
@@ -3437,7 +3790,7 @@ function _doExportXlsx() {
     const deliveries = state.deliveries.filter(d => d.projectId === p.id);
     const acts = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
     const totalH = acts.reduce((s,a) => s+actTotalHours(a), 0);
-    const doneH  = acts.filter(a => a.status === 'concluido').reduce((s,a) => s+actTotalHours(a), 0);
+    const doneH  = acts.filter(a => a.status === STATUS.DONE).reduce((s,a) => s+actTotalHours(a), 0);
     const pct    = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
     summaryRows.push([
       p.name    || '',
@@ -3458,7 +3811,7 @@ function _doExportXlsx() {
   // ── Download ─────────────────────────────────────────────────
   const date = new Date().toISOString().slice(0,10);
   XLSX.writeFile(WB, `ProjFlow_${date}.xlsx`);
-  showToast('✓ XLSX exportado com sucesso!');
+  showSuccess('XLSX exportado com sucesso!');
 }
 
 function _styleSheet(ws, nCols, nRows) {
@@ -3503,14 +3856,13 @@ function _styleSheet(ws, nCols, nRows) {
 }
 
 // ============================================================
-//  RENDER: LIBRARY
+//  RENDER — TEMPLATE LIBRARY
 // ============================================================
 function renderLibrary() {
   document.getElementById('topbar-title').textContent = 'Biblioteca de Templates';
   document.getElementById('topbar-sub').textContent = 'Templates reutilizáveis de entregas, pacotes e atividades';
   document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="openNewTemplate()">+ Novo Template</button>`;
 
-  if (!state.templates) state.templates = [];
 
   const cats = [...new Set(state.templates.map(t => t.category).filter(Boolean))];
 
@@ -3560,7 +3912,7 @@ function renderLibrary() {
                   </div>
                   <div style="display:flex; gap:4px; flex-shrink:0;">
                     <button class="btn btn-ghost btn-sm" style="padding:3px 8px;" onclick="openEditTemplate(${t.id})">✎</button>
-                    <button class="btn btn-danger btn-sm" style="padding:3px 7px;" onclick="deleteTemplate(${t.id})">✕</button>
+                    <button class="btn btn-danger btn-sm" style="padding:3px 7px;" onclick="deleteTemplate(${t.id})" aria-label="Excluir">✕</button>
                   </div>
                 </div>
                 ${t.desc ? `<div style="font-size:12px; color:var(--muted); margin-bottom:10px;">${esc(t.desc)}</div>` : ''}
@@ -3753,8 +4105,7 @@ function removeTemplateSubItem(pkgIdx, actIdx) {
 
 function saveTemplate() {
   const name = document.getElementById('tmpl-name').value.trim();
-  if (!name) { alert('Informe o nome do template.'); return; }
-  if (!state.templates) state.templates = [];
+  if (!name) { showToast('⚠ Informe o nome do template.'); return; }
 
   const data = {
     name,
@@ -3777,6 +4128,7 @@ function saveTemplate() {
 function deleteTemplate(id) {
   if (!confirm('Excluir este template?')) return;
   state.templates = state.templates.filter(t => t.id !== id);
+  saveState();
   render();
 }
 
@@ -3794,7 +4146,6 @@ function openLibraryPicker(deliveryId) {
   document.getElementById('lib-filter-search').value = '';
 
   // Populate category filter
-  if (!state.templates) state.templates = [];
   const cats = [...new Set(state.templates.map(t => t.category).filter(Boolean))];
   const catSel = document.getElementById('lib-filter-cat');
   catSel.innerHTML = '<option value="">Todas as categorias</option>' +
@@ -3904,8 +4255,7 @@ function applyLibrarySelection() {
     } else if (t.type === 'package') {
       // Create package + its activities
       const pkg = { id: uid(), name: t.name, deliveryId, personId: null, start: '', end: '', desc: t.desc||'' };
-      if (!state.packages) state.packages = [];
-      state.packages.push(pkg);
+          state.packages.push(pkg);
       (t.items||[]).forEach((a, idx) => {
         state.activities.push({
           id: uid(), name: a.name, packageId: pkg.id, deliveryId: null,
@@ -3928,8 +4278,7 @@ function applyLibrarySelection() {
           });
         } else {
           const pkg = { id: uid(), name: item.name, deliveryId, personId: null, start: '', end: '', desc: '' };
-          if (!state.packages) state.packages = [];
-          state.packages.push(pkg);
+                  state.packages.push(pkg);
           (item.items||[]).forEach((a, idx) => {
             state.activities.push({
               id: uid(), name: a.name, packageId: pkg.id, deliveryId: null,
@@ -3950,7 +4299,7 @@ function applyLibrarySelection() {
 }
 
 // ============================================================
-//  RENDER: TEAM
+//  RENDER — TEAM MANAGEMENT
 // ============================================================
 function renderTeam() {
   document.getElementById('topbar-title').textContent = 'Equipe';
@@ -3973,9 +4322,9 @@ function renderTeam() {
       const al = (a.allocations||[]).find(x=>x.personId===p.id);
       return s + (al ? parseFloat(al.hours)||0 : actTotalHours(a));
     }, 0);
-    const activeActs = acts.filter(a => a.status === 'em_andamento').length;
+    const activeActs = acts.filter(a => a.status === STATUS.IN_PROGRESS).length;
     const lates = acts.filter(a => isLate(a)).length;
-    const pending = acts.filter(a => a.approvalStatus === 'pending').length;
+    const pending = acts.filter(a => a.approvalStatus === APPROVAL.PENDING).length;
     const prf = p.profile || 'analista';
 
     return `
@@ -3991,7 +4340,7 @@ function renderTeam() {
           </div>
           ${canDo('manage_team') ? `<div style="display:flex; gap:5px;">
             <button class="btn btn-ghost btn-sm" onclick="openEditPerson(${p.id})">✎</button>
-            <button class="btn btn-danger btn-sm" onclick="deletePerson(${p.id})">✕</button>
+            <button class="btn btn-danger btn-sm" onclick="deletePerson(${p.id})" aria-label="Excluir">✕</button>
           </div>` : ''}
         </div>
         <hr class="sep" style="margin:0;">
@@ -4009,7 +4358,7 @@ function renderTeam() {
 }
 
 // ============================================================
-//  RENDER: SETTINGS
+//  RENDER — SETTINGS & CONFIGURATION
 // ============================================================
 function renderSettings() {
   document.getElementById('topbar-title').textContent = 'Configurações';
@@ -4236,8 +4585,8 @@ function openEditProject(id) {
 function saveProject() {
   if (!sbUser) return;
   if (!canDo('create_project') && !canEditProject(editingProjectId)) { showToast('Sem permissão'); return; }
-  const name = document.getElementById('p-name').value.trim();
-  if (!name) { alert('Informe o nome do projeto.'); return; }
+  const name = requireField('p-name', 'Informe o nome do projeto.');
+  if (!name) return;
   if (editingProjectId) {
     const p = state.projects.find(x => x.id === editingProjectId);
     p.name    = name;
@@ -4317,7 +4666,7 @@ function executeConvertDelivery() {
   const deliveryId = parseInt(document.getElementById('convert-delivery-id').value);
   const targetDeliveryId = parseInt(document.getElementById('convert-target-delivery').value);
 
-  if (!targetDeliveryId) { alert('Selecione a entrega de destino.'); return; }
+  if (!targetDeliveryId) { showToast('⚠ Selecione a entrega de destino.'); return; }
 
   const d = state.deliveries.find(x => x.id === deliveryId);
   if (!d) return;
@@ -4332,7 +4681,6 @@ function executeConvertDelivery() {
     end: d.end,
     desc: d.desc || '',
   };
-  if (!state.packages) state.packages = [];
   state.packages.push(newPkg);
 
   // 2. Move all direct activities from this delivery into the new package
@@ -4402,8 +4750,8 @@ function populatePersonSelectPkg(selectedId) {
 
 function savePackage() {
   if (!sbUser || !canDo('create_package')) { showToast('Sem permissão'); return; }
-  const name = document.getElementById('pkg-name').value.trim();
-  if (!name) { alert('Informe o nome do pacote.'); return; }
+  const name = requireField('pkg-name', 'Informe o nome do pacote.');
+  if (!name) return;
   const editId = parseInt(document.getElementById('pkg-id').value) || 0;
   const data = {
     name,
@@ -4413,7 +4761,6 @@ function savePackage() {
     end: document.getElementById('pkg-end').value,
     desc: document.getElementById('pkg-desc').value,
   };
-  if (!state.packages) state.packages = [];
   if (editId) {
     const pkg = state.packages.find(x => x.id === editId);
     Object.assign(pkg, data);
@@ -4460,8 +4807,8 @@ function saveDelivery() {
   if (!sbUser) return;
   const _dProjId = parseInt(document.getElementById('d-project-id')?.value) || editingDeliveryProjectId;
   if (!canDo('create_delivery') && !canEditProject(_dProjId)) { showToast('Sem permissão'); return; }
-  const name = document.getElementById('d-name').value.trim();
-  if (!name) { alert('Informe o nome da entrega.'); return; }
+  const name = requireField('d-name', 'Informe o nome da entrega.');
+  if (!name) return;
   const pidRaw = parseInt(document.getElementById('d-project-id').value);
 
   if (pidRaw < 0) {
@@ -4606,7 +4953,7 @@ function openNewActivityInPackage(packageId, deliveryId) {
 }
 
 function openEditActivity(id) {
-  const a = state.activities.find(x => x.id === id);
+  const a = getActivity(id);
   if (!a) return;
   document.getElementById('modal-activity-title').textContent = 'Editar Atividade';
   document.getElementById('a-name').value = a.name;
@@ -4634,8 +4981,8 @@ function populatePersonSelect(selectedId) {
 
 function saveActivity() {
   if (!sbUser || !canDo('create_activity')) { showToast('Sem permissão'); return; }
-  const name = document.getElementById('a-name').value.trim();
-  if (!name) { alert('Informe o nome da atividade.'); return; }
+  const name = requireField('a-name', 'Informe o nome da atividade.');
+  if (!name) return;
   const editId     = parseInt(document.getElementById('a-activity-id').value) || 0;
   const packageId  = parseInt(document.getElementById('a-package-id').value) || null;
   const deliveryId = parseInt(document.getElementById('a-delivery-id').value) || null;
@@ -4664,7 +5011,7 @@ function saveActivity() {
   };
 
   if (editId) {
-    const a = state.activities.find(x => x.id === editId);
+    const a = getActivity(editId);
     Object.assign(a, data);
   } else {
     if (packageId) {
@@ -4681,6 +5028,7 @@ function deleteActivity(id) {
   if (!sbUser || !canDo('delete_activity')) { showToast('Sem permissão'); return; }
   if (!confirm('Excluir atividade?')) return;
   state.activities = state.activities.filter(a => a.id !== id);
+  saveState();
   render();
 }
 
@@ -4693,7 +5041,7 @@ function openProgress(id) {
   const statusRow = document.getElementById('progress-status-label')?.closest('.form-group');
   if (statusRow) statusRow.style.display = prof === 'analista' ? 'none' : '';
 
-  const a = state.activities.find(x => x.id === id);
+  const a = getActivity(id);
   if (!a) return;
   const allocs = a.allocations && a.allocations.length
     ? a.allocations
@@ -4716,10 +5064,15 @@ function openProgress(id) {
   openModal('modal-progress');
 }
 
+/**
+ * Updates activity progress, status, and note from the progress modal.
+ * — Analista: only own activities; cannot directly set status to concluido.
+ * — Gerente/Líder: full control over status.
+ */
 function saveProgress() {
   if (!sbUser) { showToast('Faça login para atualizar'); return; }
   const id = parseInt(document.getElementById('progress-activity-id').value);
-  const a = state.activities.find(x => x.id === id);
+  const a = getActivity(id);
   if (!a) return;
 
   const profile = currentProfile();
@@ -4736,11 +5089,12 @@ function saveProgress() {
   // Gerente/Líder podem marcar concluído diretamente.
   if (profile === 'analista') {
     // Impede que analista marque como concluído diretamente
-    if (a.status === 'concluido') a.status = 'em_andamento';
+    if (a.status === STATUS.DONE) a.status = STATUS.IN_PROGRESS;
     // Remove dropdown de status para analista (só mostra progresso)
   }
 
   closeModal('modal-progress');
+  saveState();
   if (sb && sbUser && sbUser.email !== ADMIN_EMAIL) {
     sbSaveActivityUpdate(a.id, a.progress, a.status, a.note);
   }
@@ -4776,8 +5130,8 @@ function openEditPerson(id) {
 
 function savePerson() {
   if (!sbUser || !canDo('manage_team')) { showToast('Sem permissão'); return; }
-  const name = document.getElementById('per-name').value.trim();
-  if (!name) { alert('Informe o nome.'); return; }
+  const name = requireField('per-name', 'Informe o nome.');
+  if (!name) return;
   const profile = document.getElementById('per-profile').value || 'analista';
   const email   = document.getElementById('per-email').value.trim();
   if (editingPersonId) {
@@ -4844,11 +5198,11 @@ function importData(input) {
         state = data;
         saveState();
         render();
-        alert('Dados importados com sucesso!');
+        showSuccess('Dados importados com sucesso!');
       } else {
-        alert('Arquivo inválido.');
+        showToast('⚠ Arquivo inválido.');
       }
-    } catch { alert('Erro ao ler o arquivo.'); }
+    } catch { showToast('⚠ Erro ao ler o arquivo.'); }
   };
   reader.readAsText(file);
 }
@@ -4862,7 +5216,7 @@ function clearAllData() {
 }
 
 // ============================================================
-//  MS PROJECT IMPORT
+//  MS PROJECT IMPORT  (XML → preview → apply)
 // ============================================================
 let mspParsed = null; // { projectName, start, end, tasks[] }
 
@@ -5128,7 +5482,6 @@ function executeMspImport() {
     projectId = newProj.id;
   }
 
-  if (!state.packages) state.packages = [];
 
   // Build a context stack to know the parent delivery/package for each task
   let currentDeliveryId = null;
@@ -5225,6 +5578,10 @@ function executeMspImport() {
   showToast(`✓ Importação concluída — ${created} item(ns) criado(s)`);
 }
 
+/** Displays a brief toast notification at the bottom of the screen.
+ * @param {string} msg
+ * @param {number} [dur=3000] Duration in ms
+ */
 function showToast(msg) {
   const t = document.createElement('div');
   t.textContent = msg;
@@ -5234,10 +5591,11 @@ function showToast(msg) {
 }
 
 // ============================================================
-//  SUPABASE SYNC
+//  SUPABASE SYNC  (cloud persistence & real-time)
 // ============================================================
 
 async function sbInit() {
+  try {
   sb = supabase.createClient(SB_URL, SB_KEY);
 
   const { data: { session } } = await sb.auth.getSession();
@@ -5260,6 +5618,10 @@ async function sbInit() {
   } else {
     sbUpdatePanel();
     render(); // will show login wall
+  }
+  } catch(e) {
+    showError('Erro ao conectar. Verifique sua conexão.');
+    render();
   }
 }
 
@@ -5563,7 +5925,7 @@ async function _wallSignIn() {
     setTimeout(() => { if (!hasCheckedInToday()) openCheckinModal(); }, 800);
   } else {
     navigate('dashboard');
-    showToast('✓ Login realizado!');
+    showSuccess('Login realizado!');
   }
 }
 
@@ -5652,8 +6014,6 @@ let currentSprintId = null;
 let currentFactId   = null;
 
 async function loadSprints() {
-  if (!state.sprints) state.sprints = [];
-  if (!state.sprintActivities) state.sprintActivities = {};
 
   if (!sb) {
     // Use local state only
@@ -5691,7 +6051,7 @@ async function loadSprints() {
     state.sprintActivities = _sprintActivities;
 
   } catch(e) {
-    console.warn('loadSprints error (using local):', e.message);
+    /* loadSprints: using local fallback */
     _sprints = [...(state.sprints||[])];
     Object.assign(_sprintActivities, state.sprintActivities||{});
   }
@@ -5747,7 +6107,7 @@ function renderSprints() {
 
       grp.sprints.forEach(s => {
         const actIds   = getSprintActivities(s.id);
-        const done     = actIds.filter(id => state.activities.find(a => a.id === id && a.status === 'concluido')).length;
+        const done     = actIds.filter(id => state.activities.find(a => a.id === id && a.status === STATUS.DONE)).length;
         const pct      = actIds.length > 0 ? Math.round(done/actIds.length*100) : 0;
         const today    = new Date().toISOString().slice(0,10);
         const daysLeft = s.end_date ? Math.round((new Date(s.end_date)-new Date(today))/86400000) : null;
@@ -5773,7 +6133,7 @@ function renderSprints() {
               ${s.status==='planejamento' ? `<button class="btn btn-success btn-sm" onclick="activateSprint('${s.id}')">▶ Ativar</button>` : ''}
               ${s.status==='ativo' ? `<button class="btn btn-ghost btn-sm" onclick="closeSprint('${s.id}')">✓ Fechar</button>` : ''}
               ${canDo('create_project') ? `<button class="btn btn-ghost btn-sm" onclick="openEditSprint('${s.id}')">✎</button>
-              <button class="btn btn-danger btn-sm" onclick="deleteSprint('${s.id}')">✕</button>` : ''}
+              <button class="btn btn-danger btn-sm" onclick="deleteSprint('${s.id}')" aria-label="Excluir">✕</button>` : ''}
             </div>
           </div>
         </div>`;
@@ -5798,8 +6158,8 @@ function renderSprintDetail() {
 
   const proj   = state.projects.find(p => p.id === s.project_id);
   const actIds = getSprintActivities(s.id);
-  const spActs = actIds.map(id => state.activities.find(a => a.id === id)).filter(Boolean);
-  const done   = spActs.filter(a => a.status === 'concluido').length;
+  const spActs = actIds.map(id => getActivity(id)).filter(Boolean);
+  const done   = spActs.filter(a => a.status === STATUS.DONE).length;
   const pct    = spActs.length > 0 ? Math.round(done/spActs.length*100) : 0;
   const totalH = spActs.reduce((s,a) => s+actTotalHours(a), 0);
   const doneH  = spActs.filter(a=>a.status==='concluido').reduce((s,a)=>s+actTotalHours(a),0);
@@ -5808,7 +6168,7 @@ function renderSprintDetail() {
   document.getElementById('topbar-sub').textContent = proj?.name || '';
   document.getElementById('topbar-actions').innerHTML = `
     <button class="btn btn-ghost btn-sm" onclick="navigate('sprints')">← Voltar</button>
-    ${s.status !== 'concluido' ? `<button class="btn btn-ghost btn-sm" onclick="closeSprint('${s.id}')">✓ Fechar Sprint</button>` : ''}
+    ${s.status !== STATUS.DONE ? `<button class="btn btn-ghost btn-sm" onclick="closeSprint('${s.id}')">✓ Fechar Sprint</button>` : ''}
   `;
 
   // All activities of this project
@@ -6031,18 +6391,17 @@ function openEditSprint(id) {
 
 async function saveSprint() {
   const name = document.getElementById('sp-name').value.trim();
-  if (!name) { alert('Informe o nome do sprint.'); return; }
+  if (!name) { showToast('⚠ Informe o nome do sprint.'); return; }
   const start     = document.getElementById('sp-start').value;
   const end       = document.getElementById('sp-end').value;
-  if (!start || !end) { alert('Informe as datas de início e término do sprint.'); return; }
+  if (!start || !end) { showToast('⚠ Informe as datas de início e término.'); return; }
   const projectId = parseInt(document.getElementById('sp-project').value) || null;
-  if (!projectId) { alert('Selecione o projeto.'); return; }
+  if (!projectId) { showToast('⚠ Selecione o projeto.'); return; }
   const editId    = document.getElementById('sp-id').value;
   const goal      = document.getElementById('sp-goal').value.trim();
 
   const payload = { name, goal, start_date: start, end_date: end, project_id: projectId };
 
-  if (!state.sprints) state.sprints = [];
 
   if (sb) {
     try {
@@ -6063,7 +6422,6 @@ async function saveSprint() {
       }
     } catch(e) {
       // Supabase failed (table may not exist yet) — save locally
-      console.warn('Sprint Supabase error, saving locally:', e.message);
       _saveSprintLocally(payload, editId);
     }
   } else {
@@ -6073,11 +6431,10 @@ async function saveSprint() {
   closeModal('modal-sprint');
   saveState();
   render();
-  showToast('✓ Sprint salvo!');
+  showSuccess('Sprint salvo!');
 }
 
 function _saveSprintLocally(payload, editId) {
-  if (!state.sprints) state.sprints = [];
   if (editId) {
     const li = state.sprints.findIndex(s => s.id === editId);
     if (li >= 0) state.sprints[li] = { ...state.sprints[li], ...payload };
@@ -6096,7 +6453,6 @@ function _saveSprintLocally(payload, editId) {
 }
 
 async function activateSprint(id) {
-  if (!state.sprints) state.sprints = [];
   const allSprints = _sprints.length ? _sprints : state.sprints;
   const s = allSprints.find(x => x.id === id);
 
@@ -6119,17 +6475,16 @@ async function activateSprint(id) {
       await sb.from('projflow_sprints').update({ status: 'planejamento' })
         .eq('project_id', s?.project_id).eq('status', 'ativo');
       await sb.from('projflow_sprints').update({ status: 'ativo' }).eq('id', id);
-    } catch(e) { console.warn('activateSprint Supabase error:', e.message); }
+    } catch(e) { showToast('Aviso: falha ao sincronizar sprint com servidor.'); }
   }
 
   saveState();
   render();
-  showToast('✓ Sprint ativado!');
+  showSuccess('Sprint ativado!');
 }
 
 async function closeSprint(id) {
   if (!confirm('Fechar este sprint?')) return;
-  if (!state.sprints) state.sprints = [];
 
   const allSprints = _sprints.length ? _sprints : state.sprints;
   const si = allSprints.findIndex(x => x.id === id);
@@ -6140,17 +6495,16 @@ async function closeSprint(id) {
   if (sb) {
     try {
       await sb.from('projflow_sprints').update({ status: 'concluido', closed_at: new Date().toISOString() }).eq('id', id);
-    } catch(e) { console.warn('closeSprint Supabase error:', e.message); }
+    } catch(e) { showToast('Aviso: falha ao sincronizar encerramento do sprint.'); }
   }
 
   saveState();
   navigate('sprints');
-  showToast('✓ Sprint fechado!');
+  showSuccess('Sprint fechado!');
 }
 
 async function deleteSprint(id) {
   if (!confirm('Excluir este sprint?')) return;
-  if (!state.sprints) state.sprints = [];
 
   _sprints = _sprints.filter(s => s.id !== id);
   state.sprints = state.sprints.filter(s => s.id !== id);
@@ -6158,7 +6512,7 @@ async function deleteSprint(id) {
 
   if (sb) {
     try { await sb.from('projflow_sprints').delete().eq('id', id); }
-    catch(e) { console.warn('deleteSprint Supabase error:', e.message); }
+    catch(e) { showToast('Aviso: falha ao sincronizar exclusão do sprint.'); }
   }
 
   saveState();
@@ -6172,7 +6526,6 @@ async function addToSprint(sprintId, activityId) {
   }
 
   // Also persist in state
-  if (!state.sprintActivities) state.sprintActivities = {};
   if (!state.sprintActivities[sprintId]) state.sprintActivities[sprintId] = [];
   if (!state.sprintActivities[sprintId].includes(activityId)) {
     state.sprintActivities[sprintId].push(activityId);
@@ -6182,12 +6535,12 @@ async function addToSprint(sprintId, activityId) {
     try {
       await sb.from('projflow_sprint_activities')
         .upsert({ sprint_id: sprintId, activity_id: activityId });
-    } catch(e) { console.warn('addToSprint Supabase error:', e.message); }
+    } catch(e) { showToast('Aviso: falha ao adicionar ao sprint no servidor.'); }
   }
 
   saveState();
   renderSprintDetail();
-  showToast('✓ Atividade adicionada ao sprint');
+  showSuccess('Atividade adicionada ao sprint');
 }
 
 async function removeFromSprint(sprintId, activityId) {
@@ -6201,7 +6554,7 @@ async function removeFromSprint(sprintId, activityId) {
     try {
       await sb.from('projflow_sprint_activities')
         .delete().eq('sprint_id', sprintId).eq('activity_id', activityId);
-    } catch(e) { console.warn('removeFromSprint Supabase error:', e.message); }
+    } catch(e) { /* silent: sprint removal sync failure is non-critical */ }
   }
 
   saveState();
@@ -6210,7 +6563,7 @@ async function removeFromSprint(sprintId, activityId) {
 }
 
 // ============================================================
-//  CHECK-IN DIÁRIO
+//  DAILY CHECK-IN  (sprint-linked daily standup)
 // ============================================================
 let _todayCheckins = []; // loaded from Supabase
 
@@ -6282,7 +6635,7 @@ async function submitCheckin() {
     }, { onConflict: 'person_id,check_date' });
     closeModal('modal-checkin');
     await loadTodayCheckins();
-    showToast('✓ Check-in registrado!');
+    showSuccess('Check-in registrado!');
     if (hasImpediment) showToast('⚠ Impedimento notificado ao gestor');
     render();
   } catch(e) {
@@ -6316,14 +6669,14 @@ function renderApprovals() {
           })() : null);
       const projectId = delivery?.projectId;
       if (!projectId) return false;
-      const proj = state.projects.find(p => p.id === projectId);
+      const proj = getProject(projectId);
       return (proj?.leaders||[]).includes(person.id);
     });
   };
 
-  const pending  = filterByAccess(state.activities.filter(a => a.approvalStatus === 'pending'));
+  const pending  = filterByAccess(state.activities.filter(a => a.approvalStatus === APPROVAL.PENDING));
   const reviewed = filterByAccess(state.activities.filter(a =>
-    a.approvalStatus === 'approved' || a.approvalStatus === 'revision'
+    a.approvalStatus === APPROVAL.APPROVED || a.approvalStatus === APPROVAL.REVISION
   )).sort((a,b) => (b.reviewedAt||'').localeCompare(a.reviewedAt||'')).slice(0,20);
 
   if (!canReview) {
@@ -6337,13 +6690,7 @@ function renderApprovals() {
 
   const renderCard = (a, isPending) => {
     // Resolve project/delivery regardless of deliveryId or packageId
-    const delivery = a.deliveryId
-      ? state.deliveries.find(d => d.id === a.deliveryId)
-      : (a.packageId ? (() => {
-          const pkg = (state.packages||[]).find(p => p.id === a.packageId);
-          return pkg ? state.deliveries.find(d => d.id === pkg.deliveryId) : null;
-        })() : null);
-    const project = delivery ? state.projects.find(p => p.id === delivery.projectId) : null;
+    const project  = getActivityProject(a);
     const allocs  = a.allocations||[];
     const people  = allocs.map(al => state.team.find(p => p.id === al.personId)).filter(Boolean);
     const range   = actDateRange(a);
@@ -6352,7 +6699,7 @@ function renderApprovals() {
 
     const statusBadge = isPending
       ? `<span class="badge badge-amber">⏳ Aguardando revisão</span>`
-      : a.approvalStatus === 'approved'
+      : a.approvalStatus === APPROVAL.APPROVED
         ? `<span class="badge badge-green">✓ Aprovada</span>`
         : `<span class="badge badge-red">↩ Revisão solicitada</span>`;
 
@@ -6433,7 +6780,7 @@ function toggleReviewedHistory() {
 }
 
 function openRequestApproval(activityId) {
-  const a = state.activities.find(x => x.id === activityId);
+  const a = getActivity(activityId);
   if (!a) return;
   const range = actDateRange(a);
   document.getElementById('approval-activity-info').innerHTML = `
@@ -6447,25 +6794,26 @@ function openRequestApproval(activityId) {
 }
 
 async function submitApprovalRequest() {
-  if (!sbUser) { showToast('Faça login para solicitar aprovação'); return; }
+  if (!sbUser) { showError('Faça login para solicitar aprovação'); return; }
+  try {
   const id   = parseInt(document.getElementById('approval-activity-id').value);
   const desc = document.getElementById('approval-desc').value.trim();
-  if (!desc) { alert('Descreva o que foi entregue.'); return; }
-  const a = state.activities.find(x => x.id === id);
+  if (!desc) { showToast('⚠ Descreva o que foi entregue.'); return; }
+  const a = getActivity(id);
   if (!a) return;
-  a.approvalStatus = 'pending';
-  a.status = 'em_andamento'; // keep em_andamento — concluido only after approval
+  a.approvalStatus = APPROVAL.PENDING;
+  a.status         = STATUS.IN_PROGRESS; // stays in progress until approved by gerente/lider
   a.approvalDesc   = desc;
   a.approvalLink   = document.getElementById('approval-link').value.trim();
-  a.status         = 'em_andamento'; // stays in progress until approved
   closeModal('modal-request-approval');
   saveState();
-  showToast('✓ Solicitação enviada! Aguardando aprovação do gestor.');
+  showSuccess('Solicitação enviada! Aguardando aprovação do gestor.');
   render();
+  } catch(e) { showToast('Erro ao enviar solicitação: ' + e.message); }
 }
 
 function openReviewApproval(activityId) {
-  const a = state.activities.find(x => x.id === activityId);
+  const a = getActivity(activityId);
   if (!a) return;
   const allocs   = a.allocations||[];
   const people   = allocs.map(al => state.team.find(p => p.id === al.personId)).filter(Boolean);
@@ -6482,29 +6830,40 @@ function openReviewApproval(activityId) {
   openModal('modal-review-approval');
 }
 
+/**
+ * Gerente/Líder approves an activity: sets status = concluido, approvalStatus = approved.
+ * Requires approve_activities permission.
+ */
 async function approveActivity() {
-  if (!sbUser || !canDo('approve_activities')) { showToast('Sem permissão'); return; }
+  if (!sbUser || !canDo('approve_activities')) { showError('Sem permissão'); return; }
+  try {
   const id = parseInt(document.getElementById('review-activity-id').value);
-  const a  = state.activities.find(x => x.id === id);
+  const a  = getActivity(id);
   if (!a) return;
   a.approvalStatus   = 'approved';
-  a.status           = 'concluido';
+  a.status           = STATUS.DONE;
   a.progress         = 100;
   a.reviewerComment  = document.getElementById('review-comment').value.trim();
   a.reviewedBy       = currentPerson()?.id;
   a.reviewedAt       = new Date().toISOString();
   closeModal('modal-review-approval');
   saveState();
-  showToast('✓ Atividade aprovada e marcada como concluída!');
+  showSuccess('Atividade aprovada e marcada como concluída!');
   render();
+  } catch(e) { showToast('Erro ao aprovar: ' + e.message); }
 }
 
+/**
+ * Gerente/Líder rejects an activity approval, returning it for revision.
+ * Requires approve_activities permission and a non-empty comment.
+ */
 async function rejectApproval() {
-  if (!sbUser || !canDo('approve_activities')) { showToast('Sem permissão'); return; }
+  if (!sbUser || !canDo('approve_activities')) { showError('Sem permissão'); return; }
+  try {
   const comment = document.getElementById('review-comment').value.trim();
-  if (!comment) { alert('Informe o motivo da revisão.'); return; }
+  if (!comment) { showToast('⚠ Informe o motivo da revisão.'); return; }
   const id = parseInt(document.getElementById('review-activity-id').value);
-  const a  = state.activities.find(x => x.id === id);
+  const a  = getActivity(id);
   if (!a) return;
   a.approvalStatus  = 'revision';
   a.status          = 'em_andamento';
@@ -6515,10 +6874,13 @@ async function rejectApproval() {
   saveState();
   showToast('↩ Revisão solicitada. O colaborador será notificado.');
   render();
+  } catch(e) { showToast('Erro ao rejeitar: ' + e.message); }
 }
 
 // ============================================================
-//  FATOS RELEVANTES
+//  RENDER & CRUD: FATOS RELEVANTES
+//  Event/incident management with 5-Whys root cause analysis and action plans.
+//  Accessible to gerente and lider for editing; analista has read-only access.
 // ============================================================
 let _factActions = []; // working copy while editing
 let _factWhys    = []; // working copy: [{question:'', answer:''}]
@@ -6581,9 +6943,9 @@ function addFactWhy() {
   }, 50);
 }
 
-const factStatusLabel = { aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Monitoramento' };
+const factStatusLabel = LABELS.factStatus;
 const factStatusBadge = { aberto:'badge-red', em_tratamento:'badge-amber', resolvido:'badge-green', monitoramento:'badge-blue' };
-const impactLabel     = { financeiro:'💰 Financeiro', cronograma:'📅 Cronograma', escopo:'📋 Escopo', reputacional:'🏆 Reputacional' };
+const impactLabel     = LABELS.impact;
 
 function renderFacts() {
   document.getElementById('topbar-title').textContent = 'Fatos Relevantes';
@@ -6592,7 +6954,6 @@ function renderFacts() {
     ? `<button class="btn btn-primary" onclick="openNewFact()">+ Novo Fato Relevante</button>`
     : '';
 
-  if (!state.facts) state.facts = [];
 
   // Filters
   const fStatus  = document.getElementById('fact-filter-status')?.value  || '';
@@ -6668,7 +7029,7 @@ function renderFacts() {
           </div>
           <div style="display:flex; gap:5px; flex-shrink:0;" onclick="event.stopPropagation()">
             ${canDo('create_project') ? `<button class="btn btn-ghost btn-sm" onclick="openEditFact(${f.id})">✎</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteFact(${f.id})">✕</button>` : ''}
+            <button class="btn btn-danger btn-sm" onclick="deleteFact(${f.id})" aria-label="Excluir">✕</button>` : ''}
           </div>
         </div>
         ${actions.length ? `<div style="margin-top:10px;">
@@ -6936,11 +7297,10 @@ function renderFactActionList() {
 function saveFact() {
   if (!sbUser) { showToast('Faça login para salvar'); return; }
   const title = document.getElementById('fact-title').value.trim();
-  if (!title) { alert('Informe o título do fato relevante.'); return; }
+  if (!title) { showToast('⚠ Informe o título do fato relevante.'); return; }
   const projectId = parseInt(document.getElementById('fact-project').value) || null;
-  if (!projectId) { alert('Selecione o projeto.'); return; }
+  if (!projectId) { showToast('⚠ Selecione o projeto.'); return; }
 
-  if (!state.facts) state.facts = [];
   const editId = parseInt(document.getElementById('fact-id').value) || 0;
 
   const impacts = ['financeiro','cronograma','escopo','reputacional']
@@ -6970,7 +7330,7 @@ function saveFact() {
   closeModal('modal-fact');
   saveState();
   render();
-  showToast('✓ Fato relevante salvo!');
+  showSuccess('Fato relevante salvo!');
 }
 
 function deleteFact(id) {
@@ -6991,7 +7351,7 @@ function toggleFactAction(factId, actionIdx) {
 }
 
 // ============================================================
-//  DIÁRIO DE BORDO
+//  LOGBOOK — alignments, check-ins & unified timeline
 // ============================================================
 let _logbookProject = null; // currently selected project filter
 
@@ -7007,7 +7367,6 @@ function renderLogbook() {
     <button class="btn btn-primary" onclick="openNewAlignment()">+ Registro de Alinhamento</button>
   `;
 
-  if (!state.logbookEntries) state.logbookEntries = [];
 
   const savedProj = _logbookProject || localStorage.getItem('projflow_logbook_project') || '';
 
@@ -7192,7 +7551,7 @@ function _renderAlignmentCard(e) {
       </div>
       <div style="display:flex; gap:5px; flex-shrink:0;">
         <button class="btn btn-ghost btn-sm" onclick="openEditAlignment('${e.id}')">✎</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteAlignment('${e.id}')">✕</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteAlignment('${e.id}')" aria-label="Excluir">✕</button>
       </div>
     </div>
   </div>`;
@@ -7213,7 +7572,7 @@ function _renderFactLogCard(f) {
       <span style="font-size:11px; background:rgba(248,113,113,0.15); color:var(--red); padding:2px 8px; border-radius:10px; font-weight:600;">⚠ Fato Relevante</span>
       ${proj ? `<span style="font-size:11px; color:var(--accent2);">${esc(proj.name)}</span>` : ''}
       ${impacts ? `<span style="font-size:13px;">${impacts}</span>` : ''}
-      <span class="badge ${f.status==='aberto'?'badge-red':f.status==='resolvido'?'badge-green':f.status==='em_tratamento'?'badge-amber':'badge-blue'}" style="font-size:10px;">${{ aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Monitoramento' }[f.status]||f.status}</span>
+      <span class="badge ${f.status==='aberto'?'badge-red':f.status==='resolvido'?'badge-green':f.status==='em_tratamento'?'badge-amber':'badge-blue'}" style="font-size:10px;">${LABELS.factStatus[f.status]||f.status}</span>
     </div>
     <div style="font-size:13px; font-weight:500;">${esc(f.title)}</div>
     ${f.desc ? `<div style="font-size:12px; color:var(--muted); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(f.desc)}</div>` : ''}
@@ -7366,14 +7725,13 @@ function removeAlTeamMember(id) {
 function saveAlignment() {
   if (!sbUser) { showToast('Faça login para salvar'); return; }
   const content = document.getElementById('al-content').value.trim();
-  if (!content) { alert('Descreva o que foi alinhado.'); return; }
+  if (!content) { showToast('⚠ Descreva o que foi alinhado.'); return; }
   const projectId = parseInt(document.getElementById('al-project').value) || null;
-  if (!projectId) { alert('Selecione o projeto.'); return; }
+  if (!projectId) { showToast('⚠ Selecione o projeto.'); return; }
 
   const impacts = ['escopo','cronograma','medicao','custo','na']
     .filter(t => document.getElementById(`al-impact-${t}`)?.checked);
 
-  if (!state.logbookEntries) state.logbookEntries = [];
   const editId = document.getElementById('al-id').value;
 
   const data = {
@@ -7398,7 +7756,7 @@ function saveAlignment() {
   closeModal('modal-alignment');
   saveState();
   render();
-  showToast('✓ Alinhamento registrado!');
+  showSuccess('Alinhamento registrado!');
 }
 
 function deleteAlignment(id) {
@@ -7416,7 +7774,9 @@ function saveConfig(key, value) {
 }
 
 // ============================================================
-//  RELATÓRIOS
+//  RENDER: RELATÓRIOS
+//  Four report types: team allocation, weekly, single fact, consolidated facts.
+//  All reports auto-save text fields (oninput) and support Word export via docx.js.
 // ============================================================
 let _currentReport = null; // { type, projectId, weekStart, factId }
 
@@ -7654,7 +8014,7 @@ function renderReportWeekly(el) {
   if (!projId) { showToast('Selecione um projeto'); return; }
   if (!weekInput) { showToast('Selecione a semana'); return; }
 
-  const proj = state.projects.find(p => p.id === projId);
+  const proj = getProject(projId);
   const weekMon = getMonday(new Date(weekInput + 'T12:00:00'));
   const weekSun = new Date(weekMon); weekSun.setDate(weekMon.getDate() + 6);
   const nextMon = new Date(weekSun); nextMon.setDate(weekSun.getDate() + 1);
@@ -7834,8 +8194,8 @@ function renderReportFactSingle(el) {
   const key   = reportKey('fact_single', factId);
   const saved = getReportData(key);
 
-  const impactLabels = { financeiro:'💰 Financeiro', cronograma:'📅 Cronograma', escopo:'📋 Escopo', reputacional:'🏆 Reputacional' };
-  const statusLabel  = { aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Em monitoramento' };
+  const impactLabels = LABELS.impact;
+  const statusLabel  = LABELS.factStatus;
   const actions = f.actions||[];
   const doneAct = actions.filter(a=>a.done).length;
 
@@ -7950,8 +8310,8 @@ function renderReportFactConsol(el) {
   const doneActions  = facts.reduce((s,f)=>s+(f.actions||[]).filter(a=>a.done).length,0);
   const actionPct    = totalActions > 0 ? Math.round(doneActions/totalActions*100) : 0;
 
-  const statusLabel = { aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Monitoramento' };
-  const impactLabel = { financeiro:'💰 Financeiro', cronograma:'📅 Cronograma', escopo:'📋 Escopo', reputacional:'🏆 Reputacional' };
+  const statusLabel = LABELS.factStatus;
+  const impactLabel = LABELS.impact;
 
   el.innerHTML = `
     ${reportHeader('Relatório Consolidado de Fatos Relevantes', `${facts.length} fatos registrados · ${open.length} em aberto · Emitido em ${new Date().toLocaleDateString('pt-BR')}`)}
@@ -8038,250 +8398,4 @@ function renderReportFactConsol(el) {
       </table>
     </div>` : `<div style="padding:16px;background:var(--surface2);border-radius:var(--radius);margin-bottom:20px;font-size:13px;color:var(--green);">✓ Nenhum fato em aberto.</div>`}
 
-    <!-- Análise Crítica -->
-    <div class="card" style="margin-bottom:20px;">
-      <div class="card-title" style="margin-bottom:8px;">Análise Crítica Consolidada</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Análise integrada dos fatos relevantes, padrões identificados, tendências e recomendações.</div>
-      <textarea class="form-control" rows="7" placeholder="Descreva a análise crítica consolidada de todos os fatos relevantes..." style="resize:vertical;"
-        oninput="saveReportData('${key}',{criticalAnalysis:this.value})">${esc(saved.criticalAnalysis||'')}</textarea>
-    </div>
-
-    <div style="display:flex;gap:10px;justify-content:flex-end;">
-      <button class="btn btn-primary" onclick="exportReportFactConsolWord('${key}')">↓ Exportar Word</button>
-    </div>
-  `;
-}
-
-// ============================================================
-//  EXPORTAÇÃO WORD — gerada via docx-js injetado no browser
-// ============================================================
-async function _loadDocxLib() {
-  if (window.docx) return true;
-  return new Promise(resolve => {
-    const s = document.createElement('script');
-    s.src = 'https://unpkg.com/docx@8.5.0/build/index.umd.js';
-    s.onload  = () => resolve(true);
-    s.onerror = () => resolve(false);
-    document.head.appendChild(s);
-  });
-}
-
-function _docxHeader(title, subtitle) {
-  const { Paragraph, TextRun, AlignmentType } = window.docx;
-  const cfg = state.config || {};
-  return [
-    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 },
-      children: [new TextRun({ text: cfg.companyName || 'ProjFlow', bold: true, size: 28, color: '6C63FF' })] }),
-    cfg.companySub ? new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 },
-      children: [new TextRun({ text: cfg.companySub, size: 20, color: '888888' })] }) : null,
-    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 },
-      children: [new TextRun({ text: cfg.address || '', size: 18, color: '888888' })] }),
-    new Paragraph({ border: { bottom: { style: 'single', size: 6, color: '6C63FF', space: 1 } },
-      spacing: { after: 240 }, children: [] }),
-    new Paragraph({ spacing: { after: 80 },
-      children: [new TextRun({ text: title, bold: true, size: 32 })] }),
-    new Paragraph({ spacing: { after: 240 },
-      children: [new TextRun({ text: subtitle, size: 22, color: '555555' })] }),
-  ].filter(Boolean);
-}
-
-function _docxSection(title) {
-  const { Paragraph, TextRun } = window.docx;
-  return new Paragraph({ spacing: { before: 240, after: 120 },
-    children: [new TextRun({ text: title, bold: true, size: 24, color: '6C63FF' })] });
-}
-
-function _docxText(text) {
-  const { Paragraph, TextRun } = window.docx;
-  return (text||'').split('\n').filter(Boolean).map(line =>
-    new Paragraph({ spacing: { after: 80 },
-      children: [new TextRun({ text: line, size: 22 })] })
-  );
-}
-
-function _docxTable(headers, rows, colWidths) {
-  const { Table, TableRow, TableCell, Paragraph, TextRun, BorderStyle, WidthType, ShadingType, VerticalAlign } = window.docx;
-  const border = { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' };
-  const borders = { top: border, bottom: border, left: border, right: border };
-  const totalW = colWidths.reduce((a,b)=>a+b,0);
-  const mkCell = (text, w, isHeader=false) => new TableCell({
-    borders, width: { size: w, type: WidthType.DXA },
-    margins: { top: 80, bottom: 80, left: 120, right: 120 },
-    shading: isHeader ? { fill: 'EEF2FF', type: ShadingType.CLEAR } : undefined,
-    children: [new Paragraph({ children: [new TextRun({ text: String(text||''), bold: isHeader, size: isHeader?18:20 })] })]
-  });
-  return new Table({
-    width: { size: totalW, type: WidthType.DXA },
-    columnWidths: colWidths,
-    rows: [
-      new TableRow({ children: headers.map((h,i) => mkCell(h, colWidths[i], true)) }),
-      ...rows.map(row => new TableRow({ children: row.map((c,i) => mkCell(c, colWidths[i])) }))
-    ]
-  });
-}
-
-async function exportReportTeamAllocWord(key) {
-  showToast('Gerando documento Word...');
-  const ok = await _loadDocxLib();
-  if (!ok) { showToast('Erro ao carregar biblioteca docx'); return; }
-  const { Document, Packer, Paragraph, TextRun } = window.docx;
-  const saved = getReportData(key);
-
-  const children = [
-    ..._docxHeader('Relatório de Alocação da Equipe', `Emitido em ${new Date().toLocaleDateString('pt-BR')}`),
-    _docxSection('1. Distribuição de Horas por Pessoa'),
-    _docxTable(
-      ['Pessoa', 'Cargo', 'Horas Alocadas', 'Progresso', 'Atrasadas'],
-      state.team.map(p => {
-        const acts = state.activities.filter(a => actPersonIds(a).includes(p.id));
-        const totalH = acts.reduce((s,a)=>{const al=(a.allocations||[]).find(x=>x.personId===p.id);return s+(al?parseFloat(al.hours)||0:0);},0);
-        const doneH  = acts.filter(a=>a.status==='concluido').reduce((s,a)=>{const al=(a.allocations||[]).find(x=>x.personId===p.id);return s+(al?parseFloat(al.hours)||0:0);},0);
-        const pct    = totalH > 0 ? Math.round(doneH/totalH*100) : 0;
-        const lates  = acts.filter(a=>isLate(a)).length;
-        return [p.name, p.role||'—', Math.round(totalH)+'h', pct+'%', String(lates)];
-      }),
-      [3000, 2000, 1500, 1500, 1361]
-    ),
-    new Paragraph({ spacing: { after: 0 }, children: [] }),
-    _docxSection('2. Projetos por Pessoa'),
-    ...state.team.flatMap(p => {
-      const acts = state.activities.filter(a => actPersonIds(a).includes(p.id));
-      const projs = [...new Set(acts.map(a => {
-        const d = state.deliveries.find(d=>d.id===a.deliveryId);
-        return d?.projectId;
-      }).filter(Boolean))].map(id => state.projects.find(p=>p.id===id)?.name).filter(Boolean);
-      return [
-        new Paragraph({ spacing: { before:120, after:60 }, children: [new TextRun({ text: p.name, bold: true, size: 22 })] }),
-        new Paragraph({ spacing: { after:80 }, children: [new TextRun({ text: projs.join(', ') || 'Nenhum projeto', size: 20, color: '555555' })] }),
-      ];
-    }),
-    _docxSection('3. Análise do Gestor'),
-    ..._docxText(saved.analysis || 'Não preenchido.'),
-  ];
-
-  const doc = new Document({ sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } }, children }] });
-  const buf = await Packer.toBlob(doc);
-  _downloadDocx(buf, `Alocacao_Equipe_${new Date().toISOString().slice(0,10)}.docx`);
-}
-
-async function exportReportWeeklyWord(key) {
-  showToast('Gerando documento Word...');
-  const ok = await _loadDocxLib();
-  if (!ok) { showToast('Erro ao carregar biblioteca docx'); return; }
-  const { Document, Packer, Paragraph, TextRun } = window.docx;
-  const saved = getReportData(key);
-  const parts = key.split('_');
-  const projId   = parseInt(parts[2]);
-  const weekDate = parts[3];
-  const proj     = state.projects.find(p => p.id === projId);
-  const weekMon  = new Date(weekDate + 'T12:00:00');
-  const weekSun  = new Date(weekMon); weekSun.setDate(weekMon.getDate()+6);
-  const mNames   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const fmt      = d => `${d.getDate()} ${mNames[d.getMonth()]} ${d.getFullYear()}`;
-
-  const thisWeekIds = new Set(saved.selectedThisWeek||[]);
-  const nextWeekIds = new Set(saved.selectedNextWeek||[]);
-  const thisActs = state.activities.filter(a => thisWeekIds.has(a.id));
-  const nextActs = state.activities.filter(a => nextWeekIds.has(a.id));
-
-  const actTableRows = (acts) => acts.map(a => {
-    const allocs = a.allocations||[];
-    const people = allocs.map(al=>state.team.find(p=>p.id===al.personId)).filter(Boolean);
-    const r = actDateRange(a);
-    const statusMap = { nao_iniciado:'Não iniciado', em_andamento:'Em andamento', concluido:'Concluído', atrasado:'Atrasado', bloqueado:'Bloqueado' };
-    return [a.name, people.map(p=>p.name).join(', ')||'—', fmtDate(r.end), statusMap[a.status]||a.status, (a.progress||0)+'%'];
-  });
-
-  const children = [
-    ..._docxHeader(`Relatório Semanal — ${proj?.name||''}`, `Semana de ${fmt(weekMon)} a ${fmt(weekSun)}`),
-    _docxSection('1. Atividades Realizadas nesta Semana'),
-    thisActs.length ? _docxTable(['Atividade','Responsável','Prazo','Status','Progresso'], actTableRows(thisActs), [3500,1800,1000,1200,861]) : new Paragraph({ children: [new TextRun({ text: 'Nenhuma atividade selecionada.', color: '888888', size: 20 })] }),
-    new Paragraph({ spacing:{after:0}, children:[] }),
-    _docxSection('2. Previstas para a Próxima Semana'),
-    nextActs.length ? _docxTable(['Atividade','Responsável','Prazo','Status','Progresso'], actTableRows(nextActs), [3500,1800,1000,1200,861]) : new Paragraph({ children: [new TextRun({ text: 'Nenhuma atividade selecionada.', color: '888888', size: 20 })] }),
-    new Paragraph({ spacing:{after:0}, children:[] }),
-    _docxSection('3. Pendências'),
-    ..._docxText(saved.pendencies || 'Nenhuma pendência registrada.'),
-    _docxSection('4. Pontos de Alerta'),
-    ..._docxText(saved.alerts || 'Nenhum ponto de alerta.'),
-    _docxSection('5. Observações Gerais'),
-    ..._docxText(saved.notes || '—'),
-  ];
-
-  const doc = new Document({ sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } }, children }] });
-  const buf = await Packer.toBlob(doc);
-  _downloadDocx(buf, `Relatorio_Semanal_${proj?.name?.slice(0,20)||'Projeto'}_${weekDate}.docx`);
-}
-
-async function exportReportFactSingleWord(key, factId) {
-  showToast('Gerando documento Word...');
-  const ok = await _loadDocxLib();
-  if (!ok) { showToast('Erro ao carregar biblioteca docx'); return; }
-  const { Document, Packer, Paragraph, TextRun } = window.docx;
-  const f = (state.facts||[]).find(x => String(x.id) === String(factId));
-  if (!f) return;
-  const saved = getReportData(key);
-  const proj  = state.projects.find(p => p.id === f.projectId);
-  const owner = state.team.find(p => p.id === f.ownerId);
-  const impactLabels = { financeiro:'Financeiro', cronograma:'Cronograma', escopo:'Escopo', reputacional:'Reputacional' };
-  const statusLabel  = { aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Em monitoramento' };
-
-  const isOldFmt = f.whys?.length && typeof f.whys[0] === 'string';
-  const defaultQs = ['Por quê o fato ocorreu?','Por quê isso aconteceu?','Por quê isso ocorreu?','Por quê isso se deu?','Por quê isso é assim?'];
-  const whyPairs = isOldFmt ? (f.whys||[]).map((ans,i)=>({question:defaultQs[i]||`Por quê ${i+1}?`,answer:ans})) : (f.whys||[]);
-  const filledWhys = whyPairs.filter(w=>w.answer);
-
-  const children = [
-    ..._docxHeader(`Fato Relevante — ${f.title}`, `${proj?.name||'—'} · ${fmtDate(f.date)}`),
-    _docxSection('1. Identificação'),
-    _docxTable(['Campo','Valor'],
-      [['Projeto',proj?.name||'—'],['Data',fmtDate(f.date)],['Status',statusLabel[f.status]||f.status],
-       ['Responsável',owner?.name||'—'],['Impactos',(f.impacts||[]).map(i=>impactLabels[i]||i).join(', ')||'—']],
-      [2500, 6861]),
-    new Paragraph({spacing:{after:0},children:[]}),
-    _docxSection('2. Descrição do Fato'),
-    ..._docxText(f.desc || '—'),
-    f.impactDesc ? _docxSection('3. Descrição dos Impactos') : null,
-    ...(f.impactDesc ? _docxText(f.impactDesc) : []),
-    _docxSection('4. Análise de Causa — 5 Porquês'),
-    ...filledWhys.flatMap((w,i) => [
-      new Paragraph({ spacing:{before:120,after:40}, children:[new TextRun({text:`${i+1}. ${w.question}`,bold:true,size:22})] }),
-      new Paragraph({ spacing:{after:80}, children:[new TextRun({text:w.answer,size:20,color:'555555'})] }),
-    ]),
-    _docxSection('5. Plano de Ação'),
-    (f.actions||[]).length ? _docxTable(['Ação','Responsável','Prazo','Status'],
-      (f.actions||[]).map(a=>[a.what,a.who||'—',fmtDate(a.when),a.done?'Concluído':'Pendente']),
-      [4500,1800,1300,1761]) : new Paragraph({children:[new TextRun({text:'Nenhuma ação cadastrada.',size:20,color:'888888'})]}),
-    new Paragraph({spacing:{after:0},children:[]}),
-    _docxSection('6. Análise Crítica'),
-    ..._docxText(saved.criticalAnalysis || 'Não preenchida.'),
-  ].filter(Boolean);
-
-  const doc = new Document({ sections:[{ properties:{page:{size:{width:11906,height:16838},margin:{top:1440,right:1440,bottom:1440,left:1440}}}, children }] });
-  const buf = await Packer.toBlob(doc);
-  _downloadDocx(buf, `Fato_Relevante_${f.title.slice(0,30).replace(/\s+/g,'_')}.docx`);
-}
-
-async function exportReportFactConsolWord(key) {
-  showToast('Gerando documento Word...');
-  const ok = await _loadDocxLib();
-  if (!ok) { showToast('Erro ao carregar biblioteca docx'); return; }
-  const { Document, Packer, Paragraph, TextRun } = window.docx;
-  const facts  = (state.facts||[]);
-  const saved  = getReportData(key);
-  const open   = facts.filter(f=>f.status!=='resolvido');
-  const statusLabel = { aberto:'Aberto', em_tratamento:'Em tratamento', resolvido:'Resolvido', monitoramento:'Monitoramento' };
-  const impactLabel = { financeiro:'Financeiro', cronograma:'Cronograma', escopo:'Escopo', reputacional:'Reputacional' };
-
-  const byStatus = {};
-  const byImpact = {};
-  facts.forEach(f => {
-    byStatus[f.status] = (byStatus[f.status]||0) + 1;
-    (f.impacts||[]).forEach(i => { byImpact[i] = (byImpact[i]||0) + 1; });
-  });
-
-  const children = [
-    ..._docxHeader('Relatório Consolidado de Fatos Relevantes', `${facts.length} fatos registrados · ${open.length} em aberto · ${new Date().toLocaleDateString('pt-BR')}`),
-    _docxSection('1. Resumo Executivo'),
-    _docxTable(['Indicador','Valor'],
-      [['Total de fatos',String(facts
+    <!-- Aná
