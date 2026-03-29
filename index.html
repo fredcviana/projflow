@@ -1813,8 +1813,8 @@ function _updateNavVisibility() {
   if (navApprovals) {
     const pending = state.activities.filter(a => a.approvalStatus === APPROVAL.PENDING).length;
     navApprovals.style.display = (profile === 'gerente' || profile === 'lider') ? '' : 'none';
-    navApprovals.querySelector('span:last-child').textContent =
-      pending > 0 ? `Aprovações (${pending})` : 'Aprovações';
+    const label = navApprovals.querySelector('span:last-child');
+    if (label) label.textContent = pending > 0 ? `Aprovações (${pending})` : 'Aprovações';
   }
   if (navSprints) navSprints.style.display = sbUser ? '' : 'none';
 }
@@ -8396,6 +8396,4 @@ function renderReportFactConsol(el) {
           }).join('')}
         </tbody>
       </table>
-    </div>` : `<div style="padding:16px;background:var(--surface2);border-radius:var(--radius);margin-bottom:20px;font-size:13px;color:var(--green);">✓ Nenhum fato em aberto.</div>`}
-
-    <!-- Aná
+    </div>` : `<div style="padding:16px;background:var(--surface2);border-radius:var(--radius);margin-bottom:20px;font-size:13px;color:var(--green);">✓ Nenhum fato em
