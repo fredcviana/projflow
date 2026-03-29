@@ -5595,32 +5595,40 @@ function showToast(msg) {
 // ============================================================
 
 async function sbInit() {
-  try {
+  // Initialize sb FIRST, outside try/catch — if supabase.js failed to load,
+  // we need to show a clear error rather than a broken login wall.
+  if (typeof supabase === 'undefined') {
+    showError('Biblioteca Supabase não carregou. Verifique sua conexão e recarregue a página.');
+    render();
+    return;
+  }
+
   sb = supabase.createClient(SB_URL, SB_KEY);
 
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    sbUser = session.user;
-    await sbLoadData();
-    await _loadServerProfile();
-    await loadSprints();
-    await loadTodayCheckins();
-    sbUpdatePanel();
-    sbSubscribeRealtime();
-    _updateNavVisibility();
-    render(); // render after data loaded
-    setTimeout(() => {
-      if (sbUser && !hasCheckedInToday()) {
-        const person = currentPerson();
-        if (person) openCheckinModal();
-      }
-    }, 1200);
-  } else {
-    sbUpdatePanel();
-    render(); // will show login wall
-  }
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      sbUser = session.user;
+      await sbLoadData();
+      await _loadServerProfile();
+      await loadSprints();
+      await loadTodayCheckins();
+      sbUpdatePanel();
+      sbSubscribeRealtime();
+      _updateNavVisibility();
+      render();
+      setTimeout(() => {
+        if (sbUser && !hasCheckedInToday()) {
+          const person = currentPerson();
+          if (person) openCheckinModal();
+        }
+      }, 1200);
+    } else {
+      sbUpdatePanel();
+      render();
+    }
   } catch(e) {
-    showError('Erro ao conectar. Verifique sua conexão.');
+    showError('Erro ao conectar com o servidor. Verifique sua conexão.');
     render();
   }
 }
@@ -5872,11 +5880,29 @@ async function _wallSignIn() {
     return;
   }
 
+  // Guard: sb may be null if Supabase failed to initialize
+  if (!sb) {
+    err.textContent = 'Serviço indisponível. Recarregue a página (F5).';
+    err.style.display = 'block';
+    return;
+  }
+
   btn.textContent = 'Entrando…';
   btn.disabled = true;
   err.style.display = 'none';
 
-  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  let data, error;
+  try {
+    const result = await sb.auth.signInWithPassword({ email, password: pass });
+    data  = result.data;
+    error = result.error;
+  } catch(e) {
+    btn.textContent = 'Entrar';
+    btn.disabled = false;
+    err.textContent = 'Erro de conexão. Verifique sua internet e tente novamente.';
+    err.style.display = 'block';
+    return;
+  }
 
   btn.textContent = 'Entrar';
   btn.disabled = false;
@@ -8385,15 +8411,4 @@ function renderReportFactConsol(el) {
               <td style="padding:8px;font-size:12px;color:var(--muted);">${esc(p?.name?.slice(0,20)||'—')}</td>
               <td style="padding:8px;font-size:12px;color:var(--muted);">${fmtDate(f.date)}</td>
               <td style="padding:8px;font-size:11px;">${(f.impacts||[]).map(i=>`<span class="badge badge-gray" style="font-size:10px;">${{financeiro:'💰',cronograma:'📅',escopo:'📋',reputacional:'🏆'}[i]||i}</span>`).join(' ')}</td>
-              <td style="padding:8px;"><span class="badge ${f.status==='aberto'?'badge-red':f.status==='em_tratamento'?'badge-amber':'badge-blue'}">${statusLabel[f.status]||f.status}</span></td>
-              <td style="padding:8px;text-align:center;">
-                <div style="display:flex;align-items:center;gap:6px;justify-content:center;">
-                  <div class="progress-wrap" style="width:50px;"><div class="progress-bar ${pct===100?'green':pct>0?'amber':'red'}" style="width:${pct}%;"></div></div>
-                  <span style="font-size:11px;color:var(--muted);">${pct}%</span>
-                </div>
-              </td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>` : `<div style="padding:16px;background:var(--surface2);border-radius:var(--radius);margin-bottom:20px;font-size:13px;color:var(--green);">✓ Nenhum fato em
+              <td style="padding:8px;"><span class="badge ${f.status==='aberto'?'badge-re
