@@ -1523,11 +1523,11 @@ function isMyActivity(activityId) {
  * Safely find a project by id. Returns undefined if not found.
  * Use this instead of state.projects.find() scattered everywhere.
  */
-function getProject(id)  { return getProject(id); }
-function getDelivery(id) { return getDelivery(id); }
-function getPackage(id)  { return getPackage(id); }
-function getActivity(id) { return getActivity(id); }
-function getPerson(id)   { return getPerson(id); }
+function getProject(id)  { return state.projects.find(p => p.id === id); }
+function getDelivery(id) { return state.deliveries.find(d => d.id === id); }
+function getPackage(id)  { return (state.packages||[]).find(p => p.id === id); }
+function getActivity(id) { return state.activities.find(a => a.id === id); }
+function getPerson(id)   { return state.team.find(p => p.id === id); }
 function getFact(id)     { return (state.facts||[]).find(f => f.id === id); }
 function getSprint(id)   { return (state.sprints||[]).find(s => s.id === id); }
 
