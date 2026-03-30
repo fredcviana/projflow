@@ -3318,7 +3318,32 @@ function renderMyActivities(personId) {
   if (!el) return;
 
   if (!myActs.length) {
-    el.innerHTML = `<div class="empty"><div class="empty-text">Nenhuma atividade atribuída a ${esc(person.name)}</div></div>`;
+    // Diagnostic: check why no activities found
+    const totalActs = state.activities.length;
+    const sampleAct = state.activities[0];
+    const hasAllocations = sampleAct ? !!sampleAct.allocations : null;
+    const hasPersonId    = sampleAct ? !!sampleAct.personId    : null;
+    const allPersonIds   = state.activities.flatMap(a => actPersonIds(a));
+    const personInActs   = allPersonIds.includes(personId);
+
+    el.innerHTML = `
+      <div class="empty">
+        <div class="empty-text">Nenhuma atividade atribuída a ${esc(person.name)}</div>
+        <div style="margin-top:16px; padding:12px 16px; background:var(--surface2); border-radius:var(--radius-sm); font-size:12px; color:var(--muted); text-align:left; max-width:480px;">
+          <div style="font-weight:600; margin-bottom:8px; color:var(--text);">Diagnóstico</div>
+          <div>Total de atividades no sistema: <strong>${totalActs}</strong></div>
+          <div>ID da pessoa selecionada: <strong>${personId}</strong></div>
+          <div>Pessoa encontrada na equipe: <strong>${person ? 'Sim — ' + esc(person.name) : 'Não'}</strong></div>
+          <div>Atividades com esta pessoa: <strong>${personInActs ? 'Sim' : 'Não'}</strong></div>
+          ${sampleAct ? `
+          <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">Estrutura da 1ª atividade:</div>
+          <div>nome: <strong>${esc(sampleAct.name||'?')}</strong></div>
+          <div>tem allocations[]: <strong>${hasAllocations}</strong></div>
+          <div>tem personId: <strong>${hasPersonId} (${sampleAct.personId||'null'})</strong></div>
+          <div>allocations: <strong>${JSON.stringify(sampleAct.allocations||[]).slice(0,80)}</strong></div>
+          ` : '<div>Nenhuma atividade cadastrada no sistema</div>'}
+        </div>
+      </div>`;
     return;
   }
 
