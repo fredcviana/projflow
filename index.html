@@ -3223,7 +3223,14 @@ function renderMyView() {
     return;
   }
 
-  const savedPerson = localStorage.getItem('projflow_my_person') || '';
+  // Auto-select: prefer logged-in user's team record, fall back to localStorage
+  const loggedPerson = currentPerson();
+  let savedPerson    = localStorage.getItem('projflow_my_person') || '';
+
+  if (loggedPerson && String(loggedPerson.id) !== savedPerson) {
+    savedPerson = String(loggedPerson.id);
+    localStorage.setItem('projflow_my_person', savedPerson);
+  }
 
   document.getElementById('page-content').innerHTML = `
     <div style="margin-bottom:24px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -5102,6 +5109,23 @@ function importData(input) {
       const data = JSON.parse(e.target.result);
       if (data.projects && data.team) {
         if (!confirm('Isso substituirá todos os dados atuais. Continuar?')) return;
+        // Run migration to ensure allocations array exists
+        if (!data.packages)         data.packages         = [];
+        if (!data.templates)        data.templates        = [];
+        if (!data.facts)            data.facts            = [];
+        if (!data.sprints)          data.sprints          = [];
+        if (!data.sprintActivities) data.sprintActivities = {};
+        if (!data.logbookEntries)   data.logbookEntries   = [];
+        if (!data.reports)          data.reports          = {};
+        if (!data.config)           data.config           = {};
+        data.activities = (data.activities || []).map(a => {
+          if (!a.allocations) {
+            a.allocations = a.personId
+              ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }]
+              : [];
+          }
+          return a;
+        });
         state = data;
         saveState();
         render();
@@ -5601,6 +5625,24 @@ async function sbLoadData() {
       sbDataId = data.id;
       const local = loadState();
       if ((remote.nextId || 0) >= (local.nextId || 0)) {
+        // Run same migrations as loadState() to ensure allocations array exists
+        if (!remote.packages)         remote.packages         = [];
+        if (!remote.templates)        remote.templates        = [];
+        if (!remote.facts)            remote.facts            = [];
+        if (!remote.sprints)          remote.sprints          = [];
+        if (!remote.sprintActivities) remote.sprintActivities = {};
+        if (!remote.logbookEntries)   remote.logbookEntries   = [];
+        if (!remote.reports)          remote.reports          = {};
+        if (!remote.config)           remote.config           = {};
+        // Migrate old single-person activities to allocations array
+        remote.activities = (remote.activities || []).map(a => {
+          if (!a.allocations) {
+            a.allocations = a.personId
+              ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }]
+              : [];
+          }
+          return a;
+        });
         state = remote;
         localStorage.setItem('projflow_v2', JSON.stringify(state));
       }
