@@ -5034,8 +5034,16 @@ function saveProgress() {
 
   closeModal('modal-progress');
   saveState();
-  if (sb && sbUser && sbUser.email !== ADMIN_EMAIL) {
-    sbSaveActivityUpdate(a.id, a.progress, a.status, a.note);
+  // Sync to Supabase for ALL users so others see the update
+  if (sb && sbUser) {
+    if (sbUser.email === ADMIN_EMAIL) {
+      // Admin writes directly to projflow_data (full state)
+      clearTimeout(sbSyncTimer);
+      sbSyncTimer = setTimeout(sbSaveData, 500);
+    } else {
+      // Team member writes to projflow_updates (realtime to admin)
+      sbSaveActivityUpdate(a.id, a.progress, a.status, a.note);
+    }
   }
   render();
 }
@@ -5697,15 +5705,21 @@ async function sbSaveData() {
 }
 
 // Team members save only their activity updates
-async function sbSaveActivityUpdate(activityId, progress, status, note) {
+async function sbSaveActivityUpdate(activityId, progress, status, note, approvalStatus, approvalDesc, approvalLink) {
   if (!sb || !sbUser) return;
   const person = state.team.find(p => p.email === sbUser.email);
   if (!person) return;
-  await sb.from('projflow_updates').insert({
-    activity_id: activityId,
-    person_id: person.id,
-    progress, status, note
-  });
+  const payload = { activity_id: activityId, person_id: person.id, progress, status, note };
+  if (approvalStatus !== undefined) payload.approval_status = approvalStatus;
+  if (approvalDesc    !== undefined) payload.approval_desc   = approvalDesc;
+  if (approvalLink    !== undefined) payload.approval_link   = approvalLink;
+  try {
+    await sb.from('projflow_updates').insert(payload);
+  } catch(e) {
+    // projflow_updates may not have new columns yet — fallback to full state save
+    clearTimeout(sbSyncTimer);
+    sbSyncTimer = setTimeout(sbSaveData, 500);
+  }
 }
 
 // Subscribe to realtime changes
@@ -5724,8 +5738,17 @@ function sbSubscribeRealtime() {
         act.progress = u.progress;
         act.status   = u.status;
         act.note     = u.note;
+        if (u.approval_status !== undefined && u.approval_status !== null) {
+          act.approvalStatus = u.approval_status;
+        }
+        if (u.approval_desc !== undefined && u.approval_desc !== null) {
+          act.approvalDesc = u.approval_desc;
+        }
+        if (u.approval_link !== undefined && u.approval_link !== null) {
+          act.approvalLink = u.approval_link;
+        }
         localStorage.setItem('projflow_v2', JSON.stringify(state));
-        // Admin saves merged data
+        // Admin saves merged data back to Supabase so all users get it
         if (sbUser?.email === ADMIN_EMAIL) {
           clearTimeout(sbSyncTimer);
           sbSyncTimer = setTimeout(sbSaveData, 1000);
@@ -6786,19 +6809,24 @@ function openRequestApproval(activityId) {
 async function submitApprovalRequest() {
   if (!sbUser) { showError('Faça login para solicitar aprovação'); return; }
   try {
-  const id   = parseInt(document.getElementById('approval-activity-id').value);
-  const desc = document.getElementById('approval-desc').value.trim();
-  if (!desc) { showToast('⚠ Descreva o que foi entregue.'); return; }
-  const a = getActivity(id);
-  if (!a) return;
-  a.approvalStatus = APPROVAL.PENDING;
-  a.status         = STATUS.IN_PROGRESS; // stays in progress until approved by gerente/lider
-  a.approvalDesc   = desc;
-  a.approvalLink   = document.getElementById('approval-link').value.trim();
-  closeModal('modal-request-approval');
-  saveState();
-  showSuccess('Solicitação enviada! Aguardando aprovação do gestor.');
-  render();
+    const id   = parseInt(document.getElementById('approval-activity-id').value);
+    const desc = document.getElementById('approval-desc').value.trim();
+    if (!desc) { showToast('⚠ Descreva o que foi entregue.'); return; }
+    const a = getActivity(id);
+    if (!a) return;
+    a.approvalStatus = APPROVAL.PENDING;
+    a.status         = STATUS.IN_PROGRESS;
+    a.approvalDesc   = desc;
+    a.approvalLink   = document.getElementById('approval-link').value.trim();
+    closeModal('modal-request-approval');
+    saveState();
+    showSuccess('Solicitação enviada! Aguardando aprovação do gestor.');
+    render();
+    // Sync to Supabase so gerente sees the approval request
+    await sbSaveActivityUpdate(a.id, a.progress, a.status, a.note, APPROVAL.PENDING, a.approvalDesc, a.approvalLink);
+    // Also force full state save so realtime propagates immediately
+    clearTimeout(sbSyncTimer);
+    sbSyncTimer = setTimeout(sbSaveData, 500);
   } catch(e) { console.error('[submitApprovalRequest]', e); showError('Erro ao enviar solicitação.'); }
 }
 
@@ -6823,39 +6851,45 @@ function openReviewApproval(activityId) {
 async function approveActivity() {
   if (!sbUser || !canDo('approve_activities')) { showError('Sem permissão'); return; }
   try {
-  const id = parseInt(document.getElementById('review-activity-id').value);
-  const a  = getActivity(id);
-  if (!a) return;
-  a.approvalStatus   = 'approved';
-  a.status           = 'concluido';
-  a.progress         = 100;
-  a.reviewerComment  = document.getElementById('review-comment').value.trim();
-  a.reviewedBy       = currentPerson()?.id;
-  a.reviewedAt       = new Date().toISOString();
-  closeModal('modal-review-approval');
-  saveState();
-  showSuccess('Atividade aprovada e marcada como concluída!');
-  render();
+    const id = parseInt(document.getElementById('review-activity-id').value);
+    const a  = getActivity(id);
+    if (!a) return;
+    a.approvalStatus  = APPROVAL.APPROVED;
+    a.status          = STATUS.DONE;
+    a.progress        = 100;
+    a.reviewerComment = document.getElementById('review-comment').value.trim();
+    a.reviewedBy      = currentPerson()?.id;
+    a.reviewedAt      = new Date().toISOString();
+    closeModal('modal-review-approval');
+    saveState();
+    showSuccess('Atividade aprovada e marcada como concluída!');
+    render();
+    // Force full state save to Supabase — analista will get update via realtime
+    clearTimeout(sbSyncTimer);
+    sbSyncTimer = setTimeout(sbSaveData, 300);
   } catch(e) { console.error('[approveActivity]', e); showError('Erro ao aprovar.'); }
 }
 
 async function rejectApproval() {
   if (!sbUser || !canDo('approve_activities')) { showError('Sem permissão'); return; }
   try {
-  const comment = document.getElementById('review-comment').value.trim();
-  if (!comment) { showToast('⚠ Informe o motivo da revisão.'); return; }
-  const id = parseInt(document.getElementById('review-activity-id').value);
-  const a  = getActivity(id);
-  if (!a) return;
-  a.approvalStatus  = 'revision';
-  a.status          = 'em_andamento';
-  a.reviewerComment = comment;
-  a.reviewedBy      = currentPerson()?.id;
-  a.reviewedAt      = new Date().toISOString();
-  closeModal('modal-review-approval');
-  saveState();
-  showToast('↩ Revisão solicitada. O colaborador será notificado.');
-  render();
+    const comment = document.getElementById('review-comment').value.trim();
+    if (!comment) { showToast('⚠ Informe o motivo da revisão.'); return; }
+    const id = parseInt(document.getElementById('review-activity-id').value);
+    const a  = getActivity(id);
+    if (!a) return;
+    a.approvalStatus  = APPROVAL.REVISION;
+    a.status          = STATUS.IN_PROGRESS;
+    a.reviewerComment = comment;
+    a.reviewedBy      = currentPerson()?.id;
+    a.reviewedAt      = new Date().toISOString();
+    closeModal('modal-review-approval');
+    saveState();
+    showToast('↩ Revisão solicitada. O colaborador será notificado.');
+    render();
+    // Force full state save — analista sees rejection via realtime
+    clearTimeout(sbSyncTimer);
+    sbSyncTimer = setTimeout(sbSaveData, 300);
   } catch(e) { console.error('[rejectApproval]', e); showError('Erro ao rejeitar.'); }
 }
 
