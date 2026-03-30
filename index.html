@@ -5962,54 +5962,54 @@ async function sbBulkCreateUsers() {
   let created = 0, skipped = 0, errors = 0;
 
   for (const person of team) {
+    // Skip admin — already has an account
+    if (person.email === ADMIN_EMAIL) {
+      const statusEl = document.getElementById(`user-status-${person.id}`);
+      if (statusEl) statusEl.innerHTML = `<span class="badge badge-gray">Admin</span>`;
+      skipped++;
+      continue;
+    }
+
     const statusEl = document.getElementById(`user-status-${person.id}`);
     if (statusEl) statusEl.innerHTML = `<span class="badge badge-blue">Criando…</span>`;
 
     try {
-      // Use Supabase Admin API via service role — signUp works with auto-confirm
-      const { data, error } = await sb.auth.admin.createUser({
+      // signUp works with anon key — Supabase auto-confirms when email confirm is disabled
+      const { data, error } = await sb.auth.signUp({
         email: person.email,
         password: password,
-        email_confirm: true,
-        user_metadata: { name: person.name, role: person.role || '' }
+        options: { data: { name: person.name, role: person.role || '' } }
       });
 
       if (error) {
-        if (error.message?.includes('already') || error.message?.includes('exists')) {
+        const msg = error.message || '';
+        if (msg.toLowerCase().includes('already') || msg.toLowerCase().includes('registered') || error.status === 422) {
           if (statusEl) statusEl.innerHTML = `<span class="badge badge-amber">Já existe</span>`;
           skipped++;
         } else {
-          if (statusEl) statusEl.innerHTML = `<span class="badge badge-red" title="${error.message}">Erro</span>`;
+          if (statusEl) statusEl.innerHTML = `<span class="badge badge-red" title="${esc(msg)}">Erro: ${esc(msg.slice(0,30))}</span>`;
           errors++;
         }
-      } else {
+      } else if (data?.user) {
+        // Upsert profile in projflow_profiles
+        await _upsertServerProfile(person.profile || 'analista', person.id);
         if (statusEl) statusEl.innerHTML = `<span class="badge badge-green">✓ Criado</span>`;
+        created++;
+      } else {
+        // User created but needs email confirmation
+        if (statusEl) statusEl.innerHTML = `<span class="badge badge-amber">Confirmar email</span>`;
         created++;
       }
     } catch(e) {
-      // Fallback: try signUp (works if email confirm is off)
-      const { error: signUpError } = await sb.auth.signUp({
-        email: person.email,
-        password: password,
-        options: { data: { name: person.name } }
-      });
-      if (signUpError && (signUpError.message?.includes('already') || signUpError.message?.includes('exists'))) {
-        if (statusEl) statusEl.innerHTML = `<span class="badge badge-amber">Já existe</span>`;
-        skipped++;
-      } else if (signUpError) {
-        if (statusEl) statusEl.innerHTML = `<span class="badge badge-red">Erro</span>`;
-        errors++;
-      } else {
-        if (statusEl) statusEl.innerHTML = `<span class="badge badge-green">✓ Criado</span>`;
-        created++;
-      }
+      if (statusEl) statusEl.innerHTML = `<span class="badge badge-red" title="${esc(e.message)}">Erro</span>`;
+      errors++;
     }
 
     // Small delay to avoid rate limiting
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 400));
   }
 
-  if (btn) { btn.disabled = false; btn.textContent = `⚡ Criar logins`; }
+  if (btn) { btn.disabled = false; btn.textContent = '⚡ Criar logins'; }
   showToast(`✓ ${created} criado(s) · ${skipped} já existiam · ${errors} erro(s)`);
 }
 
