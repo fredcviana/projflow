@@ -6704,6 +6704,15 @@ function renderApprovals() {
   const renderCard = (a, isPending) => {
     // Resolve project/delivery regardless of deliveryId or packageId
     const project  = getActivityProject(a);
+    const delivery = a.deliveryId
+  ? getDelivery(a.deliveryId)
+  : (a.packageId
+      ? (() => {
+          const pkg = getPackage(a.packageId);
+          return pkg ? getDelivery(pkg.deliveryId) : null;
+        })()
+      : null);
+    
     const allocs  = a.allocations||[];
     const people  = allocs.map(al => state.team.find(p => p.id === al.personId)).filter(Boolean);
     const range   = actDateRange(a);
