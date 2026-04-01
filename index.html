@@ -547,26 +547,26 @@ window.navigate = function() {};
     <div class="nav-item" onclick="navigate('sprints')" id="nav-sprints" style="display:none;">
       <span class="nav-icon">⚡</span><span>Sprints</span>
     </div>
-    <div class="nav-item" onclick="navigate('facts')">
+    <div class="nav-item" onclick="navigate('facts')" id="nav-facts">
       <span class="nav-icon">⚠</span><span>Fatos Relevantes</span>
     </div>
-    <div class="nav-item" onclick="navigate('logbook')">
+    <div class="nav-item" onclick="navigate('logbook')" id="nav-logbook">
       <span class="nav-icon">📒</span><span>Diário de Bordo</span>
     </div>
-    <div class="nav-item" onclick="navigate('team')">
+    <div class="nav-item" onclick="navigate('team')" id="nav-team">
       <span class="nav-icon">◎</span><span>Equipe</span>
     </div>
-    <div class="nav-item" onclick="navigate('library')">
+    <div class="nav-item" onclick="navigate('library')" id="nav-library">
       <span class="nav-icon">▣</span><span>Biblioteca</span>
     </div>
-    <div class="nav-item" onclick="navigate('reports')">
+    <div class="nav-item" onclick="navigate('reports')" id="nav-reports">
       <span class="nav-icon">📊</span><span>Relatórios</span>
     </div>
-    <div class="nav-item" onclick="navigate('risks')">
+    <div class="nav-item" onclick="navigate('risks')" id="nav-risks">
       <span class="nav-icon">⚠</span><span>Gestão de Riscos</span>
     </div>
-    <div class="nav-section">Configurações</div>
-    <div class="nav-item" onclick="navigate('settings')">
+    <div class="nav-section" id="nav-section-config">Configurações</div>
+    <div class="nav-item" onclick="navigate('settings')" id="nav-settings">
       <span class="nav-icon">◻</span><span>Configurações</span>
     </div>
     <!-- Supabase auth status -->
@@ -1734,36 +1734,69 @@ function currentPerson() {
 }
 
 /**
- * Check if the current user has permission for a given action.
- * Centralised permission matrix — all permission checks go through here.
- * @param {string} action - Action key (see switch cases for valid values)
- * @returns {boolean}
+ * Matriz de permissões — fonte: Camadas_de_acesso.xlsx
+ *
+ * Módulo           | Gerente           | Líder                        | Analista
+ * ─────────────────┼───────────────────┼──────────────────────────────┼──────────────────────────
+ * Dashboard        | Visualiza e edita | Visualiza e edita            | Visualiza e edita
+ * Projetos         | Visualiza e edita | Visualiza e edita (os dele)  | Somente visualiza (os dele)
+ * Atividades       | Visualiza e edita | Visualiza e edita (os dele)  | Somente visualiza (os dele)
+ * Minha Visão      | Visualiza e edita | Visualiza e edita            | Somente visualiza (os dele)
+ * Aprovações       | Visualiza e edita | Visualiza e edita (os dele)  | NÃO VISUALIZA
+ * Sprints          | Visualiza e edita | Visualiza e edita (os dele)  | Somente visualiza (os dele)
+ * Fato Relevante   | Visualiza e edita | Visualiza e edita (os dele)  | Somente visualiza (os dele)
+ * Diário de Bordo  | Visualiza e edita | Visualiza e edita (os dele)  | Somente visualiza (os dele)
+ * Equipe           | Visualiza e edita | NÃO VISUALIZA                | NÃO VISUALIZA
+ * Biblioteca       | Visualiza e edita | NÃO VISUALIZA                | NÃO VISUALIZA
+ * Relatórios       | Visualiza e edita | Visualiza e edita (os dele)  | NÃO VISUALIZA
+ * Gestão de Riscos | Visualiza e edita | Visualiza e edita (os dele)  | NÃO VISUALIZA
+ * Configurações    | Visualiza e edita | NÃO VISUALIZA                | NÃO VISUALIZA
  */
 function canDo(action) {
-  const profile = currentProfile();
+  const profile   = currentProfile();
+  const isGerente = profile === 'gerente';
+  const isLider   = profile === 'lider';
+
   switch(action) {
+    // ── Somente Gerente ───────────────────────────────────────
     case 'create_project':
     case 'delete_project':
-    case 'manage_team':
-    case 'manage_templates':
-      return profile === 'gerente';
+    case 'manage_team':       // Equipe: só Gerente
+    case 'manage_templates':  // Biblioteca: só Gerente
+    case 'manage_settings':   // Configurações: só Gerente
+    case 'view_team':         // Equipe: só Gerente
+    case 'view_library':      // Biblioteca: só Gerente
+    case 'view_settings':     // Configurações: só Gerente
+      return isGerente;
+
+    // ── Gerente + Líder ───────────────────────────────────────
     case 'approve_activities':
-      return profile === 'gerente' || profile === 'lider';
+    case 'view_approvals':    // Aprovações: Gerente e Líder; Analista NÃO VISUALIZA
+    case 'view_reports':      // Relatórios: Gerente e Líder; Analista NÃO VISUALIZA
+    case 'view_risks':        // Gestão de Riscos: Gerente e Líder; Analista NÃO VISUALIZA
     case 'create_delivery':
     case 'edit_delivery':
     case 'delete_delivery':
     case 'create_package':
     case 'edit_package':
     case 'delete_package':
-    case 'create_activity':
+    case 'create_activity':   // Criar/Editar atividades: Gerente e Líder
     case 'edit_activity':
     case 'delete_activity':
-      return profile === 'gerente' || profile === 'lider';
-    case 'update_progress':
-    case 'request_approval':
+    case 'create_logbook':    // Criar entrada no Diário de Bordo; Analista só visualiza
+      return isGerente || isLider;
+
+    // ── Todos os usuários logados ─────────────────────────────
+    // Analista: "Somente visualiza" — os renders ocultam botões de edição via canDo('edit_*')
+    case 'update_progress':   // Analista pode atualizar progresso das próprias atividades
+    case 'request_approval':  // Analista pode solicitar aprovação
+    case 'view_sprints':      // Sprints: todos visualizam; edição via create_activity/create_project
+    case 'view_facts':        // Fato Relevante: todos visualizam; edição via create_project
+    case 'view_logbook':      // Diário de Bordo: todos visualizam; criar alinhamento via create_activity
       return !!sbUser;
+
     default:
-      return profile === 'gerente';
+      return isGerente;
   }
 }
 
@@ -1967,6 +2000,25 @@ let currentProjectId = null;
  * @param {number} [id]  - Optional entity ID (e.g. project ID for project_detail)
  */
 function navigate(page, id) {
+  // ── Route-level access guard (mirrors nav visibility matrix) ──
+  if (sbUser) {
+    const profile = currentProfile();
+    const isGerente = profile === 'gerente';
+    const isLider   = profile === 'lider';
+    // Pages restricted to Gerente only
+    const gerenteOnly = ['team', 'library', 'settings'];
+    // Pages restricted to Gerente + Líder (Analista cannot access)
+    const gerenteLider = ['approvals', 'reports', 'risks', 'risk_detail', 'risk_criteria', 'risk_crisis', 'risk_media'];
+    if (gerenteOnly.includes(page) && !isGerente) {
+      showToast('Acesso restrito — somente Gerentes podem acessar esta seção.');
+      return;
+    }
+    if (gerenteLider.includes(page) && !isGerente && !isLider) {
+      showToast('Acesso restrito — disponível para Gerentes e Líderes.');
+      return;
+    }
+  }
+
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const map = { dashboard: 0, projects: 1, activities: 2, myview: 3, approvals: 4, sprints: 5, facts: 6, logbook: 7, team: 8, library: 9, reports: 10, risks: 11, risk_detail: 11, risk_criteria: 11, risk_crisis: 11, risk_media: 11, settings: 12 };
@@ -2023,16 +2075,73 @@ function render() {
 }
 
 function _updateNavVisibility() {
+  if (!sbUser) return; // login wall handles visibility before login
+
   const profile = currentProfile();
+  const isGerente  = profile === 'gerente';
+  const isLider    = profile === 'lider';
+  const isAnalista = profile === 'analista';
+
+  // ── Visibilidade do nav — Camadas_de_acesso.xlsx ─────────────────────────
+  // Módulo           | Gerente           | Líder                        | Analista
+  // Dashboard        | V+E               | V+E                          | V+E          → sempre visível
+  // Projetos         | V+E               | V+E (seus)                   | Só visualiza → sempre visível (render controla edição)
+  // Atividades       | V+E               | V+E (seus)                   | Só visualiza → sempre visível (render controla edição)
+  // Minha Visão      | V+E               | V+E                          | Só visualiza → sempre visível (render controla dropdown)
+  // Aprovações       | V+E               | V+E (seus)                   | NÃO VISUALIZA
+  // Sprints          | V+E               | V+E (seus)                   | Só visualiza → visível para todos (botões controlados)
+  // Fato Relevante   | V+E               | V+E (seus)                   | Só visualiza → visível para todos (botões controlados)
+  // Diário de Bordo  | V+E               | V+E (seus)                   | Só visualiza → visível para todos (botões controlados)
+  // Equipe           | V+E               | NÃO VISUALIZA                | NÃO VISUALIZA
+  // Biblioteca       | V+E               | NÃO VISUALIZA                | NÃO VISUALIZA
+  // Relatórios       | V+E               | V+E (seus)                   | NÃO VISUALIZA
+  // Gestão de Riscos | V+E               | V+E (seus)                   | NÃO VISUALIZA
+  // Configurações    | V+E               | NÃO VISUALIZA                | NÃO VISUALIZA
+
+  const show = (id, visible) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = visible ? '' : 'none';
+  };
+
+  // Always visible for all logged-in users: Dashboard, Projetos, Atividades, Minha Visão
+  // (these are always in the DOM without display:none)
+
+  // Aprovações: Gerente e Líder visualizam; Analista não
   const navApprovals = document.getElementById('nav-approvals');
-  const navSprints   = document.getElementById('nav-sprints');
   if (navApprovals) {
-    const pending = state.activities.filter(a => a.approvalStatus === APPROVAL.PENDING).length;
-    navApprovals.style.display = (profile === 'gerente' || profile === 'lider') ? '' : 'none';
-    navApprovals.querySelector('span:last-child').textContent =
-      pending > 0 ? `Aprovações (${pending})` : 'Aprovações';
+    const visible = isGerente || isLider;
+    navApprovals.style.display = visible ? '' : 'none';
+    if (visible) {
+      const pending = state.activities.filter(a => a.approvalStatus === APPROVAL.PENDING).length;
+      navApprovals.querySelector('span:last-child').textContent =
+        pending > 0 ? `Aprovações (${pending})` : 'Aprovações';
+    }
   }
-  if (navSprints) navSprints.style.display = sbUser ? '' : 'none';
+
+  // Sprints: visível para todos logados
+  show('nav-sprints', !!sbUser);
+
+  // Fatos Relevantes: visível para todos logados (Analista só visualiza — controlado no render)
+  show('nav-facts',   true);
+
+  // Diário de Bordo: visível para todos logados (Analista só visualiza)
+  show('nav-logbook', true);
+
+  // Equipe: somente Gerente
+  show('nav-team',    isGerente);
+
+  // Biblioteca: somente Gerente
+  show('nav-library', isGerente);
+
+  // Relatórios: Gerente e Líder; Analista não visualiza
+  show('nav-reports', isGerente || isLider);
+
+  // Gestão de Riscos: Gerente e Líder; Analista não visualiza
+  show('nav-risks',   isGerente || isLider);
+
+  // Configurações (seção e item): somente Gerente
+  show('nav-settings',        isGerente);
+  show('nav-section-config',  isGerente);
 }
 
 // ============================================================
@@ -3521,20 +3630,43 @@ function renderMyView() {
     return;
   }
 
-  // Auto-select: prefer logged-in user's team record, fall back to localStorage
+  const profile      = currentProfile();
+  const isAnalista   = profile === 'analista';
   const loggedPerson = currentPerson();
-  let savedPerson    = localStorage.getItem('projflow_my_person') || '';
 
+  // Auto-select: prefer logged-in user's team record, fall back to localStorage
+  let savedPerson = localStorage.getItem('projflow_my_person') || '';
   if (loggedPerson && String(loggedPerson.id) !== savedPerson) {
     savedPerson = String(loggedPerson.id);
     localStorage.setItem('projflow_my_person', savedPerson);
   }
 
+  // Analista: fixado na própria pessoa, sem dropdown de seleção
+  if (isAnalista && loggedPerson) {
+    document.getElementById('page-content').innerHTML = `
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:24px; padding:10px 14px; background:var(--surface2); border-radius:var(--radius-sm); flex-wrap:wrap;">
+        <div class="avatar avatar-sm" style="background:var(--accent)22; color:var(--accent);">${initials(loggedPerson.name)}</div>
+        <div>
+          <div style="font-size:13px; font-weight:500;">${esc(loggedPerson.name)}</div>
+          <div style="font-size:11px; color:var(--muted);">${esc(loggedPerson.role||'')}</div>
+        </div>
+        ${sbUser && !hasCheckedInToday() ? `
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto; color:var(--amber); border-color:rgba(251,191,36,0.4);" onclick="openCheckinModal()">
+          ☀️ Fazer check-in do dia
+        </button>` : sbUser ? `<span class="badge badge-green" style="margin-left:auto; font-size:11px;">✓ Check-in feito</span>` : ''}
+      </div>
+      <div id="myview-content"></div>
+    `;
+    renderMyActivities(loggedPerson.id);
+    return;
+  }
+
+  // Gerente e Líder: dropdown de seleção de pessoa
   document.getElementById('page-content').innerHTML = `
     <div style="margin-bottom:24px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-      <div style="font-size:13px; color:var(--muted);">Quem é você?</div>
+      <div style="font-size:13px; color:var(--muted);">Visualizando:</div>
       <select class="form-control" id="myview-person" style="width:220px;" onchange="setMyPerson(this.value)">
-        <option value="">— Selecione seu nome —</option>
+        <option value="">— Selecione uma pessoa —</option>
         ${state.team.map(p => `<option value="${p.id}" ${String(p.id)===savedPerson?'selected':''}>${esc(p.name)}</option>`).join('')}
       </select>
       ${sbUser && !hasCheckedInToday() ? `
@@ -4103,6 +4235,7 @@ function _styleSheet(ws, nCols, nRows) {
 //  RENDER: LIBRARY
 // ============================================================
 function renderLibrary() {
+  if (!canDo('view_library')) { showToast('Sem permissão para acessar este módulo.'); navigate('dashboard'); return; }
   document.getElementById('topbar-title').textContent = 'Biblioteca de Templates';
   document.getElementById('topbar-sub').textContent = 'Templates reutilizáveis de entregas, pacotes e atividades';
   document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary" onclick="openNewTemplate()">+ Novo Template</button>`;
@@ -4545,6 +4678,7 @@ function applyLibrarySelection() {
 //  RENDER: TEAM
 // ============================================================
 function renderTeam() {
+  if (!canDo('view_team')) { showToast('Sem permissão para acessar este módulo.'); navigate('dashboard'); return; }
   document.getElementById('topbar-title').textContent = 'Equipe';
   document.getElementById('topbar-sub').textContent = `${state.team.length} pessoa(s) cadastrada(s)`;
   document.getElementById('topbar-actions').innerHTML = canDo('manage_team')
@@ -4604,6 +4738,7 @@ function renderTeam() {
 //  RENDER: SETTINGS
 // ============================================================
 function renderSettings() {
+  if (currentProfile() !== 'gerente') { showToast('Acesso restrito a Gerentes.'); navigate('dashboard'); return; }
   document.getElementById('topbar-title').textContent = 'Configurações';
   document.getElementById('topbar-sub').textContent = 'Dados e preferências';
   document.getElementById('topbar-actions').innerHTML = '';
@@ -6455,8 +6590,8 @@ function renderSprints() {
               </div>` : ''}
             </div>
             <div style="display:flex; gap:6px; flex-shrink:0;" onclick="event.stopPropagation()">
-              ${s.status==='planejamento' ? `<button class="btn btn-success btn-sm" onclick="activateSprint('${s.id}')">▶ Ativar</button>` : ''}
-              ${s.status==='ativo' ? `<button class="btn btn-ghost btn-sm" onclick="closeSprint('${s.id}')">✓ Fechar</button>` : ''}
+              ${canDo('create_activity') ? (s.status==='planejamento' ? `<button class="btn btn-success btn-sm" onclick="activateSprint('${s.id}')">▶ Ativar</button>` : '') : ''}
+              ${canDo('create_activity') ? (s.status==='ativo' ? `<button class="btn btn-ghost btn-sm" onclick="closeSprint('${s.id}')">✓ Fechar</button>` : '') : ''}
               ${canDo('create_project') ? `<button class="btn btn-ghost btn-sm" onclick="openEditSprint('${s.id}')">✎</button>
               <button class="btn btn-danger btn-sm" onclick="deleteSprint('${s.id}')">✕</button>` : ''}
             </div>
@@ -6493,7 +6628,7 @@ function renderSprintDetail() {
   document.getElementById('topbar-sub').textContent = proj?.name || '';
   document.getElementById('topbar-actions').innerHTML = `
     <button class="btn btn-ghost btn-sm" onclick="navigate('sprints')">← Voltar</button>
-    ${s.status !== STATUS.DONE ? `<button class="btn btn-ghost btn-sm" onclick="closeSprint('${s.id}')">✓ Fechar Sprint</button>` : ''}
+    ${canDo('create_activity') && s.status !== STATUS.DONE ? `<button class="btn btn-ghost btn-sm" onclick="closeSprint('${s.id}')">✓ Fechar Sprint</button>` : ''}
   `;
 
   // All activities of this project
@@ -7695,9 +7830,9 @@ const alImpactLabel = {
 function renderLogbook() {
   document.getElementById('topbar-title').textContent = 'Diário de Bordo';
   document.getElementById('topbar-sub').textContent = 'Histórico do projeto — checkins, fatos e alinhamentos';
-  document.getElementById('topbar-actions').innerHTML = `
-    <button class="btn btn-primary" onclick="openNewAlignment()">+ Registro de Alinhamento</button>
-  `;
+  document.getElementById('topbar-actions').innerHTML = canDo('create_logbook')
+    ? `<button class="btn btn-primary" onclick="openNewAlignment()">+ Registro de Alinhamento</button>`
+    : '';
 
 
   const savedProj = _logbookProject || localStorage.getItem('projflow_logbook_project') || '';
@@ -7882,8 +8017,9 @@ function _renderAlignmentCard(e) {
         </div>` : ''}
       </div>
       <div style="display:flex; gap:5px; flex-shrink:0;">
+        ${canDo('create_logbook') ? `
         <button class="btn btn-ghost btn-sm" onclick="openEditAlignment('${e.id}')">✎</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteAlignment('${e.id}')">✕</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteAlignment('${e.id}')">✕</button>` : ''}
       </div>
     </div>
   </div>`;
@@ -8154,6 +8290,7 @@ function getRiskEvents(id) { return (state.riskEvents||[]).filter(e => e.riskId 
 
 // ── RENDER: RISKS DASHBOARD ────────────────────────────────────
 function renderRisks() {
+  if (!canDo('view_risks')) { showToast('Sem permissão para acessar este módulo.'); navigate('dashboard'); return; }
   document.getElementById('topbar-title').textContent = 'Gestão de Riscos';
   document.getElementById('topbar-sub').textContent   = 'ISO 31000 · COSO ERM · Matriz multidimensional';
   document.getElementById('topbar-actions').innerHTML = canDo('create_project')
@@ -9561,6 +9698,7 @@ function saveRiskCategories() { state.riskCategories=(state.riskCategories||[]).
 let _currentReport = null; // { type, projectId, weekStart, factId }
 
 function renderReports() {
+  if (!canDo('view_reports')) { showToast('Sem permissão para acessar este módulo.'); navigate('dashboard'); return; }
   document.getElementById('topbar-title').textContent = 'Relatórios';
   document.getElementById('topbar-sub').textContent = 'Geração e exportação de relatórios';
   document.getElementById('topbar-actions').innerHTML = '';
