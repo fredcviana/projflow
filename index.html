@@ -6884,8 +6884,11 @@ function renderApprovals() {
   }
 
   const renderCard = (a, isPending) => {
-    // Resolve project/delivery regardless of deliveryId or packageId
-    const project  = getActivityProject(a);
+    // Resolve delivery and project from activity
+    const delivery = a.deliveryId
+      ? getDelivery(a.deliveryId)
+      : (a.packageId ? (() => { const pkg = getPackage(a.packageId); return pkg ? getDelivery(pkg.deliveryId) : null; })() : null);
+    const project  = delivery ? getProject(delivery.projectId) : null;
     const allocs  = a.allocations||[];
     const people  = allocs.map(al => state.team.find(p => p.id === al.personId)).filter(Boolean);
     const range   = actDateRange(a);
@@ -8081,7 +8084,7 @@ function renderRisks() {
     const canEdit = canDo('create_project');
 
     return `<div class="card" style="margin-bottom:12px; cursor:pointer; border-left:4px solid ${lvlR.color};"
-        onclick="navigate('risk_detail', ${r.id})">
+        onclick="currentRiskId=${r.id}; navigate('risk_detail', ${r.id})">
       <div style="display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap;">
         <div style="flex:1; min-width:200px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
@@ -8596,12 +8599,9 @@ function saveRiskCategories() {
   showSuccess('Categorias salvas!');
 }
 
-// ── NAVIGATE override to set currentRiskId ────────────────────
-const _origNavigate = navigate;
-function navigate(page, id) {
-  if (page === 'risk_detail') currentRiskId = id;
-  _origNavigate(page, id);
-}
+// ── Intercept navigate to capture currentRiskId for risk_detail ──────────────
+// We patch navigate at call sites instead of overriding the function declaration
+// to avoid shadowing/hoisting conflicts
 
 // ============================================================
 //  RENDER: RELATÓRIOS
