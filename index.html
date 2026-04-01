@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -391,6 +392,26 @@ window.navigate = function() {};
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+
+  /* Scroll da aba de projetos / cronograma */
+  .schedule-scroll {
+    max-height: 420px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 6px;
+  }
+
+  .schedule-scroll-lg {
+    max-height: 560px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 6px;
+  }
+
+  .schedule-scroll .activity-row,
+  .schedule-scroll .activity-header {
+    min-width: 0;
+  }
 
   /* Responsive tweaks */
   @media (max-width: 768px) {
@@ -2947,7 +2968,9 @@ function renderProjectDetail() {
       <div class="section-title">Entregas e Atividades</div>
       ${canEdit ? `<button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Nova Entrega</button>` : ''}
     </div>
-    ${deliveriesHTML}
+    <div class="schedule-scroll-lg">
+      ${deliveriesHTML}
+    </div>
   `;
 }
 
@@ -3023,7 +3046,9 @@ function renderDeliveryCard(d, p) {
         </div>
       </div>
       <div class="delivery-body" id="body-${d.id}">
-        ${bodyHTML}
+        <div class="schedule-scroll">
+          ${bodyHTML}
+        </div>
       </div>
     </div>`;
 }
@@ -3094,7 +3119,9 @@ function renderPackageCard(pkg, d) {
         </div>
       </div>
       <div class="delivery-body" id="body-pkg-${pkg.id}">
-        ${actsHTML}
+        <div class="schedule-scroll">
+          ${actsHTML}
+        </div>
       </div>
     </div>`;
 }
