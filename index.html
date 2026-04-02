@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Proj·Flow — Gestão de Projetos</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><polygon points='16,2 28,9 28,23 16,30 4,23 4,9' fill='%236c63ff' opacity='0.2'/><polygon points='16,2 28,9 28,23 16,30 4,23 4,9' fill='none' stroke='%236c63ff' stroke-width='2'/><text x='16' y='21' text-anchor='middle' font-family='sans-serif' font-size='14' font-weight='bold' fill='%239d97ff'>P</text></svg>" />
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" async></script>
 <script>
 // Proxy seguro — evita ReferenceError se usuário clicar antes do script principal carregar
 window.sbSignIn  = function() {};
@@ -8398,5 +8398,4 @@ function renderRisks() {
             <span>Residual: <strong style="color:${lvlR.color};">${sR}</strong>
               ${sR<sI?`<span style="color:var(--green);"> ↓${sI-sR}</span>`:''}</span>
             ${owner?`<span>👤 ${esc(owner.name.split(' ')[0])}</span>`:''}
-            ${r.mitigation?'<span>🛡 Mitigação ✓</span>':''}
-  
+            ${r.mitigation?'<span>🛡 Mitigação ✓</span>':
