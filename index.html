@@ -12,7 +12,31 @@ window.sbSignIn  = function() {};
 window.sbSignOut = function() {};
 window.openModal = function(id) { document.getElementById(id)?.classList.add('open'); };
 window.closeModal = function(id) { document.getElementById(id)?.classList.remove('open'); };
-window.navigate = function() {};
+window.navigate  = function() {};
+
+// _wallSignIn: chamada pelo botão "Entrar" — proxy inicial enquanto o script carrega
+window._wallSignIn = function() {
+  var err = document.getElementById('wall-error');
+  var btn = document.getElementById('wall-btn');
+  if (btn)  { btn.textContent = 'Carregando…'; btn.disabled = true; }
+  if (err)  { err.style.display = 'none'; }
+  // Tenta novamente em 800ms — tempo para o script principal terminar de carregar
+  setTimeout(function() {
+    if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
+    if (typeof sb !== 'undefined' && sb) {
+      // Script carregou — chama a função real agora disponível via closure do script principal
+      var real = (function(){ try { return eval('_wallSignIn'); } catch(e){ return null; } })();
+      // A função real agora está no escopo global — apenas re-invoca
+      if (real && real !== window._wallSignIn) { real(); }
+      else {
+        // Script carregou mas algo falhou
+        if (err) { err.textContent = 'Erro ao carregar. Recarregue a página.'; err.style.display = 'block'; }
+      }
+    } else {
+      if (err) { err.textContent = 'Página ainda carregando. Tente novamente.'; err.style.display = 'block'; }
+    }
+  }, 800);
+};
 </script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -8381,23 +8405,4 @@ function renderRisks() {
             <span class="badge" style="background:${lvlR.bg};color:${lvlR.color};font-size:10px;">${lvlR.label} · ${sR}</span>
             ${openEvts>0?`<span class="badge badge-red" style="font-size:10px;">${openEvts} evento${openEvts>1?'s':''}</span>`:''}
           </div>
-          ${r.desc?`<div style="font-size:12px;color:var(--muted);line-height:1.5;">${esc(r.desc).slice(0,100)}${r.desc.length>100?'…':''}</div>`:''}
-          <div style="margin-top:6px;display:flex;gap:14px;font-size:11px;color:var(--muted);flex-wrap:wrap;">
-            <span>Inerente: <strong style="color:${lvlI.color};">${sI}</strong></span>
-            <span>Residual: <strong style="color:${lvlR.color};">${sR}</strong>
-              ${sR<sI?`<span style="color:var(--green);"> ↓${sI-sR}</span>`:''}</span>
-            ${owner?`<span>👤 ${esc(owner.name.split(' ')[0])}</span>`:''}
-            ${r.mitigation?'<span>🛡 Mitigação ✓</span>':''}
-            ${r.contingency?'<span>🔄 Contingência ✓</span>':''}
-          </div>
-        </div>
-        ${canEdit?`<div style="display:flex;gap:6px;flex-shrink:0;" onclick="event.stopPropagation()">
-          <button class="btn btn-ghost btn-sm" onclick="openEditRisk(${r.id})">✎</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteRisk(${r.id})">✕</button>
-        </div>`:''}
-      </div>
-    </div>`;
-  }).join('');
-
-  document.getElementById('page-content').innerHTML = kpis + crisesBanner + renderRiskHeatmap(risks) + `
-    <div style="display
+          ${r.desc?`<div 
