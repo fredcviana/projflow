@@ -906,14 +906,14 @@ window._wallSignIn = function() {
       </div>
       <div id="wall-error" style="display:none;color:#f87171;font-size:12px;margin-bottom:12px;padding:8px 12px;background:rgba(248,113,113,0.08);border-radius:6px;"></div>
       <button id="wall-btn"
-        style="width:100%;background:#6c63ff;color:#fff;border:none;border-radius:8px;padding:14px;font-size:16px;font-weight:600;min-height:52px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;"
+        style="width:100%;background:#3a3a5c;color:#9d97ff;border:none;border-radius:8px;padding:14px;font-size:16px;font-weight:600;min-height:52px;cursor:not-allowed;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:all 0.3s;"
         ontouchend="event.preventDefault();_wallSignIn();"
         onclick="_wallSignIn()"
         disabled>
         ⏳ Carregando…
       </button>
       <div id="wall-loading" style="text-align:center;font-size:11px;color:#6b6b8a;margin-top:8px;">
-        Aguarde, carregando o sistema…
+        Aguarde, inicializando o sistema…
       </div>
     </div>
     <div style="font-size:11px;color:#6b6b8a;margin-top:16px;">Acesso restrito. Contate o administrador para obter credenciais.</div>
@@ -8399,4 +8399,4 @@ function renderRisks() {
               ${sR<sI?`<span style="color:var(--green);"> ↓${sI-sR}</span>`:''}</span>
             ${owner?`<span>👤 ${esc(owner.name.split(' ')[0])}</span>`:''}
             ${r.mitigation?'<span>🛡 Mitigação ✓</span>':''}
-            ${r.contingency?'<sp
+  
