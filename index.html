@@ -14,28 +14,39 @@ window.openModal = function(id) { document.getElementById(id)?.classList.add('op
 window.closeModal = function(id) { document.getElementById(id)?.classList.remove('open'); };
 window.navigate  = function() {};
 
-// _wallSignIn: chamada pelo botão "Entrar" — proxy inicial enquanto o script carrega
+// _wallSignIn: proxy inicial — substitído pela função real quando o script termina de carregar
 window._wallSignIn = function() {
   var err = document.getElementById('wall-error');
   var btn = document.getElementById('wall-btn');
-  if (btn)  { btn.textContent = 'Carregando…'; btn.disabled = true; }
-  if (err)  { err.style.display = 'none'; }
-  // Tenta novamente em 800ms — tempo para o script principal terminar de carregar
-  setTimeout(function() {
-    if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
-    if (typeof sb !== 'undefined' && sb) {
-      // Script carregou — chama a função real agora disponível via closure do script principal
-      var real = (function(){ try { return eval('_wallSignIn'); } catch(e){ return null; } })();
-      // A função real agora está no escopo global — apenas re-invoca
-      if (real && real !== window._wallSignIn) { real(); }
-      else {
-        // Script carregou mas algo falhou
-        if (err) { err.textContent = 'Erro ao carregar. Recarregue a página.'; err.style.display = 'block'; }
-      }
+  if (btn) { btn.textContent = 'Aguarde…'; btn.disabled = true; }
+  if (err) { err.style.display = 'none'; }
+
+  var attempts = 0;
+  var maxAttempts = 20; // tenta por até 10 segundos (20 × 500ms)
+  var loadingEl = document.getElementById('wall-loading');
+  if (loadingEl) loadingEl.style.display = 'block';
+
+  function trySignIn() {
+    attempts++;
+    // Verifica se o script principal já carregou (sb é inicializado pelo script principal)
+    if (typeof sb !== 'undefined' && sb && typeof _wallSignIn === 'function' && _wallSignIn !== window._wallSignIn) {
+      // Script carregou e a função real está disponível — chama ela
+      if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
+      if (loadingEl) loadingEl.style.display = 'none';
+      _wallSignIn();
+    } else if (attempts >= maxAttempts) {
+      // Desistiu após 10s
+      if (btn) { btn.textContent = 'Entrar'; btn.disabled = false; }
+      if (loadingEl) loadingEl.style.display = 'none';
+      if (err) { err.textContent = 'Erro ao carregar. Recarregue a página (arraste para baixo).'; err.style.display = 'block'; }
     } else {
-      if (err) { err.textContent = 'Página ainda carregando. Tente novamente.'; err.style.display = 'block'; }
+      // Ainda carregando — tenta novamente em 500ms
+      if (loadingEl) loadingEl.textContent = `⏳ Carregando sistema… (${attempts}/${maxAttempts})`;
+      setTimeout(trySignIn, 500);
     }
-  }, 800);
+  }
+
+  setTimeout(trySignIn, 500);
 };
 </script>
 <style>
@@ -928,6 +939,9 @@ window._wallSignIn = function() {
         onclick="_wallSignIn()">
         Entrar
       </button>
+      <div id="wall-loading" style="text-align:center;font-size:11px;color:#6b6b8a;margin-top:10px;display:none;">
+        ⏳ Conectando ao servidor…
+      </div>
     </div>
     <div style="font-size:11px;color:#6b6b8a;margin-top:16px;">Acesso restrito. Contate o administrador para obter credenciais.</div>
   </div>
@@ -8399,10 +8413,4 @@ function renderRisks() {
       <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;" onclick="currentRiskId=${r.id};navigate('risk_detail',${r.id})">
         <div style="flex:1;min-width:200px;">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px;">
-            ${hasCrisis?'<span style="font-size:13px;">🚨</span>':''}
-            <span style="font-size:14px;font-weight:600;">${esc(r.title)}</span>
-            <span class="badge badge-gray" style="font-size:10px;">${esc(r.category||'Geral')}</span>
-            <span class="badge" style="background:${lvlR.bg};color:${lvlR.color};font-size:10px;">${lvlR.label} · ${sR}</span>
-            ${openEvts>0?`<span class="badge badge-red" style="font-size:10px;">${openEvts} evento${openEvts>1?'s':''}</span>`:''}
-          </div>
-          ${r.desc?`<div 
+            ${ha
