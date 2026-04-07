@@ -429,8 +429,8 @@ window._wallSignIn = function() {
     gap: 12px;
     cursor: pointer;
   }
-  .delivery-body { background: var(--surface); padding: 0 18px; max-height: 0; overflow: hidden; transition: max-height 0.3s, padding 0.3s; }
-  .delivery-body.open { max-height: 2000px; padding: 16px 18px; }
+  .delivery-body { background: var(--surface); padding: 0 18px; max-height: 0; overflow: hidden; transition: max-height 0.4s ease, padding 0.3s; }
+  .delivery-body.open { max-height: none; padding: 16px 18px; overflow: visible; }
 
   .activity-row {
     display: grid;
@@ -3300,13 +3300,36 @@ function renderActivityRow(a) {
 
 function toggleDelivery(id) {
   const body = document.getElementById(`body-${id}`);
-  const exp = document.getElementById(`exp-${id}`);
+  const exp  = document.getElementById(`exp-${id}`);
+  if (!body) return;
   if (body.classList.contains('open')) {
+    // Close: animate back to 0
+    body.style.maxHeight = body.scrollHeight + 'px'; // set explicit before collapsing
+    requestAnimationFrame(() => {
+      body.style.transition = 'max-height 0.35s ease, padding 0.3s';
+      body.style.maxHeight  = '0';
+      body.style.padding    = '0 18px';
+    });
     body.classList.remove('open');
-    exp.style.transform = 'rotate(0deg)';
+    if (exp) exp.style.transform = 'rotate(0deg)';
   } else {
+    // Open: measure full content height and animate to it
     body.classList.add('open');
-    exp.style.transform = 'rotate(90deg)';
+    body.style.maxHeight  = '0';
+    body.style.padding    = '16px 18px';
+    body.style.overflow   = 'hidden';
+    body.style.transition = 'max-height 0.35s ease, padding 0.3s';
+    requestAnimationFrame(() => {
+      body.style.maxHeight = body.scrollHeight + 'px';
+    });
+    // After animation, remove max-height so content never gets clipped
+    setTimeout(() => {
+      if (body.classList.contains('open')) {
+        body.style.maxHeight = 'none';
+        body.style.overflow  = 'visible';
+      }
+    }, 400);
+    if (exp) exp.style.transform = 'rotate(90deg)';
   }
 }
 
