@@ -8359,64 +8359,82 @@ function getRiskEvents(id) { return (state.riskEvents||[]).filter(e => e.riskId 
 async function renderImpediments() {
   if (!canDo('view_approvals')) { showToast('Sem permissão.'); navigate('dashboard'); return; }
 
-  document.getElementById('topbar-title').textContent = 'Impedimentos';
-  document.getElementById('topbar-sub').textContent   = 'Bloqueios reportados pela equipe nos check-ins';
+  document.getElementById('topbar-title').textContent = 'Check-ins & Impedimentos';
+  document.getElementById('topbar-sub').textContent   = 'Adesão da equipe e bloqueios reportados';
   document.getElementById('topbar-actions').innerHTML = `
     <button class="btn btn-ghost btn-sm" onclick="renderImpediments()">↻ Atualizar</button>`;
 
-  document.getElementById('page-content').innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted);">Carregando impedimentos…</div>`;
+  document.getElementById('page-content').innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted);">Carregando dados…</div>`;
 
-  // Load from Supabase — last 30 days
-  let checkins = [];
+  const today = new Date().toISOString().slice(0,10);
+  const since = new Date(Date.now() - 30*86400000).toISOString().slice(0,10);
+
+  // Fetch ALL checkins (not just impediments) for full stats
+  let allCheckins = [], impCheckins = [];
   if (sb) {
     try {
-      const since = new Date(Date.now() - 30*86400000).toISOString().slice(0,10);
-      const { data } = await sb.from('projflow_checkins')
-        .select('*')
-        .eq('has_impediment', true)
-        .gte('check_date', since)
-        .order('check_date', { ascending: false });
-      checkins = data || [];
+      const { data: all } = await sb.from('projflow_checkins')
+        .select('*').gte('check_date', since).order('check_date', { ascending: false });
+      allCheckins = all || [];
+      impCheckins = allCheckins.filter(c => c.has_impediment);
     } catch(e) {
-      checkins = _todayCheckins.filter(c => c.has_impediment);
+      allCheckins = _todayCheckins;
+      impCheckins = _todayCheckins.filter(c => c.has_impediment);
     }
   } else {
-    checkins = _todayCheckins.filter(c => c.has_impediment);
+    allCheckins = _todayCheckins;
+    impCheckins = _todayCheckins.filter(c => c.has_impediment);
   }
 
   // Filter by project access for Líder
   const profile = currentProfile();
+  let visibleTeam = state.team;
   if (profile === 'lider') {
     const person = currentPerson();
     if (person) {
-      // Get people in lider's projects
-      const myProjIds = state.projects
-        .filter(p => (p.leaders||[]).includes(person.id))
-        .map(p => p.id);
+      const myProjIds = state.projects.filter(p=>(p.leaders||[]).includes(person.id)).map(p=>p.id);
       const myPersonIds = new Set();
       state.activities.forEach(a => {
-        const d   = a.deliveryId ? state.deliveries.find(d => d.id === a.deliveryId) : null;
-        const pkg = a.packageId  ? (state.packages||[]).find(p => p.id === a.packageId) : null;
-        const d2  = pkg ? state.deliveries.find(d => d.id === pkg.deliveryId) : null;
-        if (myProjIds.includes(d?.projectId || d2?.projectId)) {
-          actPersonIds(a).forEach(id => myPersonIds.add(id));
-        }
+        const d   = a.deliveryId ? state.deliveries.find(d=>d.id===a.deliveryId) : null;
+        const pkg = a.packageId  ? (state.packages||[]).find(p=>p.id===a.packageId) : null;
+        const d2  = pkg ? state.deliveries.find(d=>d.id===pkg.deliveryId) : null;
+        if (myProjIds.includes(d?.projectId||d2?.projectId)) actPersonIds(a).forEach(id=>myPersonIds.add(id));
       });
-      checkins = checkins.filter(c => myPersonIds.has(c.person_id));
+      allCheckins = allCheckins.filter(c => myPersonIds.has(c.person_id));
+      impCheckins = impCheckins.filter(c => myPersonIds.has(c.person_id));
+      visibleTeam = state.team.filter(p => myPersonIds.has(p.id));
     }
   }
 
-  const today = new Date().toISOString().slice(0,10);
-  const todayOnes = checkins.filter(c => c.check_date === today);
-  const olderOnes = checkins.filter(c => c.check_date !== today);
+  // ── COMPUTED STATS ────────────────────────────────────────────
+  const todayCheckins   = allCheckins.filter(c => c.check_date === today);
+  const todayImp        = impCheckins.filter(c => c.check_date === today);
+  const uniqueDays      = new Set(allCheckins.map(c => c.check_date)).size;
+  const teamSize        = visibleTeam.length;
+  const checkinRate     = teamSize > 0 ? Math.round(todayCheckins.length / teamSize * 100) : 0;
 
-  // Group older by date
-  const byDate = {};
-  olderOnes.forEach(c => {
-    if (!byDate[c.check_date]) byDate[c.check_date] = [];
-    byDate[c.check_date].push(c);
+  // Per person stats over 30 days
+  const perPerson = {};
+  visibleTeam.forEach(p => { perPerson[p.id] = { checkins:0, impediments:0, lastDate:null }; });
+  allCheckins.forEach(c => {
+    if (!perPerson[c.person_id]) perPerson[c.person_id] = { checkins:0, impediments:0, lastDate:null };
+    perPerson[c.person_id].checkins++;
+    if (c.has_impediment) perPerson[c.person_id].impediments++;
+    if (!perPerson[c.person_id].lastDate || c.check_date > perPerson[c.person_id].lastDate)
+      perPerson[c.person_id].lastDate = c.check_date;
   });
 
+  // People who checked in today vs not
+  const checkedInToday   = new Set(todayCheckins.map(c => c.person_id));
+  const notCheckedToday  = visibleTeam.filter(p => !checkedInToday.has(p.id));
+  const neverCheckedIn   = visibleTeam.filter(p => !perPerson[p.id]?.checkins);
+
+  // Impediment history grouped by date
+  const olderImp = impCheckins.filter(c => c.check_date !== today);
+  const byDate = {};
+  olderImp.forEach(c => { if (!byDate[c.check_date]) byDate[c.check_date] = []; byDate[c.check_date].push(c); });
+
+  // ── CARD RENDERER ─────────────────────────────────────────────
   function impedimentCard(c) {
     const person = state.team.find(p => p.id === c.person_id);
     const pIdx   = state.team.findIndex(p => p.id === c.person_id);
@@ -8427,79 +8445,173 @@ async function renderImpediments() {
           <div class="avatar" style="background:${col}22;color:${col};width:34px;height:34px;font-size:13px;flex-shrink:0;">${person?initials(person.name):'?'}</div>
           <div style="flex:1;min-width:0;">
             <div style="font-size:14px;font-weight:600;">${person?esc(person.name):'Desconhecido'}</div>
-            <div style="font-size:11px;color:var(--muted);">${person?esc(person.role||''):'—'} · Check-in de ${fmtDate(c.check_date)}</div>
+            <div style="font-size:11px;color:var(--muted);">${person?esc(person.role||''):'—'} · ${fmtDate(c.check_date)}</div>
           </div>
           <span style="background:rgba(248,113,113,0.12);color:#ef4444;border:1px solid rgba(248,113,113,0.3);border-radius:20px;padding:3px 12px;font-size:11px;font-weight:600;">🚧 Impedimento</span>
         </div>
-
-        <div style="background:rgba(248,113,113,0.06);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:10px;">
+        <div style="background:rgba(248,113,113,0.06);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:${c.did_yesterday||c.will_do_today?'10px':'0'};">
           <div style="font-size:10px;color:#ef4444;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Impedimento reportado</div>
           <div style="font-size:13px;line-height:1.6;">${esc(c.impediment||'Sem descrição')}</div>
         </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;">
-          ${c.did_yesterday ? `<div style="background:var(--surface2);border-radius:var(--radius-sm);padding:8px 10px;">
+        ${c.did_yesterday||c.will_do_today ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;">
+          ${c.did_yesterday?`<div style="background:var(--surface2);border-radius:var(--radius-sm);padding:8px 10px;">
             <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">FEZ ONTEM</div>
             <div style="line-height:1.5;color:var(--muted);">${esc(c.did_yesterday)}</div>
-          </div>` : ''}
-          ${c.will_do_today ? `<div style="background:var(--surface2);border-radius:var(--radius-sm);padding:8px 10px;">
+          </div>`:''}
+          ${c.will_do_today?`<div style="background:var(--surface2);border-radius:var(--radius-sm);padding:8px 10px;">
             <div style="font-size:10px;color:var(--green);margin-bottom:3px;">FARÁ HOJE</div>
             <div style="line-height:1.5;color:var(--muted);">${esc(c.will_do_today)}</div>
-          </div>` : ''}
-        </div>
+          </div>`:''}
+        </div>` : ''}
       </div>`;
   }
 
-  const todayHTML = todayOnes.length
-    ? todayOnes.map(impedimentCard).join('')
-    : `<div style="padding:20px;text-align:center;color:var(--green);font-size:13px;">✅ Nenhum impedimento reportado hoje</div>`;
-
-  const historyHTML = Object.entries(byDate).map(([date, items]) => `
-    <div style="margin-bottom:20px;">
-      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">${fmtDate(date)}</div>
-      ${items.map(impedimentCard).join('')}
-    </div>`).join('');
+  // ── CHECKIN TABLE per person ───────────────────────────────────
+  const personTableRows = visibleTeam.map(p => {
+    const stats  = perPerson[p.id] || { checkins:0, impediments:0, lastDate:null };
+    const pIdx   = state.team.findIndex(x=>x.id===p.id);
+    const col    = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+    const doneToday = checkedInToday.has(p.id);
+    const rate   = uniqueDays > 0 ? Math.round(stats.checkins / uniqueDays * 100) : 0;
+    const lastD  = stats.lastDate ? fmtDate(stats.lastDate) : '—';
+    const daysSinceLast = stats.lastDate
+      ? Math.round((new Date(today) - new Date(stats.lastDate)) / 86400000)
+      : null;
+    return `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:10px 16px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(p.name)}</div>
+          <div>
+            <div style="font-size:13px;font-weight:500;">${esc(p.name)}</div>
+            <div style="font-size:11px;color:var(--muted);">${esc(p.role||'—')}</div>
+          </div>
+        </div>
+      </td>
+      <td style="padding:10px 8px;text-align:center;">
+        ${doneToday
+          ? `<span class="badge badge-green" style="font-size:10px;">✓ Feito</span>`
+          : `<span class="badge badge-red" style="font-size:10px;">Pendente</span>`}
+      </td>
+      <td style="padding:10px 8px;text-align:center;font-weight:600;">${stats.checkins}</td>
+      <td style="padding:10px 8px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;min-width:50px;">
+            <div style="height:100%;width:${rate}%;background:${rate>=80?'var(--green)':rate>=40?'var(--amber)':'var(--red)'};border-radius:3px;"></div>
+          </div>
+          <span style="font-size:11px;color:var(--muted);min-width:28px;">${rate}%</span>
+        </div>
+      </td>
+      <td style="padding:10px 8px;text-align:center;">
+        ${stats.impediments > 0
+          ? `<span style="color:#ef4444;font-weight:600;">${stats.impediments}</span>`
+          : `<span style="color:var(--muted);">—</span>`}
+      </td>
+      <td style="padding:10px 8px;font-size:12px;color:var(--muted);">
+        ${stats.lastDate
+          ? `${lastD} ${daysSinceLast===0?'<span style="color:var(--green);">(hoje)</span>':daysSinceLast===1?'<span style="color:var(--muted);">(ontem)</span>':`<span style="color:${daysSinceLast>7?'var(--red)':'var(--amber)'};">(${daysSinceLast}d atrás)</span>`}`
+          : '<span style="color:var(--red);">Nunca fez</span>'}
+      </td>
+    </tr>`;
+  }).join('');
 
   document.getElementById('page-content').innerHTML = `
 
-    <!-- KPIs -->
-    <div class="grid-3" style="margin-bottom:24px;">
-      <div class="stat" style="${todayOnes.length>0?'border-color:rgba(239,68,68,0.4);background:rgba(239,68,68,0.04);':''}">
-        <div class="stat-label">🚧 Hoje</div>
-        <div class="stat-value" style="color:${todayOnes.length>0?'#ef4444':'var(--green)'};">${todayOnes.length}</div>
-        <div class="stat-sub">${todayOnes.length>0?'bloqueio(s) ativos':'sem impedimentos'}</div>
+    <!-- KPIs row 1 — Check-in de hoje -->
+    <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;">Check-in de Hoje</div>
+    <div class="grid-4" style="margin-bottom:24px;">
+      <div class="stat" style="border-color:${checkinRate>=80?'rgba(52,211,153,0.3)':checkinRate>=50?'rgba(251,191,36,0.3)':'rgba(248,113,113,0.3)'};">
+        <div class="stat-label">Taxa de adesão</div>
+        <div class="stat-value" style="color:${checkinRate>=80?'var(--green)':checkinRate>=50?'var(--amber)':'var(--red)'};">${checkinRate}%</div>
+        <div class="stat-sub">${todayCheckins.length} de ${teamSize} pessoas</div>
       </div>
       <div class="stat">
-        <div class="stat-label">Últimos 30 dias</div>
-        <div class="stat-value">${checkins.length}</div>
-        <div class="stat-sub">impedimentos totais</div>
+        <div class="stat-label">✅ Fizeram check-in</div>
+        <div class="stat-value" style="color:var(--green);">${todayCheckins.length}</div>
+        <div class="stat-sub">hoje até agora</div>
       </div>
-      <div class="stat">
-        <div class="stat-label">Pessoas afetadas</div>
-        <div class="stat-value">${new Set(checkins.map(c=>c.person_id)).size}</div>
-        <div class="stat-sub">com impedimentos recentes</div>
+      <div class="stat" style="${notCheckedToday.length>0?'border-color:rgba(251,191,36,0.3);':''}">
+        <div class="stat-label">⏳ Ainda não fizeram</div>
+        <div class="stat-value" style="color:${notCheckedToday.length>0?'var(--amber)':'var(--muted)'};">${notCheckedToday.length}</div>
+        <div class="stat-sub">${notCheckedToday.slice(0,2).map(p=>p.name.split(' ')[0]).join(', ')}${notCheckedToday.length>2?` +${notCheckedToday.length-2}`:''}</div>
+      </div>
+      <div class="stat" style="${todayImp.length>0?'border-color:rgba(239,68,68,0.4);background:rgba(239,68,68,0.04);':''}">
+        <div class="stat-label">🚧 Impedimentos hoje</div>
+        <div class="stat-value" style="color:${todayImp.length>0?'#ef4444':'var(--muted)'};">${todayImp.length}</div>
+        <div class="stat-sub">${todayImp.length>0?'bloqueio(s) ativo(s)':'sem bloqueios'}</div>
       </div>
     </div>
 
-    <!-- Hoje -->
-    <div style="font-size:13px;font-weight:600;color:${todayOnes.length>0?'#ef4444':'var(--muted)'};margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+    <!-- KPIs row 2 — Últimos 30 dias -->
+    <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;">Últimos 30 dias</div>
+    <div class="grid-4" style="margin-bottom:28px;">
+      <div class="stat">
+        <div class="stat-label">Total de check-ins</div>
+        <div class="stat-value">${allCheckins.length}</div>
+        <div class="stat-sub">em ${uniqueDays} dia${uniqueDays!==1?'s':''} com registro</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Média por dia</div>
+        <div class="stat-value">${uniqueDays>0?(allCheckins.length/uniqueDays).toFixed(1):'—'}</div>
+        <div class="stat-sub">check-ins/dia</div>
+      </div>
+      <div class="stat" style="${impCheckins.length>0?'border-color:rgba(239,68,68,0.3);':''}">
+        <div class="stat-label">🚧 Impedimentos</div>
+        <div class="stat-value" style="color:${impCheckins.length>0?'#ef4444':'var(--muted)'};">${impCheckins.length}</div>
+        <div class="stat-sub">${new Set(impCheckins.map(c=>c.person_id)).size} pessoas afetadas</div>
+      </div>
+      <div class="stat" style="${neverCheckedIn.length>0?'border-color:rgba(251,191,36,0.3);':''}">
+        <div class="stat-label">⚠ Nunca fizeram</div>
+        <div class="stat-value" style="color:${neverCheckedIn.length>0?'var(--amber)':'var(--green)'};">${neverCheckedIn.length}</div>
+        <div class="stat-sub">sem nenhum check-in</div>
+      </div>
+    </div>
+
+    <!-- Impedimentos de hoje -->
+    <div style="font-size:13px;font-weight:600;color:${todayImp.length>0?'#ef4444':'var(--muted)'};margin-bottom:12px;display:flex;align-items:center;gap:8px;">
       🚧 Impedimentos de hoje
-      ${todayOnes.length>0?`<span style="background:#ef4444;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;">${todayOnes.length}</span>`:''}
+      ${todayImp.length>0?`<span style="background:#ef4444;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;">${todayImp.length}</span>`:''}
     </div>
-    ${todayHTML}
+    ${todayImp.length
+      ? todayImp.map(impedimentCard).join('')
+      : `<div style="padding:16px;background:var(--surface2);border-radius:var(--radius);font-size:13px;color:var(--green);margin-bottom:24px;">✅ Nenhum impedimento reportado hoje</div>`}
 
-    <!-- Histórico -->
-    ${historyHTML ? `
-    <div style="margin-top:28px;">
-      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:16px;">Histórico — últimos 30 dias</div>
-      ${historyHTML}
-    </div>` : ''}
+    <!-- Tabela por pessoa -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:28px 0 12px;">
+      <div style="font-size:13px;font-weight:600;">Adesão por Pessoa — últimos 30 dias</div>
+      <div style="font-size:11px;color:var(--muted);">Taxa = dias com check-in ÷ dias com registro da equipe</div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:28px;">
+      <div style="overflow-x:auto;">
+        <table style="width:100%;min-width:620px;border-collapse:collapse;">
+          <thead>
+            <tr style="background:var(--surface2);">
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--muted);">Pessoa</th>
+              <th style="padding:10px 8px;text-align:center;font-size:11px;font-weight:600;color:var(--muted);">Hoje</th>
+              <th style="padding:10px 8px;text-align:center;font-size:11px;font-weight:600;color:var(--muted);">Check-ins</th>
+              <th style="padding:10px 8px;font-size:11px;font-weight:600;color:var(--muted);min-width:120px;">Taxa 30d</th>
+              <th style="padding:10px 8px;text-align:center;font-size:11px;font-weight:600;color:var(--muted);">Impedimt.</th>
+              <th style="padding:10px 8px;font-size:11px;font-weight:600;color:var(--muted);">Último check-in</th>
+            </tr>
+          </thead>
+          <tbody>${personTableRows}</tbody>
+        </table>
+      </div>
+    </div>
 
-    ${!checkins.length ? `
+    <!-- Histórico de impedimentos -->
+    ${Object.keys(byDate).length ? `
+    <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:16px;">Histórico de impedimentos — últimos 30 dias</div>
+    ${Object.entries(byDate).map(([date, items]) => `
+      <div style="margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">${fmtDate(date)}</div>
+        ${items.map(impedimentCard).join('')}
+      </div>`).join('')}` : ''}
+
+    ${!allCheckins.length ? `
     <div class="empty" style="margin-top:20px;">
-      <div class="empty-icon">✅</div>
-      <div class="empty-text">Nenhum impedimento nos últimos 30 dias</div>
-      <div class="empty-sub">A equipe está sem bloqueios reportados</div>
+      <div class="empty-icon">📋</div>
+      <div class="empty-text">Nenhum check-in registrado nos últimos 30 dias</div>
+      <div class="empty-sub">A equipe ainda não utilizou o check-in diário</div>
     </div>` : ''}
   `;
 }
