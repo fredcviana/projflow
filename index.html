@@ -547,6 +547,9 @@ window._wallSignIn = function() {
     <div class="nav-item" onclick="navigate('approvals')" id="nav-approvals" style="display:none;">
       <span class="nav-icon">✓</span><span>Aprovações</span>
     </div>
+    <div class="nav-item" onclick="navigate('impediments')" id="nav-impediments" style="display:none;">
+      <span class="nav-icon">🚧</span><span id="nav-impediments-label">Impedimentos</span>
+    </div>
     <div class="nav-item" onclick="navigate('sprints')" id="nav-sprints" style="display:none;">
       <span class="nav-icon">⚡</span><span>Sprints</span>
     </div>
@@ -2107,6 +2110,7 @@ function render() {
     risk_criteria: renderRiskCriteria,
     risk_crisis: renderRiskCrisis,
     risk_media: renderRiskMedia,
+    impediments: renderImpediments,
     settings: renderSettings,
   };
   (pages[currentPage] || renderDashboard)();
@@ -2177,6 +2181,22 @@ function _updateNavVisibility() {
   // Relatórios: Gerente e Líder; Analista não visualiza
   show('nav-reports', isGerente || isLider);
 
+  // Impedimentos: Gerente e Líder; mostra badge com count de hoje
+  const navImpediments = document.getElementById('nav-impediments');
+  if (navImpediments) {
+    const visible = isGerente || isLider;
+    navImpediments.style.display = visible ? '' : 'none';
+    if (visible) {
+      const count = _todayCheckins.filter(c => c.has_impediment).length;
+      const lbl   = document.getElementById('nav-impediments-label');
+      if (lbl) {
+        lbl.innerHTML = count > 0
+          ? `Impedimentos <span style="background:#ef4444;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px;">${count}</span>`
+          : 'Impedimentos';
+      }
+    }
+  }
+
   // Gestão de Riscos: Gerente e Líder; Analista não visualiza
   show('nav-risks',   isGerente || isLider);
 
@@ -2203,9 +2223,43 @@ function renderDashboard() {
   const pendingApprovals = state.activities.filter(a => a.approvalStatus === APPROVAL.PENDING).length;
 
   const profile = currentProfile();
-  const showApprovals = (profile === 'gerente' || profile === 'lider') && pendingApprovals > 0;
+  const isGL = profile === 'gerente' || profile === 'lider';
+  const showApprovals = isGL && pendingApprovals > 0;
+
+  // Impedimentos de hoje
+  const todayImpediments = _todayCheckins.filter(c => c.has_impediment);
+  const showImpediments  = isGL && todayImpediments.length > 0;
+
+  // Build impediment cards HTML
+  const impedimentCardsHTML = todayImpediments.map(c => {
+    const person = state.team.find(p => p.id === c.person_id);
+    const pIdx   = state.team.findIndex(p => p.id === c.person_id);
+    const col    = pIdx >= 0 ? getPersonColor(pIdx) : '#f87171';
+    return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid rgba(248,113,113,0.15);">
+      <div class="avatar avatar-sm" style="background:${col}22;color:${col};flex-shrink:0;">${person?initials(person.name):'?'}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;">${person?esc(person.name):'Desconhecido'}</div>
+        <div style="font-size:12px;color:var(--red);margin-top:2px;line-height:1.5;">${esc(c.impediment||'Impedimento sem descrição')}</div>
+      </div>
+    </div>`;
+  }).join('');
 
   document.getElementById('page-content').innerHTML = `
+
+    ${showImpediments ? `
+    <div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.35);border-radius:var(--radius);margin-bottom:16px;overflow:hidden;">
+      <div style="padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:1px solid rgba(248,113,113,0.2);">
+        <span style="font-size:20px;">🚧</span>
+        <div style="flex:1;">
+          <div style="font-size:14px;font-weight:600;color:var(--red);">${todayImpediments.length} impedimento(s) reportado(s) hoje</div>
+          <div style="font-size:12px;color:var(--muted);">Membros da equipe precisam de suporte para desbloquear</div>
+        </div>
+        <button class="btn btn-sm" style="background:rgba(248,113,113,0.15);color:var(--red);border:1px solid rgba(248,113,113,0.3);" onclick="navigate('impediments')">Ver todos →</button>
+      </div>
+      <div style="padding:4px 18px 8px;">
+        ${impedimentCardsHTML}
+      </div>
+    </div>` : ''}
 
     ${showApprovals ? `
     <div style="padding:14px 18px; background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.3); border-radius:var(--radius); margin-bottom:20px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
@@ -8296,6 +8350,158 @@ function getRisk(id)       { return (state.risks||[]).find(r => r.id === id); }
 function getRiskEvents(id) { return (state.riskEvents||[]).filter(e => e.riskId === id); }
 
 // ── RENDER: RISKS DASHBOARD ────────────────────────────────────
+// ============================================================
+//  RENDER: IMPEDIMENTOS
+//  Painel de impedimentos do check-in diário — visível para G+L
+// ============================================================
+async function renderImpediments() {
+  if (!canDo('view_approvals')) { showToast('Sem permissão.'); navigate('dashboard'); return; }
+
+  document.getElementById('topbar-title').textContent = 'Impedimentos';
+  document.getElementById('topbar-sub').textContent   = 'Bloqueios reportados pela equipe nos check-ins';
+  document.getElementById('topbar-actions').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="renderImpediments()">↻ Atualizar</button>`;
+
+  document.getElementById('page-content').innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted);">Carregando impedimentos…</div>`;
+
+  // Load from Supabase — last 30 days
+  let checkins = [];
+  if (sb) {
+    try {
+      const since = new Date(Date.now() - 30*86400000).toISOString().slice(0,10);
+      const { data } = await sb.from('projflow_checkins')
+        .select('*')
+        .eq('has_impediment', true)
+        .gte('check_date', since)
+        .order('check_date', { ascending: false });
+      checkins = data || [];
+    } catch(e) {
+      checkins = _todayCheckins.filter(c => c.has_impediment);
+    }
+  } else {
+    checkins = _todayCheckins.filter(c => c.has_impediment);
+  }
+
+  // Filter by project access for Líder
+  const profile = currentProfile();
+  if (profile === 'lider') {
+    const person = currentPerson();
+    if (person) {
+      // Get people in lider's projects
+      const myProjIds = state.projects
+        .filter(p => (p.leaders||[]).includes(person.id))
+        .map(p => p.id);
+      const myPersonIds = new Set();
+      state.activities.forEach(a => {
+        const d   = a.deliveryId ? state.deliveries.find(d => d.id === a.deliveryId) : null;
+        const pkg = a.packageId  ? (state.packages||[]).find(p => p.id === a.packageId) : null;
+        const d2  = pkg ? state.deliveries.find(d => d.id === pkg.deliveryId) : null;
+        if (myProjIds.includes(d?.projectId || d2?.projectId)) {
+          actPersonIds(a).forEach(id => myPersonIds.add(id));
+        }
+      });
+      checkins = checkins.filter(c => myPersonIds.has(c.person_id));
+    }
+  }
+
+  const today = new Date().toISOString().slice(0,10);
+  const todayOnes = checkins.filter(c => c.check_date === today);
+  const olderOnes = checkins.filter(c => c.check_date !== today);
+
+  // Group older by date
+  const byDate = {};
+  olderOnes.forEach(c => {
+    if (!byDate[c.check_date]) byDate[c.check_date] = [];
+    byDate[c.check_date].push(c);
+  });
+
+  function impedimentCard(c) {
+    const person = state.team.find(p => p.id === c.person_id);
+    const pIdx   = state.team.findIndex(p => p.id === c.person_id);
+    const col    = pIdx >= 0 ? getPersonColor(pIdx) : '#f87171';
+    return `
+      <div style="background:var(--surface);border:1px solid rgba(248,113,113,0.25);border-left:3px solid #ef4444;border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+          <div class="avatar" style="background:${col}22;color:${col};width:34px;height:34px;font-size:13px;flex-shrink:0;">${person?initials(person.name):'?'}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:14px;font-weight:600;">${person?esc(person.name):'Desconhecido'}</div>
+            <div style="font-size:11px;color:var(--muted);">${person?esc(person.role||''):'—'} · Check-in de ${fmtDate(c.check_date)}</div>
+          </div>
+          <span style="background:rgba(248,113,113,0.12);color:#ef4444;border:1px solid rgba(248,113,113,0.3);border-radius:20px;padding:3px 12px;font-size:11px;font-weight:600;">🚧 Impedimento</span>
+        </div>
+
+        <div style="background:rgba(248,113,113,0.06);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:10px;">
+          <div style="font-size:10px;color:#ef4444;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Impedimento reportado</div>
+          <div style="font-size:13px;line-height:1.6;">${esc(c.impediment||'Sem descrição')}</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;">
+          ${c.did_yesterday ? `<div style="background:var(--surface2);border-radius:var(--radius-sm);padding:8px 10px;">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">FEZ ONTEM</div>
+            <div style="line-height:1.5;color:var(--muted);">${esc(c.did_yesterday)}</div>
+          </div>` : ''}
+          ${c.will_do_today ? `<div style="background:var(--surface2);border-radius:var(--radius-sm);padding:8px 10px;">
+            <div style="font-size:10px;color:var(--green);margin-bottom:3px;">FARÁ HOJE</div>
+            <div style="line-height:1.5;color:var(--muted);">${esc(c.will_do_today)}</div>
+          </div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  const todayHTML = todayOnes.length
+    ? todayOnes.map(impedimentCard).join('')
+    : `<div style="padding:20px;text-align:center;color:var(--green);font-size:13px;">✅ Nenhum impedimento reportado hoje</div>`;
+
+  const historyHTML = Object.entries(byDate).map(([date, items]) => `
+    <div style="margin-bottom:20px;">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">${fmtDate(date)}</div>
+      ${items.map(impedimentCard).join('')}
+    </div>`).join('');
+
+  document.getElementById('page-content').innerHTML = `
+
+    <!-- KPIs -->
+    <div class="grid-3" style="margin-bottom:24px;">
+      <div class="stat" style="${todayOnes.length>0?'border-color:rgba(239,68,68,0.4);background:rgba(239,68,68,0.04);':''}">
+        <div class="stat-label">🚧 Hoje</div>
+        <div class="stat-value" style="color:${todayOnes.length>0?'#ef4444':'var(--green)'};">${todayOnes.length}</div>
+        <div class="stat-sub">${todayOnes.length>0?'bloqueio(s) ativos':'sem impedimentos'}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Últimos 30 dias</div>
+        <div class="stat-value">${checkins.length}</div>
+        <div class="stat-sub">impedimentos totais</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Pessoas afetadas</div>
+        <div class="stat-value">${new Set(checkins.map(c=>c.person_id)).size}</div>
+        <div class="stat-sub">com impedimentos recentes</div>
+      </div>
+    </div>
+
+    <!-- Hoje -->
+    <div style="font-size:13px;font-weight:600;color:${todayOnes.length>0?'#ef4444':'var(--muted)'};margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+      🚧 Impedimentos de hoje
+      ${todayOnes.length>0?`<span style="background:#ef4444;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;">${todayOnes.length}</span>`:''}
+    </div>
+    ${todayHTML}
+
+    <!-- Histórico -->
+    ${historyHTML ? `
+    <div style="margin-top:28px;">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:16px;">Histórico — últimos 30 dias</div>
+      ${historyHTML}
+    </div>` : ''}
+
+    ${!checkins.length ? `
+    <div class="empty" style="margin-top:20px;">
+      <div class="empty-icon">✅</div>
+      <div class="empty-text">Nenhum impedimento nos últimos 30 dias</div>
+      <div class="empty-sub">A equipe está sem bloqueios reportados</div>
+    </div>` : ''}
+  `;
+}
+
 function renderRisks() {
   if (!canDo('view_risks')) { showToast('Sem permissão para acessar este módulo.'); navigate('dashboard'); return; }
   document.getElementById('topbar-title').textContent = 'Gestão de Riscos';
