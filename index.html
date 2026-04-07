@@ -3573,9 +3573,10 @@ function renderActTimeline(acts, minDate, maxDate, today) {
     ? pct(today) : null;
 
   let html = `
-    <div class="card" style="padding:0; overflow:hidden;">
-      <!-- Sticky header with months — always visible during vertical scroll -->
-      <div style="overflow-x:auto; padding:20px 20px 0 20px; border-bottom:1px solid var(--border);">
+    <div class="card" style="padding:0; overflow:visible; border-radius:var(--radius);">
+      <!-- Month header — scroll horizontally in sync with body -->
+      <div id="timeline-header-scroll" style="overflow-x:auto; overflow-y:hidden; padding:20px 20px 0 20px; border-bottom:1px solid var(--border); border-radius:var(--radius) var(--radius) 0 0; scrollbar-width:none;" onscroll="document.getElementById('timeline-scroll-body').scrollLeft=this.scrollLeft">
+        <style>#timeline-header-scroll::-webkit-scrollbar{display:none}</style>
         <div style="min-width:700px; padding-bottom:8px;">
           <div style="display:flex; margin-left:${LABEL_W}px; position:relative; height:20px;">
             ${months.map((m,i) => {
@@ -3587,9 +3588,10 @@ function renderActTimeline(acts, minDate, maxDate, today) {
         </div>
       </div>
 
-      <!-- Scrollable body — always scrollable vertically, horizontal auto -->
+      <!-- Scrollable body — vertical + horizontal, syncs header -->
       <div style="overflow-y:auto; overflow-x:auto; max-height:${MAX_VISIBLE_H}px; padding:0 20px 0 20px;"
-           id="timeline-scroll-body">
+           id="timeline-scroll-body"
+           onscroll="var h=document.getElementById('timeline-header-scroll');if(h)h.scrollLeft=this.scrollLeft">
         <div style="min-width:700px; position:relative; padding-top:4px;">
 
           <!-- Rows -->
