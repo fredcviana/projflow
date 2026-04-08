@@ -3246,7 +3246,10 @@ function renderActivityRowInPackage(a, idx, allActs) {
           <span style="font-size:10px;color:var(--muted);font-family:var(--mono);">${al.hours||0}h</span>
           ${getPersonTeamBadge(p.id)}
         </div>` : '';
-      }).join('');    <div class="activity-row" style="grid-template-columns:24px 2fr 1fr 80px 110px 110px 120px 100px;">
+      }).join('');
+
+  return `
+    <div class="activity-row" style="grid-template-columns:24px 2fr 1fr 80px 110px 110px 120px 100px;">
       <div style="font-size:11px; font-weight:600; color:${seqColor}; text-align:center;">${idx+1}</div>
       <div style="min-width:0;">
         <div style="display:flex; align-items:center; gap:6px;">
