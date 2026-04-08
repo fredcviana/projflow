@@ -3371,29 +3371,30 @@ function toggleDelivery(id) {
 function renderActivitiesDashboard() {
   document.getElementById('topbar-title').textContent = 'Atividades';
   document.getElementById('topbar-sub').textContent = 'Visão consolidada de todas as atividades';
-  document.getElementById('topbar-actions').innerHTML = `
-    <select class="form-control" id="act-filter-project" onchange="renderActivitiesDashboard()" style="width:180px; font-size:12px; padding:6px 10px;">
-      <option value="">Todos os projetos</option>
-      ${state.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}
-    </select>
-    <select class="form-control" id="act-filter-person" onchange="renderActivitiesDashboard()" style="width:160px; font-size:12px; padding:6px 10px;">
-      <option value="">Todas as pessoas</option>
-      ${state.team.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}
-    </select>
-    <select class="form-control" id="act-filter-status" onchange="renderActivitiesDashboard()" style="width:150px; font-size:12px; padding:6px 10px;">
-      <option value="">Todos os status</option>
-      <option value="nao_iniciado">Não iniciado</option>
-      <option value="em_andamento">Em andamento</option>
-      <option value="concluido">Concluído</option>
-      <option value="atrasado">Atrasado</option>
-      <option value="bloqueado">Bloqueado</option>
-    </select>
-  `;
 
-  // Collect current filter values (may be null if first render)
+  // ── Ler valores dos filtros ANTES de recriar o HTML ──────────
   const fProject = document.getElementById('act-filter-project')?.value || '';
   const fPerson  = document.getElementById('act-filter-person')?.value  || '';
   const fStatus  = document.getElementById('act-filter-status')?.value  || '';
+
+  document.getElementById('topbar-actions').innerHTML = `
+    <select class="form-control" id="act-filter-project" onchange="renderActivitiesDashboard()" style="width:180px; font-size:12px; padding:6px 10px;">
+      <option value="">Todos os projetos</option>
+      ${state.projects.map(p=>`<option value="${p.id}" ${String(p.id)===fProject?'selected':''}>${esc(p.name)}</option>`).join('')}
+    </select>
+    <select class="form-control" id="act-filter-person" onchange="renderActivitiesDashboard()" style="width:160px; font-size:12px; padding:6px 10px;">
+      <option value="">Todas as pessoas</option>
+      ${state.team.map(p=>`<option value="${p.id}" ${String(p.id)===fPerson?'selected':''}>${esc(p.name)}</option>`).join('')}
+    </select>
+    <select class="form-control" id="act-filter-status" onchange="renderActivitiesDashboard()" style="width:150px; font-size:12px; padding:6px 10px;">
+      <option value="">Todos os status</option>
+      <option value="nao_iniciado" ${fStatus==='nao_iniciado'?'selected':''}>Não iniciado</option>
+      <option value="em_andamento" ${fStatus==='em_andamento'?'selected':''}>Em andamento</option>
+      <option value="concluido"    ${fStatus==='concluido'?'selected':''}>Concluído</option>
+      <option value="atrasado"     ${fStatus==='atrasado'?'selected':''}>Atrasado</option>
+      <option value="bloqueado"    ${fStatus==='bloqueado'?'selected':''}>Bloqueado</option>
+    </select>
+  `;
 
   // Build enriched activity list
   let acts = state.activities.map(a => {
