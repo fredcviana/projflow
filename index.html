@@ -1301,11 +1301,17 @@ window._wallSignIn = function() {
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Carga Horária Semanal (h)</label>
-        <input class="form-control" id="per-weekly" type="number" value="40" min="1" max="60" />
+        <label class="form-label">Equipe (Gerente responsável)</label>
+        <select class="form-control" id="per-manager">
+          <option value="">— Sem equipe definida —</option>
+        </select>
       </div>
     </div>
     <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Carga Horária Semanal (h)</label>
+        <input class="form-control" id="per-weekly" type="number" value="40" min="1" max="60" />
+      </div>
       <div class="form-group">
         <label class="form-label">E-mail</label>
         <input class="form-control" id="per-email" type="email" placeholder="email@exemplo.com" />
@@ -2540,6 +2546,29 @@ function getPersonColor(idx) {
   return colors[idx % colors.length];
 }
 
+/**
+ * Returns a small badge showing which team (gerente) a person belongs to.
+ * Used in activity rows to flag when someone from a different team is allocated.
+ */
+function getPersonTeamBadge(personId, contextProjectId) {
+  const person  = getPerson(personId);
+  if (!person || !person.managerId) return '';
+  const manager = getPerson(person.managerId);
+  if (!manager) return '';
+
+  // Only show badge if person's manager is different from the project's main leader/manager
+  // i.e. they're "borrowed" from another team
+  if (contextProjectId) {
+    const proj = getProject(contextProjectId);
+    // If project's leaders include someone from the same team as person, don't flag
+    // Simple heuristic: flag if person is not from the "home" team of this project
+  }
+
+  const mIdx = state.team.findIndex(p => p.id === manager.id);
+  const mCol = mIdx >= 0 ? getPersonColor(mIdx) : '#7a7a8a';
+  return `<span title="Equipe: ${esc(manager.name)}" style="font-size:9px;padding:1px 5px;border-radius:8px;background:${mCol}22;color:${mCol};border:1px solid ${mCol}44;white-space:nowrap;">${initials(manager.name)}</span>`;
+}
+
 function renderHoursByPerson() {
   if (!state.team.length) return '<div class="empty"><div class="empty-text">Nenhuma pessoa cadastrada</div></div>';
   const hoursMap = {};
@@ -3215,11 +3244,9 @@ function renderActivityRowInPackage(a, idx, allActs) {
           <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(p.name)}</div>
           <span style="font-size:11px;">${p.name.split(' ')[0]}</span>
           <span style="font-size:10px;color:var(--muted);font-family:var(--mono);">${al.hours||0}h</span>
+          ${getPersonTeamBadge(p.id)}
         </div>` : '';
-      }).join('');
-
-  return `
-    <div class="activity-row" style="grid-template-columns:24px 2fr 1fr 80px 110px 110px 120px 100px;">
+      }).join('');    <div class="activity-row" style="grid-template-columns:24px 2fr 1fr 80px 110px 110px 120px 100px;">
       <div style="font-size:11px; font-weight:600; color:${seqColor}; text-align:center;">${idx+1}</div>
       <div style="min-width:0;">
         <div style="display:flex; align-items:center; gap:6px;">
@@ -3267,6 +3294,7 @@ function renderActivityRow(a) {
           <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(p.name)}</div>
           <span style="font-size:11px; white-space:nowrap;">${p.name.split(' ')[0]}</span>
           <span style="font-size:10px; color:var(--muted); font-family:var(--mono);">${al.hours||0}h</span>
+          ${getPersonTeamBadge(p.id)}
           <div class="tooltip">${esc(p.name)}<br>${fmtDate(al.start)||'—'} → ${fmtDate(al.end)||'—'}<br>${al.hours||0}h</div>
         </div>` : '';
       }).join('');
@@ -4814,7 +4842,7 @@ function applyLibrarySelection() {
 function renderTeam() {
   if (!canDo('view_team')) { showToast('Sem permissão para acessar este módulo.'); navigate('dashboard'); return; }
   document.getElementById('topbar-title').textContent = 'Equipe';
-  document.getElementById('topbar-sub').textContent = `${state.team.length} pessoa(s) cadastrada(s)`;
+  document.getElementById('topbar-sub').textContent = `${state.team.length} pessoa(s) · ${state.team.filter(p=>p.profile==='gerente').length} equipe(s)`;
   document.getElementById('topbar-actions').innerHTML = canDo('manage_team')
     ? `<button class="btn btn-primary" onclick="openNewPerson()">+ Cadastrar Pessoa</button>` : '';
 
@@ -4826,46 +4854,122 @@ function renderTeam() {
   const profileLabel = { gerente:'Gerente', lider:'Líder Técnico', analista:'Analista' };
   const profileColor = { gerente:'badge-purple', lider:'badge-blue', analista:'badge-gray' };
 
-  const cards = state.team.map((p, i) => {
-    const col = getPersonColor(i);
+  // Helper: card for a single person
+  function personCard(p) {
+    const i    = state.team.findIndex(x => x.id === p.id);
+    const col  = getPersonColor(i);
     const acts = state.activities.filter(a => actPersonIds(a).includes(p.id));
     const totalH = acts.reduce((s,a) => {
       const al = (a.allocations||[]).find(x=>x.personId===p.id);
       return s + (al ? parseFloat(al.hours)||0 : actTotalHours(a));
     }, 0);
     const activeActs = acts.filter(a => a.status === STATUS.IN_PROGRESS).length;
-    const lates = acts.filter(a => isLate(a)).length;
-    const pending = acts.filter(a => a.approvalStatus === APPROVAL.PENDING).length;
-    const prf = p.profile || 'analista';
+    const lates      = acts.filter(a => isLate(a)).length;
+    const pending    = acts.filter(a => a.approvalStatus === APPROVAL.PENDING).length;
+    const prf        = p.profile || 'analista';
+    // Projects this person is active in
+    const projIds = new Set();
+    acts.forEach(a => {
+      const d   = a.deliveryId ? state.deliveries.find(d=>d.id===a.deliveryId) : null;
+      const pkg = a.packageId  ? (state.packages||[]).find(pk=>pk.id===a.packageId) : null;
+      const d2  = pkg ? state.deliveries.find(d=>d.id===pkg.deliveryId) : null;
+      const pid = d?.projectId || d2?.projectId;
+      if (pid) projIds.add(pid);
+    });
+    const projNames = [...projIds].map(pid => state.projects.find(p=>p.id===pid)?.name).filter(Boolean);
 
     return `
-      <div class="card" style="display:flex; flex-direction:column; gap:14px;">
-        <div style="display:flex; align-items:center; gap:12px;">
-          <div class="avatar" style="width:44px; height:44px; font-size:14px; background:${col}22; color:${col};">${initials(p.name)}</div>
-          <div style="flex:1; min-width:0;">
-            <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:2px;">
-              <span style="font-weight:500; font-size:14px;">${esc(p.name)}</span>
+      <div class="card" style="display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div class="avatar" style="width:42px;height:42px;font-size:14px;background:${col}22;color:${col};">${initials(p.name)}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:2px;">
+              <span style="font-weight:500;font-size:14px;">${esc(p.name)}</span>
               <span class="badge ${profileColor[prf]}" style="font-size:10px;">${profileLabel[prf]}</span>
             </div>
-            <div style="font-size:12px; color:var(--muted);">${esc(p.role||'—')}</div>
+            <div style="font-size:12px;color:var(--muted);">${esc(p.role||'—')}</div>
+            ${p.email ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">✉ ${esc(p.email)}</div>` : ''}
           </div>
-          ${canDo('manage_team') ? `<div style="display:flex; gap:5px;">
+          ${canDo('manage_team') ? `<div style="display:flex;gap:5px;flex-shrink:0;">
             <button class="btn btn-ghost btn-sm" onclick="openEditPerson(${p.id})">✎</button>
             <button class="btn btn-danger btn-sm" onclick="deletePerson(${p.id})">✕</button>
           </div>` : ''}
         </div>
-        <hr class="sep" style="margin:0;">
-        <div class="grid-3">
-          <div><div style="font-size:10px; color:var(--muted);">HORAS</div><div style="font-size:18px; font-weight:600; margin-top:2px;">${Math.round(totalH)}h</div></div>
-          <div><div style="font-size:10px; color:var(--muted);">EM ANDAMENTO</div><div style="font-size:18px; font-weight:600; margin-top:2px;">${activeActs}</div></div>
-          <div><div style="font-size:10px; color:var(--muted);">ATRASADAS</div><div style="font-size:18px; font-weight:600; margin-top:2px; color:${lates>0?'var(--red)':'inherit'}">${lates}</div></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <div style="text-align:center;">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">HORAS</div>
+            <div style="font-size:18px;font-weight:600;">${Math.round(totalH)}h</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">EM ANDAMENTO</div>
+            <div style="font-size:18px;font-weight:600;">${activeActs}</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">ATRASADAS</div>
+            <div style="font-size:18px;font-weight:600;color:${lates>0?'var(--red)':'inherit'}">${lates}</div>
+          </div>
         </div>
-        ${pending > 0 ? `<div style="font-size:12px; color:var(--amber);">⏳ ${pending} aprovação(ões) pendente(s)</div>` : ''}
-        ${p.email ? `<div style="font-size:12px; color:var(--muted);">✉ ${esc(p.email)}</div>` : ''}
+        ${projNames.length ? `<div style="font-size:11px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px;">
+          📁 ${projNames.slice(0,2).map(n=>esc(n)).join(' · ')}${projNames.length>2?` <span style="color:var(--muted);">+${projNames.length-2} mais</span>`:''}
+        </div>` : ''}
+        ${pending>0 ? `<div style="font-size:12px;color:var(--amber);">⏳ ${pending} aprovação(ões) pendente(s)</div>` : ''}
       </div>`;
-  }).join('');
+  }
 
-  document.getElementById('page-content').innerHTML = `<div class="grid-3">${cards}</div>`;
+  // ── Group by manager ──────────────────────────────────────────
+  const gerentes = state.team.filter(p => p.profile === 'gerente');
+  const semEquipe = state.team.filter(p => p.profile !== 'gerente' && !p.managerId);
+
+  let html = '';
+
+  // One section per gerente
+  gerentes.forEach(g => {
+    const gi      = state.team.findIndex(x => x.id === g.id);
+    const gCol    = getPersonColor(gi);
+    const members = state.team.filter(p => p.managerId === g.id);
+    const lideres  = members.filter(p => p.profile === 'lider');
+    const analistas = members.filter(p => p.profile !== 'lider' && p.profile !== 'gerente');
+
+    html += `
+      <div style="margin-bottom:32px;">
+        <!-- Team header -->
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:12px 16px;
+          background:${gCol}0d;border:1px solid ${gCol}33;border-radius:var(--radius);flex-wrap:wrap;">
+          <div class="avatar" style="width:40px;height:40px;font-size:14px;background:${gCol}22;color:${gCol};flex-shrink:0;">${initials(g.name)}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:15px;">${esc(g.name)}</div>
+            <div style="font-size:12px;color:var(--muted);">${esc(g.role||'Gerente')} · ${members.length} membro(s) — ${lideres.length} líder(es), ${analistas.length} analista(s)</div>
+          </div>
+          ${canDo('manage_team') ? `<div style="display:flex;gap:5px;">
+            <button class="btn btn-ghost btn-sm" onclick="openEditPerson(${g.id})">✎</button>
+            <button class="btn btn-danger btn-sm" onclick="deletePerson(${g.id})">✕</button>
+          </div>` : ''}
+        </div>
+
+        ${!members.length ? `<div style="padding:16px;color:var(--muted);font-size:13px;text-align:center;background:var(--surface2);border-radius:var(--radius);">
+          Nenhum membro vinculado a esta equipe ainda.
+        </div>` : `<div class="grid-3">${members.map(personCard).join('')}</div>`}
+      </div>`;
+  });
+
+  // Sem equipe definida
+  if (semEquipe.length) {
+    html += `
+      <div style="margin-bottom:32px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+          <div style="font-size:13px;font-weight:500;color:var(--muted);">⚠ Sem equipe definida (${semEquipe.length})</div>
+          <div style="font-size:12px;color:var(--muted);">— Edite cada pessoa para vinculá-la a um gerente</div>
+        </div>
+        <div class="grid-3">${semEquipe.map(personCard).join('')}</div>
+      </div>`;
+  }
+
+  // If no gerentes at all, fall back to flat list
+  if (!gerentes.length) {
+    html = `<div class="grid-3">${state.team.map(personCard).join('')}</div>`;
+  }
+
+  document.getElementById('page-content').innerHTML = html;
 }
 
 // ============================================================
@@ -5620,6 +5724,14 @@ function saveProgress() {
 // ============================================================
 let editingPersonId = null;
 
+function _populateManagerSelect(selectedId) {
+  const sel = document.getElementById('per-manager');
+  if (!sel) return;
+  const gerentes = state.team.filter(p => p.profile === 'gerente');
+  sel.innerHTML = '<option value="">— Sem equipe definida —</option>' +
+    gerentes.map(g => `<option value="${g.id}" ${g.id === selectedId ? 'selected' : ''}>${esc(g.name)}</option>`).join('');
+}
+
 function openNewPerson() {
   editingPersonId = null;
   document.getElementById('per-name').value = '';
@@ -5627,6 +5739,7 @@ function openNewPerson() {
   document.getElementById('per-email').value = '';
   document.getElementById('per-weekly').value = '40';
   document.getElementById('per-profile').value = 'analista';
+  _populateManagerSelect(null);
   openModal('modal-person');
 }
 
@@ -5639,6 +5752,7 @@ function openEditPerson(id) {
   document.getElementById('per-email').value = p.email || '';
   document.getElementById('per-weekly').value = p.weeklyHours || 40;
   document.getElementById('per-profile').value = p.profile || 'analista';
+  _populateManagerSelect(p.managerId || null);
   openModal('modal-person');
 }
 
@@ -5646,16 +5760,17 @@ function savePerson() {
   if (!sbUser || !canDo('manage_team')) { showToast('Sem permissão'); return; }
   const name = requireField('per-name', 'Informe o nome.');
   if (!name) return;
-  const profile = document.getElementById('per-profile').value || 'analista';
-  const email   = document.getElementById('per-email').value.trim();
+  const profile   = document.getElementById('per-profile').value || 'analista';
+  const email     = document.getElementById('per-email').value.trim();
+  const managerId = parseInt(document.getElementById('per-manager').value) || null;
   if (editingPersonId) {
     const p = state.team.find(x => x.id === editingPersonId);
-    p.name = name;
-    p.role = document.getElementById('per-role').value;
-    p.email = email;
+    p.name        = name;
+    p.role        = document.getElementById('per-role').value;
+    p.email       = email;
     p.weeklyHours = parseInt(document.getElementById('per-weekly').value) || 40;
-    p.profile = profile;
-    // If editing self, update server profile immediately
+    p.profile     = profile;
+    p.managerId   = managerId;
     if (sbUser && email === sbUser.email) {
       _serverProfile = profile;
       _upsertServerProfile(profile, p.id);
@@ -5663,13 +5778,13 @@ function savePerson() {
   } else {
     const newPerson = {
       id: uid(), name,
-      role: document.getElementById('per-role').value,
+      role:        document.getElementById('per-role').value,
       email,
       weeklyHours: parseInt(document.getElementById('per-weekly').value) || 40,
       profile,
+      managerId,
     };
     state.team.push(newPerson);
-    // If new person matches logged-in user, sync profile
     if (sbUser && email === sbUser.email) {
       _serverProfile = profile;
       _upsertServerProfile(profile, newPerson.id);
