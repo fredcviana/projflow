@@ -931,9 +931,7 @@ window._wallSignIn = function() {
       <textarea class="form-control" id="snap-desc" rows="2" placeholder="O que mudou ou por que está criando este snapshot…"></textarea>
     </div>
     <div id="snap-info" style="font-size:12px;color:var(--muted);margin-bottom:16px;">
-      Dados atuais: <strong>${Math.round(JSON.stringify(state||{}).length/1024)}KB</strong> ·
-      Projetos: <strong>${(state?.projects||[]).length}</strong> ·
-      Atividades: <strong>${(state?.activities||[]).length}</strong>
+      Carregando informações dos dados…
     </div>
     <div id="snap-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:12px;padding:8px 12px;background:rgba(248,113,113,0.08);border-radius:var(--radius-sm);"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
