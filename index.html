@@ -915,7 +915,120 @@ window._wallSignIn = function() {
   </div>
 </div>
 
+<!-- Modal Snapshot -->
+<div class="modal-overlay" id="modal-snapshot">
+  <div class="modal" style="width:480px;">
+    <div class="modal-title">💾 Criar Versão (Snapshot)</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.6;">
+      Salva uma cópia completa dos dados agora. Use para guardar o estado antes de uma mudança grande.
+    </p>
+    <div class="form-group">
+      <label class="form-label">Nome desta versão *</label>
+      <input class="form-control" id="snap-label" placeholder="Ex: Antes de adicionar equipes por projeto" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Descrição (opcional)</label>
+      <textarea class="form-control" id="snap-desc" rows="2" placeholder="O que mudou ou por que está criando este snapshot…"></textarea>
+    </div>
+    <div id="snap-info" style="font-size:12px;color:var(--muted);margin-bottom:16px;">
+      Dados atuais: <strong>${Math.round(JSON.stringify(state||{}).length/1024)}KB</strong> ·
+      Projetos: <strong>${(state?.projects||[]).length}</strong> ·
+      Atividades: <strong>${(state?.activities||[]).length}</strong>
+    </div>
+    <div id="snap-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:12px;padding:8px 12px;background:rgba(248,113,113,0.08);border-radius:var(--radius-sm);"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-snapshot')">Cancelar</button>
+      <button class="btn btn-primary" id="snap-btn" onclick="createSnapshot()">💾 Salvar versão</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Equipe do Projeto -->
+<div class="modal-overlay" id="modal-project-team">
+  <div class="modal" style="width:820px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;">
+    <div class="modal-title" style="flex-shrink:0;">Equipe do Projeto</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;flex-shrink:0;">
+      Defina quem está alocado neste projeto, por qual período e com qual dedicação.
+      Apenas pessoas alocadas aqui aparecerão nos seletores de atividades.
+    </div>
+    <!-- Add person -->
+    <div style="margin-bottom:12px;flex-shrink:0;">
+      <select class="form-control" id="ptm-add-person" onchange="ptmAddPerson(this.value)"
+        style="font-size:13px;">
+        <option value="">+ Adicionar pessoa ao projeto…</option>
+      </select>
+    </div>
+    <!-- Column headers -->
+    <div style="display:grid;grid-template-columns:34px 1fr 100px 100px 70px 1fr 28px;gap:8px;padding:6px 12px;
+      font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);flex-shrink:0;">
+      <div></div><div>Pessoa</div><div>Início</div><div>Fim</div><div>Dedic.</div><div>Papel no projeto</div><div></div>
+    </div>
+    <!-- List -->
+    <div id="ptm-list" style="flex:1;overflow-y:auto;min-height:100px;"></div>
+    <!-- Footer -->
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);flex-shrink:0;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-project-team')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveProjectTeam()">Salvar Equipe</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal RACI -->
+<div class="modal-overlay" id="modal-raci">
+  <div class="modal" style="width:900px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;">
+    <div class="modal-title" style="flex-shrink:0;">Matriz RACI</div>
+
+    <!-- Roles definition -->
+    <div style="flex-shrink:0;margin-bottom:16px;">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px;">
+        Papéis do Projeto <span style="font-size:10px;font-weight:400;">(defina os papéis que existem neste projeto)</span>
+      </div>
+      <div id="raci-roles-list"></div>
+      <button class="btn btn-ghost btn-sm" onclick="raciAddRole()" style="margin-top:6px;">+ Adicionar papel</button>
+    </div>
+
+    <hr class="sep" style="flex-shrink:0;">
+
+    <!-- RACI matrix -->
+    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:10px;flex-shrink:0;">
+      Matriz de Responsabilidades
+    </div>
+    <div style="flex:1;overflow:auto;">
+      <table style="width:100%;min-width:500px;border-collapse:collapse;">
+        <thead>
+          <tr style="background:var(--surface2);">
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--muted);min-width:200px;">Atividade / Entrega / Tarefa</th>
+            <th style="padding:8px 8px;font-size:11px;color:var(--muted);min-width:90px;">Tipo</th>
+            <tr id="raci-member-headers" is="tr"></tr>
+          </tr>
+        </thead>
+        <tbody id="raci-rows-list"></tbody>
+      </table>
+    </div>
+
+    <!-- Add row buttons -->
+    <div style="display:flex;gap:8px;margin-top:10px;flex-shrink:0;">
+      <button class="btn btn-ghost btn-sm" onclick="raciAddRow('entrega')">+ Linha de Entrega</button>
+      <button class="btn btn-ghost btn-sm" onclick="raciAddRow('tarefa')">+ Tipo de Tarefa</button>
+    </div>
+
+    <!-- Legend -->
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;padding:10px 0;border-top:1px solid var(--border);flex-shrink:0;font-size:11px;color:var(--muted);">
+      <span><strong style="color:var(--accent2);">R</strong> = Responsável (executa)</span>
+      <span><strong style="color:var(--green);">A</strong> = Aprovador (decide/assina)</span>
+      <span><strong style="color:var(--blue);">C</strong> = Consultado (contribui)</span>
+      <span><strong style="color:var(--muted);">I</strong> = Informado (recebe info)</span>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:12px;border-top:1px solid var(--border);flex-shrink:0;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-raci')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveRaci()">Salvar RACI</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Projeto -->
+
 <div class="modal-overlay" id="modal-project">
   <div class="modal">
     <div class="modal-title" id="modal-project-title">Novo Projeto</div>
@@ -2993,62 +3106,71 @@ function renderProjectDetail() {
   const p = state.projects.find(x => x.id === currentProjectId);
   if (!p) { navigate('projects'); return; }
 
-  const profile    = currentProfile();
-  const canEdit    = canEditProject(p.id);
-  const leaders    = getProjectLeaders(p.id);
-  const hasLeaders = leaders.length > 0;
+  const profile  = currentProfile();
+  const canEdit  = canEditProject(p.id);
+  const leaders  = getProjectLeaders(p.id);
 
+  // Active tab — persisted per project
+  const tabKey    = 'pf_ptab_' + p.id;
+  const activeTab = localStorage.getItem(tabKey) || 'entregas';
+
+  function setTab(t) {
+    localStorage.setItem(tabKey, t);
+    renderProjectDetail();
+  }
+  window._projSetTab = setTab;
+
+  // Data
+  const deliveries = state.deliveries.filter(d => d.projectId === p.id);
+  const pkgIds     = (state.packages||[]).filter(pk => deliveries.some(d => d.id === pk.deliveryId)).map(pk => pk.id);
+  const allActs    = state.activities.filter(a =>
+    deliveries.some(d => d.id === a.deliveryId) || pkgIds.includes(a.packageId)
+  );
+  const totalH = allActs.reduce((s,a) => s+actTotalHours(a), 0);
+  const doneH  = allActs.filter(a => a.status === STATUS.DONE).reduce((s,a) => s+actTotalHours(a), 0);
+  const pct    = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
+
+  // Project team allocation
+  const teamAlloc = p.teamAlloc || [];
+  const allocCount = teamAlloc.length;
+
+  // Topbar
   document.getElementById('topbar-title').textContent = p.name;
   document.getElementById('topbar-sub').textContent = p.client || 'Projeto';
   document.getElementById('topbar-actions').innerHTML = `
-    ${canEdit ? `<button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Entrega</button>` : ''}
-    ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openEditProject(${p.id})">✎ Editar Projeto</button>` : ''}
+    ${canEdit && activeTab === 'entregas' ? `<button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Entrega</button>` : ''}
+    ${canEdit && activeTab === 'equipe'   ? `<button class="btn btn-primary btn-sm" onclick="openProjectTeamModal(${p.id})">✎ Gerenciar Equipe</button>` : ''}
+    ${canEdit && activeTab === 'raci'     ? `<button class="btn btn-primary btn-sm" onclick="openRaciModal(${p.id})">✎ Editar RACI</button>` : ''}
+    ${canEdit ? `<button class="btn btn-ghost btn-sm" onclick="openEditProject(${p.id})">✎ Editar</button>` : ''}
   `;
 
-  const deliveries = state.deliveries.filter(d => d.projectId === p.id);
-  const allActs    = state.activities.filter(a => deliveries.some(d => d.id === a.deliveryId));
-  const totalH     = allActs.reduce((s,a) => s+actTotalHours(a), 0);
-  const doneH      = allActs.filter(a => a.status === STATUS.DONE).reduce((s,a) => s+actTotalHours(a), 0);
-  const pct        = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
+  // Tab contents
+  let tabContent = '';
 
-  let deliveriesHTML = '';
-  if (!deliveries.length) {
-    deliveriesHTML = `<div class="empty"><div class="empty-icon">◻</div><div class="empty-text">Nenhuma entrega cadastrada</div><div class="empty-sub">Clique em "+ Entrega" para adicionar</div></div>`;
-  } else {
-    deliveriesHTML = deliveries.map(d => renderDeliveryCard(d, p)).join('');
+  if (activeTab === 'entregas') {
+    tabContent = deliveries.length
+      ? deliveries.map(d => renderDeliveryCard(d, p)).join('')
+      : `<div class="empty"><div class="empty-icon">◻</div><div class="empty-text">Nenhuma entrega cadastrada</div><div class="empty-sub">Clique em "+ Entrega" para adicionar</div></div>`;
+
+  } else if (activeTab === 'equipe') {
+    tabContent = renderProjectTeamTab(p, teamAlloc);
+
+  } else if (activeTab === 'raci') {
+    tabContent = renderRaciTab(p, deliveries);
   }
 
   document.getElementById('page-content').innerHTML = `
     <div class="breadcrumb">
       <a onclick="navigate('projects')">Projetos</a>
-      <span>›</span>
-      <span>${esc(p.name)}</span>
+      <span>›</span><span>${esc(p.name)}</span>
     </div>
 
-
-    ${hasLeaders || profile === 'gerente' ? `
-    <div style="display:flex; align-items:center; gap:12px; padding:12px 16px; background:var(--surface2);
-      border-radius:var(--radius-sm); margin-bottom:20px; flex-wrap:wrap;">
-      <span style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Líderes Técnicos</span>
-      ${hasLeaders
-        ? leaders.map(l => {
-            const li = state.team.findIndex(t => t.id === l.id);
-            const col = li >= 0 ? getPersonColor(li) : '#7a7a8a';
-            return `<div style="display:inline-flex; align-items:center; gap:5px;">
-              <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(l.name)}</div>
-              <span style="font-size:12px;">${esc(l.name)}</span>
-            </div>`;
-          }).join('')
-        : `<span style="font-size:12px; color:var(--muted);">Nenhum líder vinculado — aprovações pelo Gerente</span>`}
-      ${profile === 'gerente' ? `<button class="btn btn-ghost btn-sm" style="margin-left:auto; font-size:11px;"
-        onclick="openEditProject(${p.id})">✎ Editar líderes</button>` : ''}
-    </div>` : ''}
-
-    <div class="grid-4" style="margin-bottom:24px;">
+    <!-- KPIs -->
+    <div class="grid-4" style="margin-bottom:20px;">
       <div class="stat">
         <div class="stat-label">Progresso</div>
         <div class="stat-value">${pct}%</div>
-        <div class="stat-sub">${Math.round(doneH)}h / ${totalH}h</div>
+        <div class="stat-sub">${Math.round(doneH)}h / ${Math.round(totalH)}h</div>
       </div>
       <div class="stat">
         <div class="stat-label">Entregas</div>
@@ -3056,24 +3178,412 @@ function renderProjectDetail() {
         <div class="stat-sub">${deliveries.filter(d => d.status === STATUS.DONE).length} concluídas</div>
       </div>
       <div class="stat">
-        <div class="stat-label">Atividades</div>
-        <div class="stat-value">${allActs.length}</div>
-        <div class="stat-sub">${allActs.filter(a=>a.status==='concluido').length} concluídas</div>
+        <div class="stat-label">Equipe no projeto</div>
+        <div class="stat-value" style="color:${allocCount?'var(--accent2)':'var(--muted)'};">${allocCount}</div>
+        <div class="stat-sub">${allocCount ? 'pessoa(s) alocada(s)' : 'ninguém alocado ainda'}</div>
       </div>
       <div class="stat">
         <div class="stat-label">Horas Alocadas</div>
-        <div class="stat-value">${totalH.toLocaleString('pt-BR')}</div>
+        <div class="stat-value">${Math.round(totalH).toLocaleString('pt-BR')}</div>
         <div class="stat-sub">horas totais</div>
       </div>
     </div>
 
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-      <div class="section-title">Entregas e Atividades</div>
-      ${canEdit ? `<button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Nova Entrega</button>` : ''}
+    <!-- Tabs -->
+    <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border);">
+      ${[
+        ['entregas', '⬡', `Entregas e Atividades`],
+        ['equipe',   '◎', `Equipe do Projeto${allocCount ? ` (${allocCount})` : ''}`],
+        ['raci',     '▦', 'Matriz RACI'],
+      ].map(([tab, icon, label]) => `
+        <div onclick="_projSetTab('${tab}')" style="padding:10px 20px;cursor:pointer;font-size:13px;font-weight:500;
+          border-bottom:2px solid ${activeTab===tab?'var(--accent)':'transparent'};margin-bottom:-2px;
+          color:${activeTab===tab?'var(--text)':'var(--muted)'};transition:all 0.15s;display:flex;align-items:center;gap:6px;">
+          <span>${icon}</span>${label}
+        </div>`).join('')}
     </div>
-    ${deliveriesHTML}
+
+    <!-- Tab content -->
+    ${activeTab === 'entregas' && canEdit ? `<div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+      <button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Nova Entrega</button>
+    </div>` : ''}
+    ${tabContent}
   `;
 }
+
+// ── PROJECT TEAM TAB ──────────────────────────────────────────
+function renderProjectTeamTab(p, teamAlloc) {
+  if (!teamAlloc.length) return `
+    <div class="empty">
+      <div class="empty-icon">◎</div>
+      <div class="empty-text">Nenhuma pessoa alocada neste projeto</div>
+      <div class="empty-sub">Clique em "Gerenciar Equipe" para adicionar pessoas ao projeto</div>
+    </div>`;
+
+  const today = new Date().toISOString().slice(0,10);
+
+  const rows = teamAlloc.map(ta => {
+    const person = state.team.find(x => x.id === ta.personId);
+    if (!person) return '';
+    const pIdx = state.team.findIndex(x => x.id === ta.personId);
+    const col  = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+    const manager = person.managerId ? state.team.find(x => x.id === person.managerId) : null;
+    const active = (!ta.endDate || ta.endDate >= today) && (!ta.startDate || ta.startDate <= today);
+
+    return `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:12px 16px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="avatar" style="background:${col}22;color:${col};width:34px;height:34px;font-size:13px;">${initials(person.name)}</div>
+          <div>
+            <div style="font-size:13px;font-weight:500;">${esc(person.name)}</div>
+            <div style="font-size:11px;color:var(--muted);">${esc(person.role||'—')}</div>
+          </div>
+        </div>
+      </td>
+      <td style="padding:12px 8px;">
+        <span class="badge ${person.profile==='gerente'?'badge-purple':person.profile==='lider'?'badge-blue':'badge-gray'}" style="font-size:10px;">
+          ${{gerente:'Gerente',lider:'Líder Técnico',analista:'Analista'}[person.profile]||'—'}
+        </span>
+      </td>
+      <td style="padding:12px 8px;font-size:12px;color:var(--muted);">
+        ${manager ? `<span style="font-size:11px;padding:2px 8px;background:var(--surface2);border-radius:10px;">${esc(manager.name.split(' ')[0])}</span>` : '—'}
+      </td>
+      <td style="padding:12px 8px;font-size:12px;">
+        ${ta.startDate ? fmtDate(ta.startDate) : '—'} → ${ta.endDate ? fmtDate(ta.endDate) : '—'}
+      </td>
+      <td style="padding:12px 8px;text-align:center;">
+        ${ta.dedication ? `<span style="font-size:13px;font-weight:600;color:var(--accent2);">${ta.dedication}%</span>` : '—'}
+      </td>
+      <td style="padding:12px 8px;">
+        <span class="badge ${active?'badge-green':'badge-gray'}" style="font-size:10px;">${active?'Ativo':'Inativo'}</span>
+      </td>
+      <td style="padding:12px 8px;">
+        <span style="font-size:12px;color:var(--muted);">${esc(ta.role||'—')}</span>
+      </td>
+      ${canEditProject(p.id) ? `<td style="padding:12px 8px;">
+        <button class="btn btn-danger btn-sm" style="padding:2px 7px;" onclick="removeFromProjectTeam(${p.id},${ta.personId})">✕</button>
+      </td>` : '<td></td>'}
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="overflow-x:auto;">
+        <table style="width:100%;min-width:700px;border-collapse:collapse;">
+          <thead>
+            <tr style="background:var(--surface2);">
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--muted);">Pessoa</th>
+              <th style="padding:10px 8px;font-size:11px;font-weight:600;color:var(--muted);">Perfil</th>
+              <th style="padding:10px 8px;font-size:11px;font-weight:600;color:var(--muted);">Equipe base</th>
+              <th style="padding:10px 8px;font-size:11px;font-weight:600;color:var(--muted);">Período no projeto</th>
+              <th style="padding:10px 8px;text-align:center;font-size:11px;font-weight:600;color:var(--muted);">Dedicação</th>
+              <th style="padding:10px 8px;font-size:11px;font-weight:600;color:var(--muted);">Status</th>
+              <th style="padding:10px 8px;font-size:11px;font-weight:600;color:var(--muted);">Papel no projeto</th>
+              <th style="padding:10px 8px;"></th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ── RACI TAB ──────────────────────────────────────────────────
+function renderRaciTab(p, deliveries) {
+  const raci      = p.raci || { roles: [], rows: [] };
+  const roles     = raci.roles || [];
+  const raciRows  = raci.rows  || [];
+  const teamAlloc = p.teamAlloc || [];
+  const members   = teamAlloc.map(ta => state.team.find(x => x.id === ta.personId)).filter(Boolean);
+
+  if (!roles.length && !members.length) return `
+    <div class="empty">
+      <div class="empty-icon">▦</div>
+      <div class="empty-text">Matriz RACI não configurada</div>
+      <div class="empty-sub">Aloque pessoas ao projeto e clique em "Editar RACI" para começar</div>
+    </div>`;
+
+  if (!roles.length) return `
+    <div style="padding:20px;background:var(--surface2);border-radius:var(--radius);font-size:13px;color:var(--muted);">
+      Nenhum papel definido ainda. Clique em "Editar RACI" para configurar os papéis e responsabilidades.
+    </div>`;
+
+  const RACI_COLORS = {
+    R: { bg:'rgba(108,99,255,0.15)', color:'var(--accent2)', label:'R' },
+    A: { bg:'rgba(52,211,153,0.15)', color:'var(--green)',   label:'A' },
+    C: { bg:'rgba(96,165,250,0.15)', color:'var(--blue)',    label:'C' },
+    I: { bg:'rgba(122,122,138,0.12)',color:'var(--muted)',   label:'I' },
+  };
+
+  const headerCols = members.map(m => {
+    const pIdx = state.team.findIndex(x => x.id === m.id);
+    const col  = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+    return `<th style="padding:10px 8px;text-align:center;font-size:11px;color:var(--muted);min-width:70px;font-weight:600;">
+      <div class="avatar avatar-sm" style="background:${col}22;color:${col};margin:0 auto 4px;">${initials(m.name)}</div>
+      <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64px;">${esc(m.name.split(' ')[0])}</div>
+    </th>`;
+  }).join('');
+
+  const bodyRows = raciRows.map(row => {
+    const cells = members.map(m => {
+      const val = (row.assignments || {})[m.id] || '';
+      const cfg = RACI_COLORS[val] || {};
+      return `<td style="padding:8px;text-align:center;">
+        ${val ? `<span style="display:inline-block;width:28px;height:28px;line-height:28px;border-radius:6px;
+          background:${cfg.bg};color:${cfg.color};font-size:12px;font-weight:700;">${cfg.label}</span>` : ''}
+      </td>`;
+    }).join('');
+
+    const typeColor = row.type === 'entrega' ? 'var(--accent2)' : 'var(--teal)';
+    return `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:10px 16px;">
+        <div style="font-size:13px;font-weight:500;">${esc(row.name)}</div>
+        <div style="font-size:10px;color:${typeColor};text-transform:uppercase;letter-spacing:0.4px;margin-top:2px;">${row.type==='entrega'?'Entrega':'Tipo de tarefa'}</div>
+      </td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  // Legend
+  const legend = Object.entries(RACI_COLORS).map(([k,v]) =>
+    `<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);">
+      <span style="display:inline-block;width:22px;height:22px;line-height:22px;border-radius:5px;background:${v.bg};color:${v.color};font-size:11px;font-weight:700;text-align:center;">${v.label}</span>
+      ${{R:'Responsável (executa)',A:'Aprovador (decide)',C:'Consultado (contribui)',I:'Informado (recebe)'}[k]}
+    </div>`
+  ).join('');
+
+  // Custom roles legend
+  const rolesLegend = roles.length ? `
+    <div style="margin-top:12px;padding:12px 16px;background:var(--surface2);border-radius:var(--radius-sm);">
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px;">Papéis definidos neste projeto</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${roles.map(r => `<div style="font-size:12px;padding:3px 10px;background:var(--surface);border:1px solid var(--border);border-radius:20px;">
+          <strong>${esc(r.name)}</strong>${r.desc ? ` — ${esc(r.desc)}` : ''}
+        </div>`).join('')}
+      </div>
+    </div>` : '';
+
+  return `
+    ${rolesLegend}
+    <div class="card" style="padding:0;overflow:hidden;margin-top:12px;">
+      <div style="overflow-x:auto;">
+        <table style="width:100%;min-width:500px;border-collapse:collapse;">
+          <thead>
+            <tr style="background:var(--surface2);">
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--muted);min-width:200px;">Atividade / Entrega / Tarefa</th>
+              ${headerCols}
+            </tr>
+          </thead>
+          <tbody>${bodyRows || `<tr><td colspan="${members.length+1}" style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Nenhuma linha definida. Clique em "Editar RACI" para adicionar.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;">${legend}</div>`;
+}
+
+// ── PROJECT TEAM MODAL ────────────────────────────────────────
+let _ptmProjectId = null;
+let _ptmAlloc     = [];
+
+function openProjectTeamModal(projectId) {
+  _ptmProjectId = projectId;
+  const p = getProject(projectId);
+  _ptmAlloc = JSON.parse(JSON.stringify(p.teamAlloc || []));
+  _renderPtmList();
+  openModal('modal-project-team');
+}
+
+function _renderPtmList() {
+  const el = document.getElementById('ptm-list');
+  if (!el) return;
+
+  // People already allocated
+  const allocatedIds = new Set(_ptmAlloc.map(a => a.personId));
+
+  if (!_ptmAlloc.length) {
+    el.innerHTML = `<div style="padding:16px;color:var(--muted);font-size:13px;text-align:center;">Nenhuma pessoa alocada ainda.</div>`;
+  } else {
+    el.innerHTML = _ptmAlloc.map((ta, i) => {
+      const person = state.team.find(x => x.id === ta.personId);
+      if (!person) return '';
+      const pIdx = state.team.findIndex(x => x.id === ta.personId);
+      const col  = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+      const manager = person.managerId ? state.team.find(x => x.id === person.managerId) : null;
+      return `<div style="display:grid;grid-template-columns:34px 1fr 100px 100px 70px 1fr 28px;gap:8px;align-items:center;
+        padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:6px;">
+        <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(person.name)}</div>
+        <div>
+          <div style="font-size:13px;font-weight:500;">${esc(person.name)}</div>
+          <div style="font-size:10px;color:var(--muted);">${manager?esc(manager.name.split(' ')[0]+' team'):'Sem equipe'}</div>
+        </div>
+        <input type="date" value="${ta.startDate||''}" placeholder="Início"
+          onchange="_ptmAlloc[${i}].startDate=this.value"
+          style="background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:11px;padding:4px 6px;font-family:var(--font);" />
+        <input type="date" value="${ta.endDate||''}" placeholder="Fim"
+          onchange="_ptmAlloc[${i}].endDate=this.value"
+          style="background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:11px;padding:4px 6px;font-family:var(--font);" />
+        <div style="display:flex;align-items:center;gap:3px;">
+          <input type="number" min="1" max="100" value="${ta.dedication||''}" placeholder="%" title="% de dedicação"
+            onchange="_ptmAlloc[${i}].dedication=parseInt(this.value)||null"
+            style="width:52px;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:12px;padding:4px 6px;font-family:var(--font);" />
+          <span style="font-size:11px;color:var(--muted);">%</span>
+        </div>
+        <input type="text" value="${esc(ta.role||'')}" placeholder="Papel neste projeto (ex: Coord. técnico)"
+          onchange="_ptmAlloc[${i}].role=this.value"
+          style="width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:12px;padding:4px 8px;font-family:var(--font);" />
+        <button onclick="_ptmAlloc.splice(${i},1);_renderPtmList()"
+          style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.2);border-radius:5px;color:var(--red);cursor:pointer;width:28px;height:28px;font-size:13px;">✕</button>
+      </div>`;
+    }).join('');
+  }
+
+  // Add person select
+  const available = state.team.filter(p => !allocatedIds.has(p.id));
+  const addSel = document.getElementById('ptm-add-person');
+  if (addSel) {
+    addSel.innerHTML = '<option value="">+ Adicionar pessoa ao projeto…</option>' +
+      available.map(p => `<option value="${p.id}">${esc(p.name)} — ${esc(p.role||p.profile)}</option>`).join('');
+  }
+}
+
+function ptmAddPerson(val) {
+  const id = parseInt(val);
+  if (!id) return;
+  if (_ptmAlloc.find(a => a.personId === id)) return;
+  _ptmAlloc.push({ personId: id, startDate: '', endDate: '', dedication: null, role: '' });
+  _renderPtmList();
+  document.getElementById('ptm-add-person').value = '';
+}
+
+function saveProjectTeam() {
+  const p = getProject(_ptmProjectId);
+  if (!p) return;
+  p.teamAlloc = JSON.parse(JSON.stringify(_ptmAlloc));
+  closeModal('modal-project-team');
+  saveState();
+  renderProjectDetail();
+  showSuccess('Equipe do projeto salva!');
+}
+
+function removeFromProjectTeam(projectId, personId) {
+  const p = getProject(projectId);
+  if (!p) return;
+  p.teamAlloc = (p.teamAlloc||[]).filter(a => a.personId !== personId);
+  saveState();
+  renderProjectDetail();
+}
+
+// ── RACI MODAL ────────────────────────────────────────────────
+let _raciProjectId = null;
+let _raciData      = { roles: [], rows: [] };
+
+function openRaciModal(projectId) {
+  _raciProjectId = projectId;
+  const p = getProject(projectId);
+  _raciData = JSON.parse(JSON.stringify(p.raci || { roles: [], rows: [] }));
+  _renderRaciModal();
+  openModal('modal-raci');
+}
+
+function _renderRaciModal() {
+  const p       = getProject(_raciProjectId);
+  const members = (p.teamAlloc||[]).map(ta => state.team.find(x => x.id === ta.personId)).filter(Boolean);
+  const deliveries = state.deliveries.filter(d => d.projectId === _raciProjectId);
+
+  // Roles section
+  const rolesEl = document.getElementById('raci-roles-list');
+  if (rolesEl) {
+    rolesEl.innerHTML = (_raciData.roles||[]).map((r,i) => `
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+        <input class="form-control" value="${esc(r.name)}" placeholder="Nome do papel (ex: Coordenador)"
+          onchange="_raciData.roles[${i}].name=this.value"
+          style="flex:1;font-size:12px;padding:6px 8px;" />
+        <input class="form-control" value="${esc(r.desc||'')}" placeholder="Descrição (opcional)"
+          onchange="_raciData.roles[${i}].desc=this.value"
+          style="flex:2;font-size:12px;padding:6px 8px;" />
+        <button onclick="_raciData.roles.splice(${i},1);_renderRaciModal()"
+          style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.2);border-radius:5px;color:var(--red);cursor:pointer;width:28px;height:28px;">✕</button>
+      </div>`).join('') ||
+      `<div style="font-size:12px;color:var(--muted);padding:8px 0;">Nenhum papel definido.</div>`;
+  }
+
+  // Rows (RACI matrix rows)
+  const rowsEl = document.getElementById('raci-rows-list');
+  if (!rowsEl) return;
+
+  const VALS = ['','R','A','C','I'];
+
+  rowsEl.innerHTML = (_raciData.rows||[]).map((row,ri) => {
+    const cells = members.map(m => {
+      const cur = (row.assignments||{})[m.id] || '';
+      const opts = VALS.map(v => `<option value="${v}" ${cur===v?'selected':''}>${v||'—'}</option>`).join('');
+      const COLORS = {R:'var(--accent2)',A:'var(--green)',C:'var(--blue)',I:'var(--muted)','':'var(--muted)'};
+      return `<td style="padding:6px 4px;text-align:center;">
+        <select onchange="_raciData.rows[${ri}].assignments=_raciData.rows[${ri}].assignments||{};_raciData.rows[${ri}].assignments[${m.id}]=this.value"
+          style="width:52px;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;
+          color:${COLORS[cur]};font-size:12px;padding:3px 4px;font-family:var(--font);font-weight:600;text-align:center;">
+          ${opts}
+        </select>
+      </td>`;
+    }).join('');
+
+    return `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:8px 12px;">
+        <input class="form-control" value="${esc(row.name)}" placeholder="Nome da tarefa/entrega"
+          onchange="_raciData.rows[${ri}].name=this.value"
+          style="font-size:12px;padding:5px 8px;" />
+      </td>
+      <td style="padding:8px 8px;">
+        <select onchange="_raciData.rows[${ri}].type=this.value"
+          style="background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:11px;padding:5px 6px;font-family:var(--font);">
+          <option value="entrega" ${row.type==='entrega'?'selected':''}>Entrega</option>
+          <option value="tarefa"  ${row.type==='tarefa'?'selected':''}>Tipo de tarefa</option>
+        </select>
+      </td>
+      ${cells}
+      <td style="padding:8px 4px;">
+        <button onclick="_raciData.rows.splice(${ri},1);_renderRaciModal()"
+          style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.2);border-radius:5px;color:var(--red);cursor:pointer;width:28px;height:28px;font-size:13px;">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Update member headers
+  const headEl = document.getElementById('raci-member-headers');
+  if (headEl) {
+    headEl.innerHTML = members.map(m => {
+      const pIdx = state.team.findIndex(x => x.id === m.id);
+      const col  = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
+      return `<th style="padding:8px 4px;text-align:center;font-size:10px;color:var(--muted);min-width:60px;">
+        <div class="avatar avatar-sm" style="background:${col}22;color:${col};margin:0 auto 3px;">${initials(m.name)}</div>
+        ${esc(m.name.split(' ')[0])}
+      </th>`;
+    }).join('') + '<th style="width:36px;"></th>';
+  }
+}
+
+function raciAddRole() {
+  _raciData.roles = _raciData.roles || [];
+  _raciData.roles.push({ name: '', desc: '' });
+  _renderRaciModal();
+}
+
+function raciAddRow(type) {
+  _raciData.rows = _raciData.rows || [];
+  _raciData.rows.push({ name: '', type: type || 'entrega', assignments: {} });
+  _renderRaciModal();
+}
+
+function saveRaci() {
+  const p = getProject(_raciProjectId);
+  if (!p) return;
+  p.raci = JSON.parse(JSON.stringify(_raciData));
+  closeModal('modal-raci');
+  saveState();
+  renderProjectDetail();
+  showSuccess('Matriz RACI salva!');
+}
+
 
 function renderDeliveryCard(d, p) {
   // All activities directly in this delivery (no package)
@@ -5060,6 +5570,20 @@ function renderSettings() {
       </div>
     </div>` : ''}
 
+    <div class="section-title" style="margin-bottom:16px;">Versões — Backup na Nuvem</div>
+    <div class="card" style="margin-bottom:24px; border-color:rgba(108,99,255,0.3);">
+      <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:14px;font-weight:500;margin-bottom:4px;">💾 Criar snapshot agora</div>
+          <div style="font-size:12px;color:var(--muted);">Salva uma cópia completa dos dados no Supabase. Você pode restaurar qualquer versão a qualquer momento.</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openSnapshotModal()">+ Criar versão</button>
+      </div>
+      <div id="snapshots-list">
+        <div style="font-size:12px;color:var(--muted);padding:8px 0;">Carregando versões…</div>
+      </div>
+    </div>
+
     <div class="section-title" style="margin-bottom:16px;">Backup Local</div>
     <div class="grid-2" style="margin-bottom:24px;">
       <div class="card">
@@ -5115,6 +5639,9 @@ function renderSettings() {
       <button class="btn btn-danger" onclick="clearAllData()">✕ Apagar Tudo</button>
     </div>
   `;
+
+  // Load snapshots list async
+  _loadSnapshotsList();
 }
 
 // ============================================================
@@ -5480,14 +6007,38 @@ function renderAllocationList() {
     return;
   }
 
+function renderAllocationList() {
+  const el = document.getElementById('a-allocations-list');
+  if (!el) return;
+
+  const actStart    = document.getElementById('a-start')?.value || '';
+  const actEnd      = document.getElementById('a-end')?.value   || '';
+  const hasActDates = actStart || actEnd;
+
+  // Filter people by project team if defined
+  const projectTeam = _getActivityModalProjectTeam();
+  const teamOptions = projectTeam.length ? projectTeam : state.team;
+  const isFiltered  = projectTeam.length > 0;
+
+  if (!_editingAllocations.length) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:8px 0;">
+      Nenhuma pessoa alocada ainda. Clique em "+ Adicionar pessoa".
+      ${isFiltered ? `<span style="color:var(--accent2);"> Exibindo ${teamOptions.length} pessoa(s) da equipe do projeto.</span>` : ''}
+    </div>`;
+    return;
+  }
+
   el.innerHTML = _editingAllocations.map((al, i) => `
-    <div style="display:grid; grid-template-columns:1fr 80px 1fr 1fr auto; gap:8px; align-items:end; margin-bottom:8px; padding:10px 12px; background:var(--surface2); border-radius:var(--radius-sm);">
+    <div style="display:grid;grid-template-columns:1fr 80px 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm);">
       <div>
         <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px;">PESSOA</label>
         <select onchange="_editingAllocations[${i}].personId=parseInt(this.value)||null"
           style="width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:13px;padding:6px 8px;font-family:var(--font);">
           <option value="">— Selecionar —</option>
-          ${state.team.map(p => `<option value="${p.id}" ${p.id===al.personId?'selected':''}>${esc(p.name)}</option>`).join('')}
+          ${teamOptions.map(p => `<option value="${p.id}" ${p.id===al.personId?'selected':''}>${esc(p.name)}</option>`).join('')}
+          ${isFiltered && al.personId && !teamOptions.find(p=>p.id===al.personId) ?
+            (() => { const p=state.team.find(x=>x.id===al.personId); return p?`<option value="${p.id}" selected>⚠ ${esc(p.name)} (fora da equipe do projeto)</option>`:''; })()
+            : ''}
         </select>
       </div>
       <div>
@@ -5497,9 +6048,9 @@ function renderAllocationList() {
           style="width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:13px;padding:6px 8px;font-family:var(--font);" />
       </div>
       <div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:3px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
           <label style="font-size:10px;color:var(--muted);">INÍCIO</label>
-          ${hasActDates ? `<button onclick="copyActDatesToAlloc(${i})" title="Copiar prazo da atividade"
+          ${hasActDates ? `<button onclick="copyActDatesToAlloc(${i})"
             style="background:none;border:none;cursor:pointer;font-size:10px;color:var(--accent2);padding:0;line-height:1;">↙ copiar prazo</button>` : ''}
         </div>
         <input type="date" value="${al.start||''}" id="al-start-${i}"
@@ -5512,8 +6063,8 @@ function renderAllocationList() {
           onchange="_editingAllocations[${i}].end=this.value"
           style="width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:12px;padding:6px 8px;font-family:var(--font);" />
       </div>
-      <div style="display:flex; flex-direction:column; gap:4px;">
-        <button class="btn btn-danger btn-sm" style="padding:4px 8px;" onclick="_editingAllocations.splice(${i},1); renderAllocationList()" title="Remover">✕</button>
+      <div>
+        <button class="btn btn-danger btn-sm" style="padding:4px 8px;" onclick="_editingAllocations.splice(${i},1);renderAllocationList()" title="Remover">✕</button>
       </div>
     </div>`).join('') +
     (hasActDates && _editingAllocations.length > 1 ? `
@@ -5522,6 +6073,24 @@ function renderAllocationList() {
         ↙ Copiar prazo da atividade para todas as pessoas
       </button>
     </div>` : '');
+}
+
+function _getActivityModalProjectTeam() {
+  const deliveryId = parseInt(document.getElementById('a-delivery-id')?.value) || null;
+  const packageId  = parseInt(document.getElementById('a-package-id')?.value)  || null;
+  let projectId = null;
+  if (deliveryId) {
+    projectId = getDelivery(deliveryId)?.projectId || null;
+  } else if (packageId) {
+    const pkg = getPackage(packageId);
+    projectId = pkg ? getDelivery(pkg.deliveryId)?.projectId : null;
+  }
+  if (!projectId) projectId = currentProjectId;
+  if (!projectId) return [];
+  const proj = getProject(projectId);
+  const alloc = proj?.teamAlloc || [];
+  if (!alloc.length) return [];
+  return alloc.map(ta => state.team.find(p => p.id === ta.personId)).filter(Boolean);
 }
 
 function copyActDatesToAlloc(i) {
@@ -5809,6 +6378,223 @@ function deletePerson(id) {
 // ============================================================
 //  SETTINGS
 // ============================================================
+// ============================================================
+//  SNAPSHOTS — backup e restauração de versões no Supabase
+// ============================================================
+const MAX_SNAPSHOTS = 15; // máximo de versões guardadas
+
+function openSnapshotModal() {
+  const el = document.getElementById('snap-info');
+  if (el) {
+    const sz = Math.round(JSON.stringify(state).length / 1024);
+    el.innerHTML = `Dados atuais: <strong>${sz}KB</strong> · Projetos: <strong>${state.projects.length}</strong> · Atividades: <strong>${state.activities.length}</strong>`;
+  }
+  document.getElementById('snap-label').value = '';
+  document.getElementById('snap-desc').value = '';
+  document.getElementById('snap-error').style.display = 'none';
+  openModal('modal-snapshot');
+}
+
+async function createSnapshot() {
+  if (!sb || !sbUser) { showToast('⚠ Faça login para criar snapshots'); return; }
+  const label = document.getElementById('snap-label').value.trim();
+  if (!label) { showToast('⚠ Informe o nome da versão.'); return; }
+
+  const btn = document.getElementById('snap-btn');
+  const err = document.getElementById('snap-error');
+  btn.disabled = true;
+  btn.textContent = 'Salvando…';
+  err.style.display = 'none';
+
+  const payload = {
+    label,
+    description: document.getElementById('snap-desc').value.trim() || null,
+    data: state,
+    created_by: sbUser.email,
+    data_size_kb: Math.round(JSON.stringify(state).length / 1024),
+  };
+
+  try {
+    const { error } = await sb.from('projflow_snapshots').insert(payload);
+    if (error) throw error;
+
+    // Enforce MAX_SNAPSHOTS — delete oldest beyond limit
+    const { data: all } = await sb.from('projflow_snapshots')
+      .select('id, created_at').order('created_at', { ascending: false });
+    if (all && all.length > MAX_SNAPSHOTS) {
+      const toDelete = all.slice(MAX_SNAPSHOTS).map(s => s.id);
+      await sb.from('projflow_snapshots').delete().in('id', toDelete);
+    }
+
+    closeModal('modal-snapshot');
+    showSuccess(`✓ Versão "${label}" salva!`);
+    _loadSnapshotsList();
+  } catch(e) {
+    err.textContent = 'Erro ao salvar: ' + e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💾 Salvar versão';
+  }
+}
+
+async function _loadSnapshotsList() {
+  const el = document.getElementById('snapshots-list');
+  if (!el) return;
+  if (!sb || !sbUser) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);">Faça login para ver as versões.</div>';
+    return;
+  }
+
+  try {
+    const { data: snaps, error } = await sb.from('projflow_snapshots')
+      .select('id, label, description, created_by, created_at, data_size_kb')
+      .order('created_at', { ascending: false })
+      .limit(MAX_SNAPSHOTS);
+
+    if (error) throw error;
+
+    if (!snaps || !snaps.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Nenhuma versão salva ainda. Clique em "+ Criar versão" para começar.</div>';
+      return;
+    }
+
+    const now = new Date();
+    el.innerHTML = snaps.map((s, i) => {
+      const date    = new Date(s.created_at);
+      const diffMs  = now - date;
+      const diffMin = Math.floor(diffMs / 60000);
+      const diffH   = Math.floor(diffMs / 3600000);
+      const diffD   = Math.floor(diffMs / 86400000);
+      const ago = diffMin < 2 ? 'agora mesmo'
+        : diffMin < 60 ? `há ${diffMin} min`
+        : diffH < 24   ? `há ${diffH}h`
+        : diffD === 1  ? 'ontem'
+        : `há ${diffD} dias`;
+
+      const dateStr = date.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' });
+      const timeStr = date.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+      const isMostRecent = i === 0;
+
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;
+        background:${isMostRecent?'rgba(108,99,255,0.05)':'var(--surface2)'};
+        border-radius:var(--radius-sm);margin-bottom:6px;
+        border:1px solid ${isMostRecent?'rgba(108,99,255,0.2)':'var(--border)'};flex-wrap:wrap;">
+        <div style="font-size:18px;flex-shrink:0;">${isMostRecent?'🔵':'⚪'}</div>
+        <div style="flex:1;min-width:150px;">
+          <div style="font-size:13px;font-weight:500;">${esc(s.label)}</div>
+          ${s.description ? `<div style="font-size:11px;color:var(--muted);">${esc(s.description)}</div>` : ''}
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+            ${dateStr} ${timeStr} · ${ago} · ${s.data_size_kb||'?'}KB · ${esc(s.created_by||'')}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="btn btn-ghost btn-sm" style="font-size:11px;"
+            onclick="restoreSnapshot('${s.id}', '${esc(s.label)}')">↩ Restaurar</button>
+          <button class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 7px;"
+            onclick="deleteSnapshot('${s.id}', '${esc(s.label)}')">✕</button>
+        </div>
+      </div>`;
+    }).join('') +
+    `<div style="font-size:11px;color:var(--muted);margin-top:8px;text-align:right;">
+      ${snaps.length} versão(ões) salva(s) · limite: ${MAX_SNAPSHOTS}
+    </div>`;
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--red);">Erro ao carregar versões: ${e.message}</div>`;
+  }
+}
+
+async function restoreSnapshot(id, label) {
+  if (!confirm(`Restaurar a versão "${label}"?\n\nOs dados atuais serão substituídos pelo estado desta versão.\nUma nova versão de segurança dos dados atuais será criada automaticamente antes de restaurar.`)) return;
+
+  if (!sb || !sbUser) { showToast('⚠ Faça login para restaurar'); return; }
+
+  showToast('⏳ Criando backup de segurança…');
+
+  // 1. Auto-save current state before restoring
+  try {
+    await sb.from('projflow_snapshots').insert({
+      label: `[Auto] Antes de restaurar "${label}"`,
+      description: 'Backup automático criado antes da restauração',
+      data: state,
+      created_by: sbUser.email,
+      data_size_kb: Math.round(JSON.stringify(state).length / 1024),
+    });
+  } catch(e) { /* non-fatal */ }
+
+  // 2. Fetch the snapshot
+  showToast('⏳ Restaurando versão…');
+  try {
+    const { data, error } = await sb.from('projflow_snapshots')
+      .select('data, label').eq('id', id).single();
+    if (error) throw error;
+
+    const restored = data.data;
+    // Run migrations
+    if (!restored.packages)        restored.packages        = [];
+    if (!restored.templates)       restored.templates       = [];
+    if (!restored.facts)           restored.facts           = [];
+    if (!restored.sprints)         restored.sprints         = [];
+    if (!restored.sprintActivities)restored.sprintActivities= {};
+    if (!restored.logbookEntries)  restored.logbookEntries  = [];
+    if (!restored.reports)         restored.reports         = {};
+    if (!restored.config)          restored.config          = {};
+    if (!restored.risks)           restored.risks           = [];
+    if (!restored.riskEvents)      restored.riskEvents      = [];
+
+    state = restored;
+    localStorage.setItem('projflow_v2', JSON.stringify(state));
+
+    // 3. Push restored state to Supabase main data
+    await sbSaveData();
+
+    showSuccess(`✓ Versão "${label}" restaurada com sucesso!`);
+    navigate('dashboard');
+  } catch(e) {
+    showError('Erro ao restaurar: ' + e.message);
+  }
+}
+
+async function deleteSnapshot(id, label) {
+  if (!confirm(`Excluir a versão "${label}"? Esta ação não pode ser desfeita.`)) return;
+  try {
+    const { error } = await sb.from('projflow_snapshots').delete().eq('id', id);
+    if (error) throw error;
+    showSuccess('Versão excluída.');
+    _loadSnapshotsList();
+  } catch(e) {
+    showError('Erro ao excluir: ' + e.message);
+  }
+}
+
+// Auto-snapshot before major saves (debounced — max 1x por dia)
+async function _autoSnapshotIfNeeded() {
+  if (!sb || !sbUser || sbUser.email !== ADMIN_EMAIL) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const lastAutoKey = 'projflow_last_auto_snap';
+  const last = localStorage.getItem(lastAutoKey);
+  if (last === today) return; // already auto-snapped today
+
+  try {
+    const { data: existing } = await sb.from('projflow_snapshots')
+      .select('id').like('label', '[Auto-diário]%')
+      .gte('created_at', today + 'T00:00:00Z').limit(1);
+    if (existing && existing.length > 0) {
+      localStorage.setItem(lastAutoKey, today);
+      return;
+    }
+
+    await sb.from('projflow_snapshots').insert({
+      label: `[Auto-diário] ${today}`,
+      description: 'Backup automático diário',
+      data: state,
+      created_by: sbUser.email,
+      data_size_kb: Math.round(JSON.stringify(state).length / 1024),
+    });
+    localStorage.setItem(lastAutoKey, today);
+  } catch(e) { /* silent */ }
+}
+
 function exportData() {
   const json = JSON.stringify(state, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
@@ -6393,6 +7179,8 @@ async function sbSaveData() {
     }
     const t = new Date();
     sbSetSyncLabel(`✓ Salvo às ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`);
+    // Auto-snapshot diário (silencioso, 1x por dia)
+    _autoSnapshotIfNeeded();
   } catch(e) {
     sbSetSyncLabel('Erro ao salvar');
   }
