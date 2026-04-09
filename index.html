@@ -5995,20 +5995,6 @@ function renderAllocationList() {
   const el = document.getElementById('a-allocations-list');
   if (!el) return;
 
-  // Get activity-level dates for the copy button
-  const actStart = document.getElementById('a-start')?.value || '';
-  const actEnd   = document.getElementById('a-end')?.value   || '';
-  const hasActDates = actStart || actEnd;
-
-  if (!_editingAllocations.length) {
-    el.innerHTML = `<div style="font-size:12px; color:var(--muted); padding:8px 0;">Nenhuma pessoa alocada ainda. Clique em "+ Adicionar pessoa".</div>`;
-    return;
-  }
-
-function renderAllocationList() {
-  const el = document.getElementById('a-allocations-list');
-  if (!el) return;
-
   const actStart    = document.getElementById('a-start')?.value || '';
   const actEnd      = document.getElementById('a-end')?.value   || '';
   const hasActDates = actStart || actEnd;
