@@ -2328,137 +2328,542 @@ function _updateNavVisibility() {
 // ============================================================
 function renderDashboard() {
   document.getElementById('topbar-title').textContent = 'Dashboard';
-  document.getElementById('topbar-sub').textContent = 'Visão geral do portfólio';
+  document.getElementById('topbar-sub').textContent   = 'Visão geral do portfólio';
   document.getElementById('topbar-actions').innerHTML = '';
 
-  const totalProjects   = state.projects.length;
-  const activeProjects  = state.projects.filter(p => p.status !== STATUS.DONE).length;
-  const totalActivities = state.activities.length;
-  const totalHours      = state.activities.reduce((s,a) => s+actTotalHours(a), 0);
-  const doneActivities  = state.activities.filter(a => a.status === STATUS.DONE).length;
-  const lateActivities  = state.activities.filter(a => isLate(a)).length;
-  const pendingApprovals = state.activities.filter(a => a.approvalStatus === APPROVAL.PENDING).length;
-
+  const today   = new Date().toISOString().slice(0,10);
+  const now     = new Date();
   const profile = currentProfile();
-  const isGL = profile === 'gerente' || profile === 'lider';
-  const showApprovals = isGL && pendingApprovals > 0;
+  const isGL    = profile === 'gerente' || profile === 'lider';
 
-  // Impedimentos de hoje
-  const todayImpediments = _todayCheckins.filter(c => c.has_impediment);
+  // ── Base stats ──────────────────────────────────────────────────────
+  const totalProjects    = state.projects.length;
+  const activeProjects   = state.projects.filter(p => p.status !== STATUS.DONE).length;
+  const totalActivities  = state.activities.length;
+  const doneActivities   = state.activities.filter(a => a.status === STATUS.DONE).length;
+  const ongoingActs      = state.activities.filter(a => a.status === STATUS.IN_PROGRESS).length;
+  const lateActivities   = state.activities.filter(a => isLate(a)).length;
+  const pendingApprovals = state.activities.filter(a => a.approvalStatus === APPROVAL.PENDING).length;
+  const totalHours       = state.activities.reduce((s,a) => s + actTotalHours(a), 0);
+
+  // ── Today's activities (period covers today, not done) ──────────────
+  const todayActs = state.activities.filter(a => {
+    if (a.status === STATUS.DONE) return false;
+    const r = actDateRange(a);
+    return r.start && r.end && r.start <= today && r.end >= today;
+  });
+
+  // ── Check-ins ────────────────────────────────────────────────────────
+  const todayCheckins    = _todayCheckins || [];
+  const checkinCount     = todayCheckins.length;
+  const teamSize         = state.team.length;
+  const todayImpediments = todayCheckins.filter(c => c.has_impediment);
+  const checkinPct       = teamSize > 0 ? Math.round(checkinCount / teamSize * 100) : 0;
   const showImpediments  = isGL && todayImpediments.length > 0;
+  const showApprovals    = isGL && pendingApprovals > 0;
 
-  // Build impediment cards HTML
-  const impedimentCardsHTML = todayImpediments.map(c => {
-    const person = state.team.find(p => p.id === c.person_id);
-    const pIdx   = state.team.findIndex(p => p.id === c.person_id);
-    const col    = pIdx >= 0 ? getPersonColor(pIdx) : '#f87171';
-    return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid rgba(248,113,113,0.15);">
-      <div class="avatar avatar-sm" style="background:${col}22;color:${col};flex-shrink:0;">${person?initials(person.name):'?'}</div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:600;">${person?esc(person.name):'Desconhecido'}</div>
-        <div style="font-size:12px;color:var(--red);margin-top:2px;line-height:1.5;">${esc(c.impediment||'Impedimento sem descrição')}</div>
-      </div>
-    </div>`;
-  }).join('');
+  // ── Per-project stats ────────────────────────────────────────────────
+  const projStats = state.projects
+    .filter(p => p.status !== STATUS.DONE)
+    .map(p => {
+      const dels   = state.deliveries.filter(d => d.projectId === p.id);
+      const pkgIds = (state.packages||[]).filter(pk => dels.some(d => d.id === pk.deliveryId)).map(pk => pk.id);
+      const acts   = state.activities.filter(a => dels.some(d => d.id === a.deliveryId) || pkgIds.includes(a.packageId));
+      const done   = acts.filter(a => a.status === STATUS.DONE).length;
+      const late   = acts.filter(a => isLate(a)).length;
+      const pct    = acts.length > 0 ? Math.round(done / acts.length * 100) : 0;
+      return { p, total: acts.length, done, late, pct };
+    })
+    .sort((a, b) => b.total - a.total);
 
-  document.getElementById('page-content').innerHTML = `
+  // ── Top late activities ──────────────────────────────────────────────
+  const topLate = state.activities
+    .filter(a => isLate(a))
+    .map(a => {
+      const r      = actDateRange(a);
+      const days   = r.end ? Math.max(0, Math.round((now - new Date(r.end)) / 86400000)) : 0;
+      const del    = a.deliveryId ? state.deliveries.find(d => d.id === a.deliveryId) : null;
+      const pkg    = a.packageId  ? (state.packages||[]).find(pk => pk.id === a.packageId) : null;
+      const del2   = pkg ? state.deliveries.find(d => d.id === pkg.deliveryId) : null;
+      const proj   = state.projects.find(p => p.id === (del || del2)?.projectId);
+      const names  = actPersonIds(a).map(id => state.team.find(p => p.id === id)).filter(Boolean).map(p => p.name.split(' ')[0]);
+      return { a, days, proj, names };
+    })
+    .sort((a, b) => b.days - a.days)
+    .slice(0, 3);
 
-    ${showImpediments ? `
-    <div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.35);border-radius:var(--radius);margin-bottom:16px;overflow:hidden;">
-      <div style="padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:1px solid rgba(248,113,113,0.2);">
-        <span style="font-size:20px;">🚧</span>
-        <div style="flex:1;">
-          <div style="font-size:14px;font-weight:600;color:var(--red);">${todayImpediments.length} impedimento(s) reportado(s) hoje</div>
-          <div style="font-size:12px;color:var(--muted);">Membros da equipe precisam de suporte para desbloquear</div>
-        </div>
-        <button class="btn btn-sm" style="background:rgba(248,113,113,0.15);color:var(--red);border:1px solid rgba(248,113,113,0.3);" onclick="navigate('impediments')">Ver todos →</button>
-      </div>
-      <div style="padding:4px 18px 8px;">
-        ${impedimentCardsHTML}
-      </div>
-    </div>` : ''}
+  // ── Person load ──────────────────────────────────────────────────────
+  const personLoad = state.team.map((p, pIdx) => {
+    const acts   = state.activities.filter(a => actPersonIds(a).includes(p.id));
+    const hours  = acts.reduce((s, a) => {
+      const al = (a.allocations||[]).find(x => x.personId === p.id);
+      return s + (al ? parseFloat(al.hours)||0 : actTotalHours(a));
+    }, 0);
+    const active = acts.filter(a => a.status === STATUS.IN_PROGRESS).length;
+    return { p, pIdx, hours, active, cap: p.weeklyHours || 40 };
+  }).sort((a, b) => b.hours - a.hours);
 
-    ${showApprovals ? `
-    <div style="padding:14px 18px; background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.3); border-radius:var(--radius); margin-bottom:20px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-      <span style="font-size:20px;">⏳</span>
-      <div style="flex:1;">
-        <div style="font-size:14px; font-weight:600; color:var(--amber);">${pendingApprovals} atividade(s) aguardando sua aprovação</div>
-        <div style="font-size:12px; color:var(--muted);">Colaboradores solicitaram conclusão e aguardam revisão</div>
-      </div>
-      <button class="btn btn-ghost btn-sm" style="color:var(--amber); border-color:rgba(251,191,36,0.4);" onclick="navigate('approvals')">Ver fila →</button>
-    </div>` : ''}
+  // ── Weekly allocation ────────────────────────────────────────────────
+  const dow    = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
+  monday.setHours(0,0,0,0);
 
-    <div class="grid-4" style="margin-bottom:24px;">
-      <div class="stat">
-        <div class="stat-label">Projetos Ativos</div>
-        <div class="stat-value">${activeProjects}</div>
-        <div class="stat-sub">${totalProjects} total</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Atividades</div>
-        <div class="stat-value">${totalActivities}</div>
-        <div class="stat-sub">${doneActivities} concluídas</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Total de Horas</div>
-        <div class="stat-value">${Math.round(totalHours).toLocaleString('pt-BR')}</div>
-        <div class="stat-sub">alocadas</div>
-      </div>
-      <div class="stat" style="${pendingApprovals>0?'border-color:rgba(251,191,36,0.3);':''}">
-        <div class="stat-label">${pendingApprovals>0?'Aguard. Aprovação':'Atividades Atrasadas'}</div>
-        <div class="stat-value" style="color:${pendingApprovals>0?'var(--amber)':lateActivities>0?'var(--red)':'var(--green)'}">${pendingApprovals>0?pendingApprovals:lateActivities}</div>
-        <div class="stat-sub">${pendingApprovals>0?'para revisar':lateActivities>0?'requer atenção':'tudo em dia'}</div>
-      </div>
-    </div>
+  const weekDays = [0,1,2,3,4].map(i => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d;
+  });
+  const weekDayStr = weekDays.map(d => d.toISOString().slice(0,10));
+  const dayNames   = ['Seg','Ter','Qua','Qui','Sex'];
 
-    <div class="grid-2" style="margin-bottom:24px;">
-      <div class="card">
-        <div class="card-header"><div class="card-title">Horas por Pessoa (Total)</div></div>
-        ${renderHoursByPerson()}
-      </div>
-      <div class="card">
-        <div class="card-header"><div class="card-title">Status das Atividades</div></div>
-        ${renderStatusSummary()}
-      </div>
-    </div>
+  function hoursOnDay(person, dayStr) {
+    let total = 0;
+    state.activities.forEach(a => {
+      if (!actPersonIds(a).includes(person.id)) return;
+      const r = actDateRange(a);
+      if (!r.start || !r.end) return;
+      if (r.start > dayStr || r.end < dayStr) return;
+      const al     = (a.allocations||[]).find(x => x.personId === person.id);
+      const totalH = al ? parseFloat(al.hours)||0 : actTotalHours(a);
+      const ms     = new Date(r.end) - new Date(r.start);
+      const workD  = Math.max(1, Math.round(ms / 86400000 * 5 / 7));
+      total += totalH / workD;
+    });
+    return total;
+  }
 
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title" id="hm-title">Mapa de Carga — Horas por Pessoa por Mês</div>
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <!-- View mode toggle -->
-          <div style="display:flex; background:var(--surface2); border-radius:var(--radius-sm); padding:3px; gap:2px;">
-            <button id="hm-btn-month" class="btn btn-sm" style="padding:3px 10px; font-size:11px; background:var(--accent); color:#fff; border:none;" onclick="heatmapSetMode('month')">Mês</button>
-            <button id="hm-btn-week"  class="btn btn-sm" style="padding:3px 10px; font-size:11px; background:transparent; color:var(--muted); border:none;" onclick="heatmapSetMode('week')">Semana</button>
-          </div>
-          <!-- Navigation -->
-          <div style="display:flex; align-items:center; gap:6px; background:var(--surface2); border-radius:var(--radius-sm); padding:4px 8px;">
-            <button onclick="heatmapShift(-1)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;" title="Recuar">‹</button>
-            <span style="font-size:11px; color:var(--muted); white-space:nowrap; min-width:160px; text-align:center;" id="hm-range-label">—</span>
-            <button onclick="heatmapShift(1)"  style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;" title="Avançar">›</button>
-          </div>
-          <!-- Quick windows -->
-          <div style="display:flex; gap:4px;" id="hm-window-btns">
-            <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapSetWindow(3)">3m</button>
-            <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapSetWindow(6)">6m</button>
-            <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapSetWindow(12)">12m</button>
-            <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapSetWindow(0)">Tudo</button>
-          </div>
-          <!-- Date inputs -->
-          <div style="display:flex; align-items:center; gap:6px;">
-            <input type="month" id="hm-start" onchange="heatmapUpdateFromInputs()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:3px 8px;font-size:11px;font-family:var(--font);" />
-            <span style="font-size:11px; color:var(--muted);">até</span>
-            <input type="month" id="hm-end" onchange="heatmapUpdateFromInputs()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:3px 8px;font-size:11px;font-family:var(--font);" />
-          </div>
-          <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 9px;" onclick="heatmapReset()">↺ Reset</button>
-        </div>
-      </div>
-      <div id="heatmap-content">
-        ${renderHeatmap()}
-      </div>
-    </div>
-  `;
+  const weekPeople = personLoad.slice(0, 8);
+  const weekData   = weekPeople.map(({ p, pIdx, cap }) => {
+    const dayH  = weekDayStr.map(d => hoursOnDay(p, d));
+    const total = dayH.reduce((s, h) => s + h, 0);
+    const util  = cap > 0 ? Math.round(total / cap * 100) : 0;
+    return { p, pIdx, cap, dayH, total, util };
+  });
 
+  // ── Status counts ────────────────────────────────────────────────────
+  const statusCounts = {
+    done:    doneActivities,
+    ongoing: ongoingActs,
+    late:    lateActivities,
+    pending: Math.max(0, totalActivities - doneActivities - ongoingActs - lateActivities),
+  };
+
+  // ── HTML builders ────────────────────────────────────────────────────
+  const dotColors = { concluido:'var(--green)', em_andamento:'var(--blue)', atrasado:'var(--red)', bloqueado:'var(--amber)', nao_iniciado:'var(--muted)' };
+  const uColor    = u => u > 100 ? 'var(--red)' : u >= 70 ? 'var(--green)' : 'var(--amber)';
+
+  // Impediments
+  function buildImpedimentHTML() {
+    return todayImpediments.map(c => {
+      const person = state.team.find(p => p.id === c.person_id);
+      const pIdx   = state.team.findIndex(p => p.id === c.person_id);
+      const col    = pIdx >= 0 ? getPersonColor(pIdx) : '#f87171';
+      return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid rgba(248,113,113,0.12);">' +
+        '<div class="avatar avatar-sm" style="background:' + col + '22;color:' + col + ';flex-shrink:0;">' + (person ? initials(person.name) : '?') + '</div>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:13px;font-weight:600;">' + (person ? esc(person.name) : 'Desconhecido') + '</div>' +
+          '<div style="font-size:12px;color:var(--red);margin-top:2px;">' + esc(c.impediment || 'Sem descrição') + '</div>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  // Today activities
+  function buildTodayActsHTML() {
+    if (!todayActs.length) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Nenhuma atividade prevista para hoje.</div>';
+    const items = todayActs.slice(0, 6).map(a => {
+      const persons = actPersonIds(a).map(id => state.team.find(p => p.id === id)).filter(Boolean);
+      const del     = a.deliveryId ? state.deliveries.find(d => d.id === a.deliveryId) : null;
+      const pkg     = a.packageId  ? (state.packages||[]).find(pk => pk.id === a.packageId) : null;
+      const del2    = pkg ? state.deliveries.find(d => d.id === pkg.deliveryId) : null;
+      const proj    = state.projects.find(p => p.id === (del || del2)?.projectId);
+      const effSt   = isLate(a) ? 'atrasado' : (a.status || 'nao_iniciado');
+      const dotCol  = dotColors[effSt] || 'var(--muted)';
+      const nameStr = persons.map(p => p.name.split(' ')[0]).join(', ') || '—';
+      const projStr = proj ? ' · ' + proj.name.slice(0, 22) : '';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">' +
+        '<div style="width:7px;height:7px;border-radius:50%;background:' + dotCol + ';flex-shrink:0;"></div>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(a.name) + '</div>' +
+          '<div style="font-size:10px;color:var(--muted);margin-top:1px;">' + esc(nameStr + projStr) + '</div>' +
+        '</div>' + getStatusBadge(effSt) + '</div>';
+    });
+    const more = todayActs.length > 6
+      ? `<div style="text-align:center;margin-top:10px;font-size:11px;color:var(--accent2);cursor:pointer;" onclick="navigate('activities')">+ ${todayActs.length - 6} mais atividades hoje →</div>`
+      : '';
+    return items.join('') + more;
+  }
+
+  // Project bars
+  function buildProjBarsHTML() {
+    if (!projStats.length) return '<div style="font-size:12px;color:var(--muted);">Nenhum projeto ativo.</div>';
+    const bars = projStats.slice(0, 5).map(({ p, total, done, late, pct }) => {
+      const barCol = pct >= 80 ? 'var(--green)' : pct >= 40 ? 'var(--accent)' : 'var(--amber)';
+      const lateStr = late > 0
+        ? '<span style="color:var(--red);">⚠ ' + late + ' atrasada' + (late > 1 ? 's' : '') + '</span>'
+        : '<span style="color:var(--green);">✓ em dia</span>';
+      return '<div style="margin-bottom:13px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+          `<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px;cursor:pointer;" onclick="navigate('project_detail',${p.id})">${esc(p.name)}</div>` +
+          '<div style="font-size:11px;color:var(--muted);font-family:var(--mono);">' + pct + '%</div>' +
+        '</div>' +
+        '<div style="height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;">' +
+          '<div style="height:100%;width:' + pct + '%;background:' + barCol + ';border-radius:3px;"></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:10px;margin-top:3px;font-size:10px;color:var(--muted);">' +
+          '<span>' + done + '/' + total + ' atividades</span>' + lateStr +
+        '</div></div>';
+    });
+    const more = projStats.length > 5
+      ? '<div style="text-align:center;font-size:11px;color:var(--accent2);cursor:pointer;margin-top:4px;" onclick="navigate(\'projects\')">Ver todos os projetos →</div>'
+      : '';
+    return bars.join('') + more;
+  }
+
+  // Top late
+  function buildTopLateHTML() {
+    if (!topLate.length) return '<div style="font-size:12px;color:var(--green);padding:8px 0;">✓ Nenhuma atividade atrasada</div>';
+    return topLate.map(({ a, days, proj, names }) => {
+      const icon    = days >= 7 ? '🔴' : '🟠';
+      const projStr = proj ? esc(proj.name.slice(0, 22)) : '';
+      const nameStr = names.length ? ' · ' + names[0] : '';
+      return '<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);">' +
+        '<div style="font-size:13px;flex-shrink:0;">' + icon + '</div>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(a.name) + '</div>' +
+          '<div style="font-size:10px;color:var(--red);margin-top:1px;">' + days + ' dia' + (days !== 1 ? 's' : '') + ' de atraso</div>' +
+          '<div style="font-size:10px;color:var(--muted);">' + projStr + nameStr + '</div>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  // Person load
+  function buildPersonLoadHTML() {
+    if (!personLoad.length) return '<div style="font-size:12px;color:var(--muted);">Nenhuma pessoa cadastrada.</div>';
+    const maxH = personLoad[0]?.hours || 1;
+    const rows = personLoad.slice(0, 10).map(({ p, pIdx, hours, active }) => {
+      const col    = getPersonColor(pIdx);
+      const barPct = Math.min(100, Math.round(hours / maxH * 100));
+      const isOver = active > 8;
+      return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);">' +
+        '<div class="avatar avatar-sm" style="background:' + col + '22;color:' + col + ';flex-shrink:0;">' + initials(p.name) + '</div>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:12px;font-weight:500;">' + esc(p.name.split(' ')[0] + ' ' + (p.name.split(' ').slice(-1)[0]||'')) + '</div>' +
+          '<div style="font-size:10px;color:var(--muted);">' + esc(p.role || p.profile || '—') + '</div>' +
+        '</div>' +
+        '<div style="width:70px;">' +
+          '<div style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;">' +
+            '<div style="height:100%;width:' + barPct + '%;background:' + col + ';border-radius:2px;"></div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="font-size:11px;font-family:var(--mono);color:var(--muted);min-width:32px;text-align:right;">' + Math.round(hours) + 'h</div>' +
+        '<div style="font-size:10px;color:' + (isOver ? 'var(--red)' : 'var(--muted)') + ';min-width:40px;text-align:right;">' + active + ' ativ' + (isOver ? ' ⚠' : '') + '</div>' +
+      '</div>';
+    });
+    const more = personLoad.length > 10
+      ? `<div style="text-align:center;font-size:11px;color:var(--accent2);cursor:pointer;margin-top:8px;" onclick="navigate('team')">Ver todas as ${personLoad.length} pessoas →</div>`
+      : '';
+    return rows.join('') + more;
+  }
+
+  // Check-in
+  function buildCheckinHTML() {
+    const done = todayCheckins
+      .slice()
+      .sort((a, b) => (a.created_at||'').localeCompare(b.created_at||''))
+      .slice(0, 5)
+      .map(c => {
+        const person = state.team.find(p => p.id === c.person_id);
+        const time   = c.created_at ? new Date(c.created_at).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '';
+        const name   = person ? esc(person.name.split(' ')[0] + ' ' + (person.name.split(' ').slice(-1)[0]||'')) : '?';
+        const color  = c.has_impediment ? 'var(--amber)' : 'var(--green)';
+        return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;font-size:12px;">' +
+          '<div style="width:6px;height:6px;border-radius:50%;background:' + color + ';flex-shrink:0;"></div>' +
+          '<div style="flex:1;color:' + color + ';">' + name + (c.has_impediment ? ' 🚧' : '') + '</div>' +
+          '<div style="font-size:10px;color:var(--muted);font-family:var(--mono);">' + time + '</div>' +
+        '</div>';
+      }).join('');
+
+    const notDone = state.team
+      .filter(p => !todayCheckins.find(c => c.person_id === p.id))
+      .slice(0, 4)
+      .map(p => {
+        const name = esc(p.name.split(' ')[0] + ' ' + (p.name.split(' ').slice(-1)[0]||''));
+        return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;font-size:12px;">' +
+          '<div style="width:6px;height:6px;border-radius:50%;background:var(--surface3);flex-shrink:0;"></div>' +
+          '<div style="flex:1;color:var(--muted);">' + name + '</div>' +
+          '<div style="font-size:10px;color:var(--muted);">—</div>' +
+        '</div>';
+      }).join('');
+
+    return (checkinCount > 0 ? '<div style="font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.4px;">Fizeram check-in</div>' + done : '') +
+      (teamSize > checkinCount ? '<div style="font-size:10px;color:var(--muted);margin:8px 0 6px;text-transform:uppercase;letter-spacing:0.4px;">Ainda não fizeram</div>' + notDone : '') +
+      '<div style="margin-top:8px;text-align:center;font-size:11px;color:var(--accent2);cursor:pointer;" onclick="navigate(&quot;impediments&quot;)">Ver painel completo →</div>';
+  }
+
+  // Weekly allocation table
+  function buildWeeklyHTML() {
+    const weekLabel = weekDays[0].getDate().toString().padStart(2,'0') + '/' +
+      (weekDays[0].getMonth()+1).toString().padStart(2,'0') + ' – ' +
+      weekDays[4].getDate().toString().padStart(2,'0') + '/' +
+      (weekDays[4].getMonth()+1).toString().padStart(2,'0') + '/' +
+      weekDays[4].getFullYear();
+
+    const headerCols = weekDays.map((d, i) => {
+      const isToday = weekDayStr[i] === today;
+      const style   = 'padding:8px 6px;text-align:center;font-size:11px;font-weight:' + (isToday?'700':'600') + ';color:' + (isToday?'var(--accent2)':'var(--muted)') + ';width:80px;' + (isToday?'background:rgba(108,99,255,0.06);':'');
+      return '<th style="' + style + '">' + dayNames[i] + '<br><span style="font-size:9px;font-weight:400;">' + d.getDate().toString().padStart(2,'0') + '/' + (d.getMonth()+1).toString().padStart(2,'0') + '</span>' + (isToday?' ★':'') + '</th>';
+    }).join('');
+
+    const bodyRows = weekData.map(({ p, pIdx, cap, dayH, total, util }) => {
+      const col    = getPersonColor(pIdx);
+      const isOver = util > 100;
+      const uCol   = uColor(util);
+      const cells  = dayH.map((h, i) => {
+        const isToday = weekDayStr[i] === today;
+        const hRound  = Math.round(h * 10) / 10;
+        const tdStyle = 'padding:6px;text-align:center;font-size:12px;font-family:var(--mono);' +
+          (isToday ? 'background:rgba(108,99,255,0.04);font-weight:600;color:var(--accent2);' : '') +
+          (isOver && h > 0 ? 'color:var(--red);' : '');
+        const val = hRound > 0 ? hRound + 'h' : '<span style="color:var(--surface3);">—</span>';
+        return '<td style="' + tdStyle + '">' + val + '</td>';
+      }).join('');
+      const rowBg  = isOver ? 'background:rgba(248,113,113,0.02);' : '';
+      const nameStr = esc(p.name.split(' ')[0] + ' ' + (p.name.split(' ').slice(-1)[0]||''));
+      const overTag = isOver ? ' <span style="font-size:10px;color:var(--red);">⚠ Sobrecarga</span>' : '';
+      return '<tr style="border-top:1px solid var(--border);' + rowBg + '">' +
+        '<td style="padding:8px 12px;">' +
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<div style="width:24px;height:24px;border-radius:50%;background:' + col + '22;color:' + col + ';display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;">' + initials(p.name) + '</div>' +
+            '<div>' +
+              '<div style="font-size:12px;font-weight:500;">' + nameStr + overTag + '</div>' +
+              '<div style="font-size:10px;color:var(--muted);">' + esc(p.role || p.profile || '—') + '</div>' +
+            '</div>' +
+          '</div>' +
+        '</td>' +
+        cells +
+        '<td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:600;font-family:var(--mono);color:' + (isOver?'var(--red)':'var(--text)') + ';">' + Math.round(total) + 'h</td>' +
+        '<td style="padding:8px 12px;text-align:center;font-size:12px;color:var(--muted);font-family:var(--mono);">' + cap + 'h</td>' +
+        '<td style="padding:8px 12px;min-width:100px;">' +
+          '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<div style="flex:1;height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;">' +
+              '<div style="height:100%;width:' + Math.min(100,util) + '%;background:' + uColor(util) + ';border-radius:2px;"></div>' +
+            '</div>' +
+            '<span style="font-size:11px;color:' + uCol + ';min-width:34px;">' + util + '%</span>' +
+          '</div>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+
+    const totDay  = weekDayStr.map((_, i) => weekData.reduce((s, d) => s + d.dayH[i], 0));
+    const totWeek = weekData.reduce((s, d) => s + d.total, 0);
+    const totCap  = weekData.reduce((s, d) => s + d.cap, 0);
+    const totUtil = totCap > 0 ? Math.round(totWeek / totCap * 100) : 0;
+    const totCells = totDay.map((h, i) => {
+      const isToday = weekDayStr[i] === today;
+      return '<td style="padding:6px;text-align:center;font-size:12px;font-weight:600;font-family:var(--mono);' + (isToday?'background:rgba(108,99,255,0.06);color:var(--accent2);':'') + '">' + Math.round(h) + 'h</td>';
+    }).join('');
+    const totRow = '<tr style="border-top:2px solid var(--border2);background:var(--surface2);">' +
+      '<td style="padding:8px 12px;font-size:11px;font-weight:600;color:var(--muted);">TOTAL (' + weekData.length + ' pessoas)</td>' +
+      totCells +
+      '<td style="padding:8px 12px;text-align:center;font-size:13px;font-weight:700;font-family:var(--mono);">' + Math.round(totWeek) + 'h</td>' +
+      '<td style="padding:8px 12px;text-align:center;font-size:12px;color:var(--muted);font-family:var(--mono);">' + totCap + 'h</td>' +
+      '<td style="padding:8px 12px;">' +
+        '<div style="display:flex;align-items:center;gap:6px;">' +
+          '<div style="flex:1;height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;">' +
+            '<div style="height:100%;width:' + Math.min(100,totUtil) + '%;background:var(--accent);border-radius:2px;"></div>' +
+          '</div>' +
+          '<span style="font-size:11px;color:var(--accent2);font-weight:600;min-width:34px;">' + totUtil + '%</span>' +
+        '</div>' +
+      '</td>' +
+    '</tr>';
+
+    return '<div style="overflow-x:auto;">' +
+      '<table style="width:100%;min-width:700px;border-collapse:collapse;">' +
+        '<thead><tr style="background:var(--surface2);">' +
+          '<th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;min-width:170px;">Pessoa</th>' +
+          headerCols +
+          '<th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--muted);font-weight:600;width:70px;">Total</th>' +
+          '<th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--muted);font-weight:600;width:70px;">Cap.</th>' +
+          '<th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;min-width:110px;">Utilização</th>' +
+        '</tr></thead>' +
+        '<tbody>' + bodyRows + totRow + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<div style="padding:10px 0 0;display:flex;gap:16px;font-size:11px;color:var(--muted);flex-wrap:wrap;">' +
+      '<div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:2px;background:var(--green);"></div>70–100% — OK</div>' +
+      '<div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:2px;background:var(--amber);"></div>&lt;70% — Subutilizado</div>' +
+      '<div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:2px;background:var(--red);"></div>&gt;100% — Sobrecarga</div>' +
+      '<div style="margin-left:auto;font-size:10px;">★ = hoje · Horas estimadas com base no período das atividades</div>' +
+    '</div>';
+  }
+
+  // ── Section label helper ─────────────────────────────────────────────
+  function sectionLabel(text) {
+    return '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;color:var(--muted);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);">' + text + '</div>';
+  }
+
+  const dateStr = now.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
+
+  // ── Compose final HTML ───────────────────────────────────────────────
+  const parts = [];
+
+  // Alerts
+  if (showImpediments) {
+    parts.push(
+      '<div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.35);border-radius:var(--radius);margin-bottom:12px;overflow:hidden;">' +
+        '<div style="padding:12px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid rgba(248,113,113,0.2);">' +
+          '<span style="font-size:18px;">🚧</span>' +
+          '<div style="flex:1;"><div style="font-size:13px;font-weight:600;color:var(--red);">' + todayImpediments.length + ' impedimento(s) hoje</div><div style="font-size:11px;color:var(--muted);">Membros precisam de suporte</div></div>' +
+          '<button class="btn btn-sm" style="background:rgba(248,113,113,0.15);color:var(--red);border:1px solid rgba(248,113,113,0.3);" onclick="navigate(&quot;impediments&quot;)">Ver →</button>' +
+        '</div>' +
+        '<div style="padding:4px 18px 8px;">' + buildImpedimentHTML() + '</div>' +
+      '</div>'
+    );
+  }
+
+  if (showApprovals) {
+    parts.push(
+      '<div style="padding:12px 18px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:var(--radius);margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
+        '<span style="font-size:18px;">⏳</span>' +
+        '<div style="flex:1;"><div style="font-size:13px;font-weight:600;color:var(--amber);">' + pendingApprovals + ' atividade(s) aguardando aprovação</div></div>' +
+        '<button class="btn btn-ghost btn-sm" style="color:var(--amber);border-color:rgba(251,191,36,0.4);" onclick="navigate(&quot;approvals&quot;)">Ver fila →</button>' +
+      '</div>'
+    );
+  }
+
+  // KPIs
+  const totalHoursDisp = totalHours >= 1000 ? (Math.round(totalHours/100)/10) + 'k' : Math.round(totalHours).toString();
+  parts.push(
+    '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px;">' +
+      '<div class="stat" style="border-color:rgba(52,211,153,0.25);">' +
+        '<div class="stat-label">Projetos Ativos</div>' +
+        '<div class="stat-value" style="color:var(--green);">' + activeProjects + '</div>' +
+        '<div class="stat-sub">' + totalProjects + ' total</div>' +
+      '</div>' +
+      '<div class="stat">' +
+        '<div class="stat-label">Atividades Hoje</div>' +
+        '<div class="stat-value" style="color:var(--accent2);">' + todayActs.length + '</div>' +
+        '<div class="stat-sub">previstas para hoje</div>' +
+      '</div>' +
+      '<div class="stat" style="' + (lateActivities > 0 ? 'border-color:rgba(248,113,113,0.3);' : '') + '">' +
+        '<div class="stat-label">Atrasadas</div>' +
+        '<div class="stat-value" style="color:' + (lateActivities > 0 ? 'var(--red)' : 'var(--green)') + ';">' + lateActivities + '</div>' +
+        '<div class="stat-sub">' + (lateActivities > 0 ? 'requer atenção' : 'tudo em dia') + '</div>' +
+      '</div>' +
+      '<div class="stat" style="' + (pendingApprovals > 0 ? 'border-color:rgba(251,191,36,0.3);' : '') + '">' +
+        '<div class="stat-label">Aprovações</div>' +
+        '<div class="stat-value" style="color:' + (pendingApprovals > 0 ? 'var(--amber)' : 'var(--muted)') + ';">' + pendingApprovals + '</div>' +
+        '<div class="stat-sub">aguardando revisão</div>' +
+      '</div>' +
+      '<div class="stat">' +
+        '<div class="stat-label">Check-ins Hoje</div>' +
+        '<div class="stat-value" style="color:' + (checkinPct >= 70 ? 'var(--green)' : checkinPct >= 40 ? 'var(--amber)' : 'var(--red)') + ';">' + checkinCount + '<span style="font-size:14px;color:var(--muted);">/' + teamSize + '</span></div>' +
+        '<div class="stat-sub">' + checkinPct + '% de adesão</div>' +
+      '</div>' +
+      '<div class="stat">' +
+        '<div class="stat-label">Horas Alocadas</div>' +
+        '<div class="stat-value">' + totalHoursDisp + '</div>' +
+        '<div class="stat-sub">horas totais</div>' +
+      '</div>' +
+    '</div>'
+  );
+
+  // Today section
+  parts.push(sectionLabel('Hoje — ' + dateStr));
+  parts.push(
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:20px;">' +
+      '<div class="card" style="border-left:3px solid var(--accent);">' +
+        '<div class="card-header"><div class="card-title">🗓 Atividades Previstas Hoje <span class="badge badge-gray" style="font-size:10px;">' + todayActs.length + '</span></div></div>' +
+        buildTodayActsHTML() +
+      '</div>' +
+      '<div class="card">' +
+        '<div class="card-header"><div class="card-title">⬡ Por Projeto</div></div>' +
+        buildProjBarsHTML() +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:14px;">' +
+        '<div class="card" style="flex:none;">' +
+          '<div class="card-header"><div class="card-title">Status das Atividades</div></div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+            '<div style="background:var(--surface2);border-radius:8px;padding:10px 12px;"><div style="font-size:22px;font-weight:700;color:var(--green);line-height:1;">' + statusCounts.done + '</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">✅ Concluídas</div></div>' +
+            '<div style="background:var(--surface2);border-radius:8px;padding:10px 12px;"><div style="font-size:22px;font-weight:700;color:var(--blue);line-height:1;">' + statusCounts.ongoing + '</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">🔄 Em andamento</div></div>' +
+            '<div style="background:var(--surface2);border-radius:8px;padding:10px 12px;"><div style="font-size:22px;font-weight:700;color:' + (lateActivities > 0 ? 'var(--red)' : 'var(--muted)') + ';line-height:1;">' + statusCounts.late + '</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">⚠️ Atrasadas</div></div>' +
+            '<div style="background:var(--surface2);border-radius:8px;padding:10px 12px;"><div style="font-size:22px;font-weight:700;color:var(--muted);line-height:1;">' + statusCounts.pending + '</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">○ Não iniciadas</div></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="card" style="flex:1;">' +
+          '<div class="card-header"><div class="card-title" style="color:var(--red);">⚠ Mais Atrasadas</div></div>' +
+          buildTopLateHTML() +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+
+  // Team section
+  parts.push(sectionLabel('Equipe'));
+  parts.push(
+    '<div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:20px;">' +
+      '<div class="card" style="border-left:3px solid var(--accent);">' +
+        '<div class="card-header"><div class="card-title">◎ Carga por Pessoa <span style="font-size:10px;font-weight:400;color:var(--muted);">horas totais · atividades ativas</span></div></div>' +
+        buildPersonLoadHTML() +
+      '</div>' +
+      '<div class="card" style="border-left:3px solid var(--accent);">' +
+        '<div class="card-header"><div class="card-title">☀️ Check-in de Hoje <span style="font-size:10px;color:var(--muted);">' + checkinCount + '/' + teamSize + '</span></div></div>' +
+        '<div style="height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;margin-bottom:12px;">' +
+          '<div style="height:100%;width:' + checkinPct + '%;background:linear-gradient(90deg,var(--green),var(--teal));border-radius:3px;"></div>' +
+        '</div>' +
+        buildCheckinHTML() +
+      '</div>' +
+    '</div>'
+  );
+
+  // Weekly allocation section
+  parts.push(sectionLabel('Alocação de Horas — Semana Atual'));
+  parts.push(
+    '<div class="card" style="border-left:3px solid var(--accent);padding:0;overflow:hidden;margin-bottom:20px;">' +
+      '<div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px;">' +
+        '<div style="font-size:13px;font-weight:600;">📅 Horas por Pessoa esta Semana</div>' +
+        '<div style="font-size:12px;color:var(--muted);">' + weekData.length + ' pessoas · estimativa por período de atividade</div>' +
+      '</div>' +
+      '<div style="padding:14px 16px;">' + buildWeeklyHTML() + '</div>' +
+    '</div>'
+  );
+
+  // Heatmap section
+  parts.push(sectionLabel('Mapa de Carga Histórico'));
+  parts.push(
+    '<div class="card">' +
+      '<div class="card-header">' +
+        '<div class="card-title" id="hm-title">Horas por Pessoa por Mês</div>' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+          '<div style="display:flex;background:var(--surface2);border-radius:var(--radius-sm);padding:3px;gap:2px;">' +
+            '<button id="hm-btn-month" class="btn btn-sm" style="padding:3px 10px;font-size:11px;background:var(--accent);color:#fff;border:none;" onclick="heatmapSetMode(\'month\')">Mês</button>' +
+            '<button id="hm-btn-week"  class="btn btn-sm" style="padding:3px 10px;font-size:11px;background:transparent;color:var(--muted);border:none;" onclick="heatmapSetMode(\'week\')">Semana</button>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:6px;background:var(--surface2);border-radius:var(--radius-sm);padding:4px 8px;">' +
+            '<button onclick="heatmapShift(-1)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;">‹</button>' +
+            '<span style="font-size:11px;color:var(--muted);white-space:nowrap;min-width:160px;text-align:center;" id="hm-range-label">—</span>' +
+            '<button onclick="heatmapShift(1)"  style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;">›</button>' +
+          '</div>' +
+          '<div style="display:flex;gap:4px;" id="hm-window-btns">' +
+            '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 9px;" onclick="heatmapSetWindow(3)">3m</button>' +
+            '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 9px;" onclick="heatmapSetWindow(6)">6m</button>' +
+            '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 9px;" onclick="heatmapSetWindow(12)">12m</button>' +
+            '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 9px;" onclick="heatmapSetWindow(0)">Tudo</button>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<input type="month" id="hm-start" onchange="heatmapUpdateFromInputs()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:3px 8px;font-size:11px;font-family:var(--font);" />' +
+            '<span style="font-size:11px;color:var(--muted);">até</span>' +
+            '<input type="month" id="hm-end" onchange="heatmapUpdateFromInputs()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:3px 8px;font-size:11px;font-family:var(--font);" />' +
+          '</div>' +
+          '<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 9px;" onclick="heatmapReset()">↺ Reset</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="heatmap-content">' + renderHeatmap() + '</div>' +
+    '</div>'
+  );
+
+  document.getElementById('page-content').innerHTML = parts.join('\n');
   setTimeout(heatmapInitControls, 0);
 }
 
