@@ -50,6 +50,7 @@ window._wallSignIn = function() {
     color: var(--text);
     min-height: 100vh;
     font-size: 14px;
+    overflow-x: hidden;
   }
 
   /* Layout */
@@ -109,6 +110,9 @@ window._wallSignIn = function() {
     flex: 1;
     display: flex;
     flex-direction: column;
+    min-width: 0;
+    max-width: calc(100vw - 220px);
+    overflow-x: hidden;
   }
 
   .topbar {
@@ -399,7 +403,7 @@ window._wallSignIn = function() {
   @media (max-width: 768px) {
     .sidebar { width: 56px; }
     .sidebar .logo span, .sidebar .nav-item span, .sidebar .nav-section { display: none; }
-    .main { margin-left: 56px; }
+    .main { margin-left: 56px; max-width: calc(100vw - 56px); }
     .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; }
   }
 
@@ -2735,7 +2739,7 @@ function renderDashboard() {
   // KPIs
   const totalHoursDisp = totalHours >= 1000 ? (Math.round(totalHours/100)/10) + 'k' : Math.round(totalHours).toString();
   parts.push(
-    '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px;">' +
+    '<div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:20px;">' +
       '<div class="stat" style="border-color:rgba(52,211,153,0.25);">' +
         '<div class="stat-label">Projetos Ativos</div>' +
         '<div class="stat-value" style="color:var(--green);">' + activeProjects + '</div>' +
