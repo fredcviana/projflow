@@ -672,6 +672,24 @@ window._wallSignIn = function() {
       </div>
     </div>
     <div style="margin-bottom:16px;font-size:13px;">Score residual: <span id="rk-score-residual"></span></div>
+    <div class="form-group" id="rk-delivery-row">
+      <label class="form-label">Entrega vinculada</label>
+      <select class="form-control" id="rk-delivery">
+        <option value="">— Nenhuma —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Ação de Mitigação</label>
+      <textarea class="form-control" id="rk-mitigation" rows="2" placeholder="Descreva a ação para mitigar este risco..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Prazo da ação</label>
+      <input type="date" class="form-control" id="rk-due-date" />
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:10px 12px;background:var(--surface2);border-radius:6px;">
+      <input type="checkbox" id="rk-create-activity" style="width:16px;height:16px;accent-color:var(--accent);" />
+      <label for="rk-create-activity" style="font-size:13px;cursor:pointer;">Criar atividade do tipo Risco na entrega vinculada</label>
+    </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn btn-ghost" onclick="closeModal('modal-risk')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveRisk()">Salvar Risco</button>
@@ -2110,7 +2128,7 @@ function loadState() {
       if (!s.config)            s.config            = {};
       if (!s.risks)             s.risks             = [];
       if (!s.riskEvents)        s.riskEvents        = [];
-      if (!s.riskCategories)    s.riskCategories    = ['Operacional','Financeiro','Legal/Compliance','Reputacional','Ambiental','Estratégico','HSE','Técnico','Contratual'];
+      if (!s.riskCategories)    s.riskCategories    = ['Técnico / Metodológico','Cronograma','Financeiro / Contratual','Legal / Licenciamento','Ambiental','HSE','Reputacional / Stakeholder','Externo / Força Maior'];
       // Migrate old single-person activities to allocations array
       s.activities = (s.activities || []).map(a => {
         if (!a.allocations) {
@@ -3548,6 +3566,7 @@ function renderProjectDetail() {
     ${canEdit && activeTab === 'entregas' ? `<button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Entrega</button>` : ''}
     ${canEdit && activeTab === 'equipe'   ? `<button class="btn btn-primary btn-sm" onclick="openProjectTeamModal(${p.id})">✎ Gerenciar Equipe</button>` : ''}
     ${canEdit && activeTab === 'raci'     ? `<button class="btn btn-primary btn-sm" onclick="openRaciModal(${p.id})">✎ Editar RACI</button>` : ''}
+    ${canEdit && activeTab === 'riscos'   ? `<button class="btn btn-primary btn-sm" onclick="openNewRisk(${p.id})">+ Novo Risco</button>` : ''}
     ${canEdit ? `<button class="btn btn-ghost btn-sm" onclick="openEditProject(${p.id})">✎ Editar</button>` : ''}
   `;
 
@@ -3564,6 +3583,8 @@ function renderProjectDetail() {
 
   } else if (activeTab === 'raci') {
     tabContent = renderRaciTab(p, deliveries);
+  } else if (activeTab === 'riscos') {
+    tabContent = renderProjectRisksTab(p);
   }
 
   document.getElementById('page-content').innerHTML = `
@@ -3602,6 +3623,7 @@ function renderProjectDetail() {
         ['entregas', '⬡', `Entregas e Atividades`],
         ['equipe',   '◎', `Equipe do Projeto${allocCount ? ` (${allocCount})` : ''}`],
         ['raci',     '▦', 'Matriz RACI'],
+        ['riscos','⚠','Riscos'],
       ].map(([tab, icon, label]) => `
         <div onclick="_projSetTab('${tab}')" style="padding:10px 20px;cursor:pointer;font-size:13px;font-weight:500;
           border-bottom:2px solid ${activeTab===tab?'var(--accent)':'transparent'};margin-bottom:-2px;
@@ -9939,6 +9961,136 @@ async function renderImpediments() {
   `;
 }
 
+function _riskLevelLabel(score) {
+  if (score >= 17) return { label: 'Crítico',  color: '#ef4444', bg: 'rgba(239,68,68,0.12)' };
+  if (score >= 10) return { label: 'Alto',     color: '#f97316', bg: 'rgba(249,115,22,0.12)' };
+  if (score >= 5)  return { label: 'Médio',    color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' };
+  return                  { label: 'Baixo',    color: '#22c55e', bg: 'rgba(34,197,94,0.12)' };
+}
+
+function _renderRiskHeatmap(risks, containerId) {
+  // 5x5 heatmap: x=magnitude(impacto), y=probabilidade
+  const cells = [];
+  for (let p = 5; p >= 1; p--) {
+    for (let m = 1; m <= 5; m++) {
+      const score = p * m;
+      const lvl = _riskLevelLabel(score);
+      const inCell = risks.filter(r => (r.probResidual||r.prob||1)===p && (r.magResidual||r.mag||1)===m);
+      cells.push(`<div title="P${p}×M${m}=Score${score}" style="position:relative;height:52px;background:${lvl.bg};border:1px solid rgba(255,255,255,0.06);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px;">
+        <div style="font-size:9px;color:${lvl.color};font-weight:600;">${score}</div>
+        ${inCell.length ? `<div style="display:flex;flex-wrap:wrap;gap:2px;justify-content:center;">${inCell.slice(0,3).map(r=>`<div title="${esc(r.title)}" style="width:10px;height:10px;border-radius:50%;background:${lvl.color};opacity:0.9;"></div>`).join('')}${inCell.length>3?`<div style="font-size:8px;color:${lvl.color}">+${inCell.length-3}</div>`:''}</div>` : ''}
+      </div>`);
+    }
+  }
+  return `<div style="display:grid;grid-template-columns:24px repeat(5,1fr);gap:3px;align-items:center;">
+    <div></div>
+    ${[1,2,3,4,5].map(m=>`<div style="text-align:center;font-size:9px;color:var(--muted);">M${m}</div>`).join('')}
+    ${[5,4,3,2,1].map((p,pi)=>`
+      <div style="font-size:9px;color:var(--muted);text-align:right;padding-right:4px;">P${p}</div>
+      ${cells.slice(pi*5, pi*5+5).join('')}
+    `).join('')}
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:10px;color:var(--muted);">
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-right:3px;"></span>Baixo (1–4)</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;margin-right:3px;"></span>Médio (5–9)</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f97316;margin-right:3px;"></span>Alto (10–16)</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;margin-right:3px;"></span>Crítico (17–25)</span>
+    <span style="margin-left:auto;font-size:9px;">M = Impacto · P = Probabilidade</span>
+  </div>`;
+}
+
+function renderProjectRisksTab(p) {
+  const canEdit = canEditProject(p.id);
+  const deliveries = state.deliveries.filter(d => d.projectId === p.id);
+  const risks = (state.risks||[]).filter(r => r.projectId === p.id);
+
+  if (!risks.length) {
+    return `<div class="empty">
+      <div class="empty-icon">⚠</div>
+      <div class="empty-text">Nenhum risco cadastrado</div>
+      <div class="empty-sub">Clique em "+ Novo Risco" para adicionar</div>
+    </div>`;
+  }
+
+  const activeRisks = risks.filter(r => r.status !== 'encerrado');
+
+  // KPIs
+  const kpiCritico = risks.filter(r=>{ const s=riskScore(r.probResidual||r.prob,r.magResidual||r.mag); return s>=17; }).length;
+  const kpiAlto    = risks.filter(r=>{ const s=riskScore(r.probResidual||r.prob,r.magResidual||r.mag); return s>=10&&s<17; }).length;
+  const kpiMedio   = risks.filter(r=>{ const s=riskScore(r.probResidual||r.prob,r.magResidual||r.mag); return s>=5&&s<10; }).length;
+  const kpiBaixo   = risks.filter(r=>{ const s=riskScore(r.probResidual||r.prob,r.magResidual||r.mag); return s<5; }).length;
+
+  const kpisHtml = `<div class="grid-4" style="margin-bottom:20px;">
+    <div class="stat" style="border-color:rgba(239,68,68,0.3);">
+      <div class="stat-label">Crítico</div>
+      <div class="stat-value" style="color:#ef4444;">${kpiCritico}</div>
+      <div class="stat-sub">score ≥ 17</div>
+    </div>
+    <div class="stat" style="border-color:rgba(249,115,22,0.3);">
+      <div class="stat-label">Alto</div>
+      <div class="stat-value" style="color:#f97316;">${kpiAlto}</div>
+      <div class="stat-sub">score 10–16</div>
+    </div>
+    <div class="stat" style="border-color:rgba(245,158,11,0.3);">
+      <div class="stat-label">Médio</div>
+      <div class="stat-value" style="color:#f59e0b;">${kpiMedio}</div>
+      <div class="stat-sub">score 5–9</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Baixo</div>
+      <div class="stat-value" style="color:#22c55e;">${kpiBaixo}</div>
+      <div class="stat-sub">score 1–4</div>
+    </div>
+  </div>`;
+
+  // Layout: heatmap left, list right
+  const heatmapHtml = `<div class="card" style="flex:none;width:320px;">
+    <div class="card-header"><div class="card-title">Mapa de Calor</div></div>
+    ${_renderRiskHeatmap(activeRisks)}
+  </div>`;
+
+  const statusColors = { ativo:'var(--amber)', em_mitigacao:'var(--blue)', monitoramento:'var(--accent2)', ocorreu:'var(--red)', encerrado:'var(--muted)' };
+  const statusLabels = { ativo:'Identificado', em_mitigacao:'Em mitigação', monitoramento:'Monitoramento', ocorreu:'Ocorreu', encerrado:'Encerrado' };
+
+  const listHtml = `<div style="flex:1;min-width:0;">
+    ${risks.map(r => {
+      const score = riskScore(r.probResidual||r.prob, r.magResidual||r.mag);
+      const lvl   = _riskLevelLabel(score);
+      const del   = r.deliveryId ? deliveries.find(d=>d.id===r.deliveryId) : null;
+      const owner = r.ownerId ? state.team.find(t=>t.id===r.ownerId) : null;
+      const actLinked = (state.activities||[]).find(a=>a.riskId===r.id);
+      return `<div class="card" style="margin-bottom:10px;border-left:3px solid ${lvl.color};">
+        <div style="display:flex;align-items:flex-start;gap:12px;">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+              <div style="font-size:14px;font-weight:600;">${esc(r.title)}</div>
+              <span style="background:${lvl.bg};color:${lvl.color};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;">${lvl.label} · ${score}</span>
+              <span style="background:var(--surface2);color:var(--muted);padding:2px 8px;border-radius:20px;font-size:10px;">${esc(r.category||'—')}</span>
+              <span style="background:var(--surface2);color:${statusColors[r.status]||'var(--muted)'};padding:2px 8px;border-radius:20px;font-size:10px;">${statusLabels[r.status]||r.status||'—'}</span>
+            </div>
+            ${r.desc ? `<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${esc(r.desc)}</div>` : ''}
+            <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--muted);">
+              <span>P(inerente): ${r.prob||'—'} · M: ${r.mag||'—'}</span>
+              <span>P(residual): ${r.probResidual||'—'} · M: ${r.magResidual||'—'}</span>
+              ${del ? `<span>📦 ${esc(del.name)}</span>` : ''}
+              ${owner ? `<span>👤 ${esc(owner.name.split(' ')[0])}</span>` : ''}
+              ${r.dueDate ? `<span>📅 ${r.dueDate}</span>` : ''}
+              ${actLinked ? `<span style="color:var(--accent2);">⬡ Atividade vinculada</span>` : ''}
+            </div>
+            ${r.mitigation ? `<div style="margin-top:8px;padding:8px 10px;background:var(--surface2);border-radius:6px;font-size:12px;"><span style="color:var(--muted);">Mitigação: </span>${esc(r.mitigation)}</div>` : ''}
+          </div>
+          ${canEdit ? `<div style="display:flex;gap:6px;flex-shrink:0;">
+            <button class="btn btn-ghost btn-sm" onclick="openEditRisk(${r.id})">✎</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="deleteRisk(${r.id})">✕</button>
+          </div>` : ''}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  return kpisHtml + `<div style="display:flex;gap:16px;align-items:flex-start;">${heatmapHtml}${listHtml}</div>`;
+}
+
 function renderRisks() {
   if (!canDo('view_risks')) { showToast('Sem permissão para acessar este módulo.'); navigate('dashboard'); return; }
   document.getElementById('topbar-title').textContent = 'Gestão de Riscos';
@@ -10003,7 +10155,10 @@ function renderRisks() {
     return;
   }
 
-  const sorted = [...risks].sort((a,b)=>{
+  // Filter by project if set
+  const fProject = window._riskFilterProject || '';
+  const filteredRisks = fProject ? risks.filter(r=>String(r.projectId)===fProject) : risks;
+    const sorted = [...filteredRisks].sort((a,b)=>{
     const sa=riskScore(a.probResidual||a.prob,a.magResidual||a.mag);
     const sb=riskScore(b.probResidual||b.prob,b.magResidual||b.mag);
     return sb-sa;
@@ -10016,6 +10171,8 @@ function renderRisks() {
     const openEvts=events.filter(e=>e.status!=='encerrado').length;
     const hasCrisis=events.some(e=>e.crisisActive);
     const owner=r.ownerId?state.team.find(p=>p.id===r.ownerId):null;
+    const proj=r.projectId?state.projects.find(p=>p.id===r.projectId):null;
+    const del=r.deliveryId?state.deliveries.find(d=>d.id===r.deliveryId):null;
     const canEdit=canDo('create_project');
     return `<div class="card" style="margin-bottom:10px;cursor:pointer;border-left:4px solid ${lvlR.color};${hasCrisis?'border:2px solid #ef4444;':''}">
       <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;" onclick="currentRiskId=${r.id};navigate('risk_detail',${r.id})">
@@ -10032,7 +10189,7 @@ function renderRisks() {
             <span>Inerente: <strong style="color:${lvlI.color};">${sI}</strong></span>
             <span>Residual: <strong style="color:${lvlR.color};">${sR}</strong>
               ${sR<sI?`<span style="color:var(--green);"> ↓${sI-sR}</span>`:''}</span>
-            ${owner?`<span>👤 ${esc(owner.name.split(' ')[0])}</span>`:''}
+            ${owner?`<span>👤 ${esc(owner.name.split(' ')[0])}</span>`:''} ${proj?`<span style="color:var(--accent2);cursor:pointer;" onclick="navigate('project_detail',${proj.id})">⬡ ${esc(proj.name.slice(0,22))}</span>`:''} ${del?`<span>📦 ${esc(del.name.slice(0,20))}</span>`:''}
             ${r.mitigation?'<span>🛡 Mitigação ✓</span>':''}
             ${r.contingency?'<span>🔄 Contingência ✓</span>':''}
           </div>
@@ -11268,11 +11425,12 @@ function linkMediaToRisk(title, url) {
 let editingRiskId=null;
 let _riskActions=[];
 
-function openNewRisk() {
+function openNewRisk(projectId) {
   if (!sbUser) return;
   editingRiskId=null;
+  _riskCurrentProjectId = projectId || null;
   _riskActions=[];
-  _populateRiskForm(null);
+  _populateRiskForm(null, projectId);
   document.getElementById('modal-risk-title').textContent='Novo Risco';
   openModal('modal-risk');
 }
@@ -11285,7 +11443,7 @@ function openEditRisk(id) {
   document.getElementById('modal-risk-title').textContent='Editar Risco';
   openModal('modal-risk');
 }
-function _populateRiskForm(r) {
+function _populateRiskForm(r, projectId) {
   document.getElementById('rk-title').value    =r?.title||'';
   document.getElementById('rk-desc').value     =r?.desc||'';
   document.getElementById('rk-controls').value =r?.controls||'';
@@ -11299,6 +11457,18 @@ function _populateRiskForm(r) {
   catSel.innerHTML=(state.riskCategories||[]).map(c=>`<option value="${esc(c)}" ${r?.category===c?'selected':''}>${esc(c)}</option>`).join('');
   const ownerSel=document.getElementById('rk-owner');
   ownerSel.innerHTML=`<option value="">— Nenhum —</option>`+state.team.map(p=>`<option value="${p.id}" ${r?.ownerId===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+  // Delivery selector — show deliveries of the project
+  const pId = projectId || r?.projectId || null;
+  const delSel = document.getElementById('rk-delivery');
+  if (delSel) {
+    const dels = pId ? state.deliveries.filter(d=>d.projectId===pId) : [];
+    delSel.innerHTML = `<option value="">— Nenhuma —</option>` + dels.map(d=>`<option value="${d.id}" ${r?.deliveryId===d.id?'selected':''}>${esc(d.name)}</option>`).join('');
+    const delRow = document.getElementById('rk-delivery-row');
+    if (delRow) delRow.style.display = dels.length ? '' : 'none';
+  }
+  // Action: create activity checkbox
+  const createActEl = document.getElementById('rk-create-activity');
+  if (createActEl) createActEl.checked = false;
 }
 function _updateRiskScores() {
   const p=parseInt(document.getElementById('rk-prob')?.value)||0;
@@ -11317,13 +11487,47 @@ function saveRisk() {
   if (!sbUser||!canDo('create_project')) { showError('Sem permissão'); return; }
   const title=requireField('rk-title','Informe o título do risco.');
   if (!title) return;
-  const data={title,desc:document.getElementById('rk-desc').value.trim(),controls:document.getElementById('rk-controls').value.trim(),category:document.getElementById('rk-category').value,status:document.getElementById('rk-status').value,prob:parseInt(document.getElementById('rk-prob').value)||1,mag:parseInt(document.getElementById('rk-mag').value)||1,probResidual:parseInt(document.getElementById('rk-prob-r').value)||1,magResidual:parseInt(document.getElementById('rk-mag-r').value)||1,ownerId:parseInt(document.getElementById('rk-owner').value)||null,updatedAt:new Date().toISOString()};
+  const deliveryIdVal = document.getElementById('rk-delivery')?.value;
+  const data={
+    title,
+    desc:document.getElementById('rk-desc').value.trim(),
+    controls:document.getElementById('rk-controls').value.trim(),
+    category:document.getElementById('rk-category').value,
+    status:document.getElementById('rk-status').value,
+    prob:parseInt(document.getElementById('rk-prob').value)||1,
+    mag:parseInt(document.getElementById('rk-mag').value)||1,
+    probResidual:parseInt(document.getElementById('rk-prob-r').value)||1,
+    magResidual:parseInt(document.getElementById('rk-mag-r').value)||1,
+    ownerId:parseInt(document.getElementById('rk-owner').value)||null,
+    projectId: _riskCurrentProjectId || null,
+    deliveryId: deliveryIdVal ? parseInt(deliveryIdVal) : null,
+    mitigation: document.getElementById('rk-mitigation')?.value?.trim()||'',
+    dueDate: document.getElementById('rk-due-date')?.value||'',
+    updatedAt:new Date().toISOString()
+  };
   if (!state.risks) state.risks=[];
+  let savedId = null;
   if (editingRiskId) {
     const idx=state.risks.findIndex(r=>r.id===editingRiskId);
     if (idx>=0) state.risks[idx]={...state.risks[idx],...data};
+    savedId = editingRiskId;
   } else {
-    state.risks.push({id:uid(),createdAt:new Date().toISOString(),...data});
+    savedId = uid();
+    state.risks.push({id:savedId,createdAt:new Date().toISOString(),...data});
+  }
+  // Optionally create activity linked to delivery
+  const createAct = document.getElementById('rk-create-activity')?.checked;
+  if (createAct && data.deliveryId && !editingRiskId) {
+    const actId = uid();
+    const ownerP = data.ownerId ? [{ personId: data.ownerId, hours: 0, start: '', end: data.dueDate||'' }] : [];
+    state.activities.push({
+      id: actId, name: '⚠ ' + data.title,
+      desc: data.desc, start: '', end: data.dueDate||'',
+      status: STATUS.NOT_STARTED, progress: 0,
+      deliveryId: data.deliveryId, packageId: null,
+      allocations: ownerP, isRisk: true, riskId: savedId,
+      createdAt: new Date().toISOString()
+    });
   }
   closeModal('modal-risk');
   saveState();
