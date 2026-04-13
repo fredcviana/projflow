@@ -678,17 +678,17 @@ window._wallSignIn = function() {
         <option value="">— Nenhuma —</option>
       </select>
     </div>
-    <div class="form-group">
-      <label class="form-label">Ação de Mitigação</label>
-      <textarea class="form-control" id="rk-mitigation" rows="2" placeholder="Descreva a ação para mitigar este risco..."></textarea>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Prazo da ação</label>
-      <input type="date" class="form-control" id="rk-due-date" />
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:10px 12px;background:var(--surface2);border-radius:6px;">
-      <input type="checkbox" id="rk-create-activity" style="width:16px;height:16px;accent-color:var(--accent);" />
-      <label for="rk-create-activity" style="font-size:13px;cursor:pointer;">Criar atividade do tipo Risco na entrega vinculada</label>
+    <div style="margin-top:4px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);">
+          Ações de Mitigação
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="addRiskAction()">+ Adicionar ação</button>
+      </div>
+      <div id="rk-actions-list"></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+        Marque "Criar como atividade" em cada ação para incluí-la no cronograma da entrega vinculada, com flag de risco.
+      </div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn btn-ghost" onclick="closeModal('modal-risk')">Cancelar</button>
@@ -4193,6 +4193,7 @@ function renderActivityRowInPackage(a, idx, allActs) {
       <div style="min-width:0;">
         <div style="display:flex; align-items:center; gap:6px;">
           ${idx > 0 ? `<span style="font-size:10px; color:var(--muted);">→</span>` : ''}
+          ${a.isRisk ? `<span title="Ação de risco${a.riskActionOf ? ': ' + a.riskActionOf : ''}" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:rgba(249,115,22,0.15);color:#f97316;font-size:9px;font-weight:700;flex-shrink:0;">⚠</span>` : ''}
           <div style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.name)}</div>
         </div>
         ${a.note ? `<div style="font-size:11px; color:var(--muted);">${esc(a.note)}</div>` : ''}
@@ -10077,7 +10078,16 @@ function renderProjectRisksTab(p) {
               ${r.dueDate ? `<span>📅 ${r.dueDate}</span>` : ''}
               ${actLinked ? `<span style="color:var(--accent2);">⬡ Atividade vinculada</span>` : ''}
             </div>
-            ${r.mitigation ? `<div style="margin-top:8px;padding:8px 10px;background:var(--surface2);border-radius:6px;font-size:12px;"><span style="color:var(--muted);">Mitigação: </span>${esc(r.mitigation)}</div>` : ''}
+            ${(r.actions||[]).length ? `<div style="margin-top:8px;">
+              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:6px;">Ações (${(r.actions||[]).length})</div>
+              ${(r.actions||[]).map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--surface2);border-radius:4px;margin-bottom:4px;font-size:11px;">
+                <span style="color:${a.done?'var(--green)':'var(--muted)'}">${a.done?'✓':'○'}</span>
+                <span style="flex:1;${a.done?'text-decoration:line-through;color:var(--muted);':''}">${esc(a.what||'')}</span>
+                ${a.who?`<span style="color:var(--muted);">👤 ${esc(a.who)}</span>`:''}
+                ${a.when?`<span style="color:var(--muted);">📅 ${a.when}</span>`:''}
+                ${a.createActivity?`<span style="color:var(--accent2);font-size:10px;">⬡ No cronograma</span>`:''}
+              </div>`).join('')}
+            </div>` : ''}
           </div>
           ${canEdit ? `<div style="display:flex;gap:6px;flex-shrink:0;">
             <button class="btn btn-ghost btn-sm" onclick="openEditRisk(${r.id})">✎</button>
@@ -11466,9 +11476,9 @@ function _populateRiskForm(r, projectId) {
     const delRow = document.getElementById('rk-delivery-row');
     if (delRow) delRow.style.display = dels.length ? '' : 'none';
   }
-  // Action: create activity checkbox
-  const createActEl = document.getElementById('rk-create-activity');
-  if (createActEl) createActEl.checked = false;
+  // Load existing actions
+  _riskActions = r?.actions ? JSON.parse(JSON.stringify(r.actions)) : [];
+  _renderRiskActions();
 }
 function _updateRiskScores() {
   const p=parseInt(document.getElementById('rk-prob')?.value)||0;
@@ -11501,8 +11511,8 @@ function saveRisk() {
     ownerId:parseInt(document.getElementById('rk-owner').value)||null,
     projectId: _riskCurrentProjectId || null,
     deliveryId: deliveryIdVal ? parseInt(deliveryIdVal) : null,
-    mitigation: document.getElementById('rk-mitigation')?.value?.trim()||'',
-    dueDate: document.getElementById('rk-due-date')?.value||'',
+    mitigation: '',
+    dueDate: '',
     updatedAt:new Date().toISOString()
   };
   if (!state.risks) state.risks=[];
@@ -11515,18 +11525,30 @@ function saveRisk() {
     savedId = uid();
     state.risks.push({id:savedId,createdAt:new Date().toISOString(),...data});
   }
-  // Optionally create activity linked to delivery
-  const createAct = document.getElementById('rk-create-activity')?.checked;
-  if (createAct && data.deliveryId && !editingRiskId) {
-    const actId = uid();
-    const ownerP = data.ownerId ? [{ personId: data.ownerId, hours: 0, start: '', end: data.dueDate||'' }] : [];
-    state.activities.push({
-      id: actId, name: '⚠ ' + data.title,
-      desc: data.desc, start: '', end: data.dueDate||'',
-      status: STATUS.NOT_STARTED, progress: 0,
-      deliveryId: data.deliveryId, packageId: null,
-      allocations: ownerP, isRisk: true, riskId: savedId,
-      createdAt: new Date().toISOString()
+  // Save actions and create activities per action
+  data.actions = _riskActions;
+  // Create activities for actions that have createActivity=true and a delivery
+  if (data.deliveryId) {
+    _riskActions.forEach(a => {
+      if (a.createActivity && a.what && !editingRiskId) {
+        const ownerPerson = state.team.find(t => t.name === a.who || t.id === a.who) || null;
+        const ownerAlloc = ownerPerson
+          ? [{ personId: ownerPerson.id, hours: 0, start: '', end: a.when||'' }]
+          : [];
+        state.activities.push({
+          id: uid(),
+          name: a.what,
+          desc: 'Ação de risco: ' + data.title,
+          note: '⚠ Risco: ' + data.title,
+          start: '', end: a.when||'',
+          status: STATUS.NOT_STARTED, progress: 0,
+          deliveryId: data.deliveryId, packageId: null,
+          allocations: ownerAlloc,
+          isRisk: true, riskId: savedId,
+          riskActionOf: data.title,
+          createdAt: new Date().toISOString()
+        });
+      }
     });
   }
   closeModal('modal-risk');
@@ -11681,6 +11703,37 @@ function _renderRiskEventActions() {
       <button onclick="_riskEventActions.splice(${i},1);_renderRiskEventActions();" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;">✕</button>
     </div>`).join('');
 }
+function addRiskAction() {
+  _riskActions.push({ what:'', who:'', when:'', done:false, createActivity:false });
+  _renderRiskActions();
+}
+
+function _renderRiskActions() {
+  const el = document.getElementById('rk-actions-list');
+  if (!el) return;
+  if (!_riskActions.length) { el.innerHTML = ''; return; }
+  el.innerHTML = _riskActions.map((a, i) => `
+    <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+        <input type="checkbox" ${a.done?'checked':''} style="accent-color:var(--accent);flex-shrink:0;"
+          onchange="_riskActions[${i}].done=this.checked">
+        <input class="form-control" placeholder="Descrição da ação..." value="${esc(a.what||'')}"
+          oninput="_riskActions[${i}].what=this.value" style="flex:2;font-size:12px;">
+        <input class="form-control" placeholder="Responsável" value="${esc(a.who||'')}"
+          oninput="_riskActions[${i}].who=this.value" style="flex:1;font-size:12px;">
+        <input type="date" class="form-control" value="${a.when||''}"
+          onchange="_riskActions[${i}].when=this.value" style="flex:1;font-size:12px;">
+        <button onclick="_riskActions.splice(${i},1);_renderRiskActions();"
+          style="background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;flex-shrink:0;">✕</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;margin-left:24px;">
+        <input type="checkbox" ${a.createActivity?'checked':''} style="accent-color:var(--accent);"
+          onchange="_riskActions[${i}].createActivity=this.checked">
+        Criar como atividade no cronograma (dentro da entrega vinculada)
+      </label>
+    </div>`).join('');
+}
+
 function addRiskEventAction() { _riskEventActions.push({what:'',who:'',when:'',done:false}); _renderRiskEventActions(); }
 function saveRiskEvent() {
   if (!sbUser) { showError('Faça login'); return; }
