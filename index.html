@@ -7575,12 +7575,14 @@ async function sbLoadData() {
         state = remote;
         localStorage.setItem('projflow_v2', JSON.stringify(state));
       }
-      // Apply any pending updates from projflow_updates on top of loaded state
-      // This ensures team members see their own updates even if admin was offline
+      // Apply only RECENT pending updates from projflow_updates
+      // Only updates newer than the last full save — avoids reverting approved activities
       try {
+        const remoteUpdatedAt = data.updated_at; // timestamp of last full save
         const { data: updates } = await sb
           .from('projflow_updates')
           .select('*')
+          .gt('created_at', remoteUpdatedAt)   // only updates AFTER last full save
           .order('created_at', { ascending: false });
         if (updates && updates.length) {
           // Apply latest update per activity (most recent wins)
