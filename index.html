@@ -7575,6 +7575,40 @@ async function sbLoadData() {
         state = remote;
         localStorage.setItem('projflow_v2', JSON.stringify(state));
       }
+      // Apply any pending updates from projflow_updates on top of loaded state
+      // This ensures team members see their own updates even if admin was offline
+      try {
+        const { data: updates } = await sb
+          .from('projflow_updates')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (updates && updates.length) {
+          // Apply latest update per activity (most recent wins)
+          const seen = new Set();
+          updates.forEach(u => {
+            if (seen.has(u.activity_id)) return;
+            seen.add(u.activity_id);
+            const act = state.activities.find(a => a.id === u.activity_id);
+            if (act) {
+              act.progress = u.progress ?? act.progress;
+              act.status   = u.status   ?? act.status;
+              act.note     = u.note     ?? act.note;
+              if (u.approval_status !== null && u.approval_status !== undefined)
+                act.approvalStatus = u.approval_status;
+              if (u.approval_desc !== null && u.approval_desc !== undefined)
+                act.approvalDesc = u.approval_desc;
+              if (u.approval_link !== null && u.approval_link !== undefined)
+                act.approvalLink = u.approval_link;
+            }
+          });
+          localStorage.setItem('projflow_v2', JSON.stringify(state));
+          // If admin, save merged state back so everyone gets it
+          if (sbUser?.email === ADMIN_EMAIL) {
+            clearTimeout(sbSyncTimer);
+            sbSyncTimer = setTimeout(sbSaveData, 1500);
+          }
+        }
+      } catch(e) { /* projflow_updates unavailable */ }
       render();
       sbSetSyncLabel('✓ Sincronizado');
     }
@@ -10083,7 +10117,7 @@ function renderProjectRisksTab(p) {
               ${(r.actions||[]).map(a=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--surface2);border-radius:4px;margin-bottom:4px;font-size:11px;">
                 <span style="color:${a.done?'var(--green)':'var(--muted)'}">${a.done?'✓':'○'}</span>
                 <span style="flex:1;${a.done?'text-decoration:line-through;color:var(--muted);':''}">${esc(a.what||'')}</span>
-                ${a.who?`<span style="color:var(--muted);">👤 ${esc(a.who)}</span>`:''}
+                ${a.whoId?`<span style="color:var(--muted);">👤 ${esc((state.team.find(t=>t.id===a.whoId)||{}).name||'')}</span>`:''}
                 ${a.when?`<span style="color:var(--muted);">📅 ${a.when}</span>`:''}
                 ${a.createActivity?`<span style="color:var(--accent2);font-size:10px;">⬡ No cronograma</span>`:''}
               </div>`).join('')}
@@ -11476,8 +11510,14 @@ function _populateRiskForm(r, projectId) {
     const delRow = document.getElementById('rk-delivery-row');
     if (delRow) delRow.style.display = dels.length ? '' : 'none';
   }
-  // Load existing actions
-  _riskActions = r?.actions ? JSON.parse(JSON.stringify(r.actions)) : [];
+  // Load existing actions — migrate old 'who' string to whoId
+  _riskActions = (r?.actions ? JSON.parse(JSON.stringify(r.actions)) : []).map(a => {
+    if (a.who && !a.whoId) {
+      const match = state.team.find(t => t.name === a.who);
+      if (match) a.whoId = match.id;
+    }
+    return a;
+  });
   _renderRiskActions();
 }
 function _updateRiskScores() {
@@ -11527,11 +11567,11 @@ function saveRisk() {
   }
   // Save actions and create activities per action
   data.actions = _riskActions;
-  // Create activities for actions that have createActivity=true and a delivery
-  if (data.deliveryId) {
+  // Create activities for actions that have createActivity=true
+  if (!editingRiskId) {
     _riskActions.forEach(a => {
-      if (a.createActivity && a.what && !editingRiskId) {
-        const ownerPerson = state.team.find(t => t.name === a.who || t.id === a.who) || null;
+      if (a.createActivity && a.what) {
+        const ownerPerson = a.whoId ? state.team.find(t => t.id === a.whoId) || null : null;
         const ownerAlloc = ownerPerson
           ? [{ personId: ownerPerson.id, hours: 0, start: '', end: a.when||'' }]
           : [];
@@ -11704,7 +11744,7 @@ function _renderRiskEventActions() {
     </div>`).join('');
 }
 function addRiskAction() {
-  _riskActions.push({ what:'', who:'', when:'', done:false, createActivity:false });
+  _riskActions.push({ what:'', whoId:null, when:'', done:false, createActivity:false });
   _renderRiskActions();
 }
 
@@ -11712,6 +11752,14 @@ function _renderRiskActions() {
   const el = document.getElementById('rk-actions-list');
   if (!el) return;
   if (!_riskActions.length) { el.innerHTML = ''; return; }
+  // Build team options: project team if available, otherwise all team
+  const projId = _riskCurrentProjectId;
+  const projAlloc = projId ? (state.projects.find(p=>p.id===projId)?.teamAlloc||[]) : [];
+  const teamOptions = projAlloc.length
+    ? projAlloc.map(al => state.team.find(t=>t.id===al.personId)).filter(Boolean)
+    : state.team;
+  const teamOpts = `<option value="">— Responsável —</option>` +
+    teamOptions.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
   el.innerHTML = _riskActions.map((a, i) => `
     <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px;">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
@@ -11719,8 +11767,10 @@ function _renderRiskActions() {
           onchange="_riskActions[${i}].done=this.checked">
         <input class="form-control" placeholder="Descrição da ação..." value="${esc(a.what||'')}"
           oninput="_riskActions[${i}].what=this.value" style="flex:2;font-size:12px;">
-        <input class="form-control" placeholder="Responsável" value="${esc(a.who||'')}"
-          oninput="_riskActions[${i}].who=this.value" style="flex:1;font-size:12px;">
+        <select class="form-control" style="flex:1;font-size:12px;"
+          onchange="_riskActions[${i}].whoId=parseInt(this.value)||null">
+          ${teamOpts.replace(`value="${a.whoId||''}"`,`value="${a.whoId||''}" selected`)}
+        </select>
         <input type="date" class="form-control" value="${a.when||''}"
           onchange="_riskActions[${i}].when=this.value" style="flex:1;font-size:12px;">
         <button onclick="_riskActions.splice(${i},1);_renderRiskActions();"
