@@ -12583,9 +12583,14 @@ async function exportReportTeamAllocWord(key) {
     ..._docxText(saved.analysis || 'Não preenchido.'),
   ];
 
-  const doc = new Document({ sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } }, children }] });
-  const buf = await Packer.toBlob(doc);
-  _downloadDocx(buf, `Alocacao_Equipe_${new Date().toISOString().slice(0,10)}.docx`);
+  try {
+    const doc = new Document({ sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } }, children }] });
+    const buf = await Packer.toBlob(doc);
+    _downloadDocx(buf, `Alocacao_Equipe_${new Date().toISOString().slice(0,10)}.docx`);
+  } catch(e) {
+    console.error('exportReportTeamAllocWord error:', e);
+    showToast('Erro ao gerar Word: ' + e.message);
+  }
 }
 
 async function exportReportWeeklyWord(key) {
@@ -12595,9 +12600,10 @@ async function exportReportWeeklyWord(key) {
   const { Document, Packer, Paragraph, TextRun } = window.docx;
   const saved = getReportData(key);
   const parts = key.split('_');
-  const projId   = parseInt(parts[2]);
-  const weekDate = parts[3];
+  const projId   = parseInt(parts[1]);
+  const weekDate = parts.slice(2).join('_');
   const proj     = getProject(projId);
+  if (!weekDate || !projId) { showToast('Erro: dados do relatório inválidos. Gere o relatório novamente.'); return; }
   const weekMon  = new Date(weekDate + 'T12:00:00');
   const weekSun  = new Date(weekMon); weekSun.setDate(weekMon.getDate()+6);
   const mNames   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -12632,9 +12638,14 @@ async function exportReportWeeklyWord(key) {
     ..._docxText(saved.notes || '—'),
   ];
 
-  const doc = new Document({ sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } }, children }] });
-  const buf = await Packer.toBlob(doc);
-  _downloadDocx(buf, `Relatorio_Semanal_${proj?.name?.slice(0,20)||'Projeto'}_${weekDate}.docx`);
+  try {
+    const doc = new Document({ sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } }, children }] });
+    const buf = await Packer.toBlob(doc);
+    _downloadDocx(buf, `Relatorio_Semanal_${proj?.name?.slice(0,20)||'Projeto'}_${weekDate}.docx`);
+  } catch(e) {
+    console.error('exportReportWeeklyWord error:', e);
+    showToast('Erro ao gerar Word: ' + e.message);
+  }
 }
 
 async function exportReportFactSingleWord(key, factId) {
