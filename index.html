@@ -4481,9 +4481,10 @@ function renderActList(acts) {
                   <div style="font-weight:500; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.name)}</div>
                   ${a.note?`<div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(a.note)}</div>`:''}
                 </td>
-                <td style="max-width:180px;">
-                  <div style="font-size:12px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--accent2);">${esc(a.project?.name||'—')}</div>
+                <td style="max-width:200px;">
+                  <div style="font-size:12px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--accent2);cursor:pointer;" ${a.project?`onclick="navigate('project_detail',${a.project.id})"`:''}>${esc(a.project?.name||'—')}</div>
                   <div style="font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.delivery?.name||'—')}</div>
+                  ${a.pkg?`<div style="font-size:10px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:0.7;">└ ${esc(a.pkg.name)}</div>`:''}
                 </td>
                 <td>
                   ${a.person ? `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
@@ -12123,6 +12124,10 @@ function renderReportWeekly(el) {
     const allocs  = a.allocations||[];
     const people  = allocs.map(al=>state.team.find(p=>p.id===al.personId)).filter(Boolean);
     const checked = selected.has(a.id);
+    const del     = a.deliveryId ? state.deliveries.find(d=>d.id===a.deliveryId)
+                  : a.packageId  ? state.deliveries.find(d=>d.id===((state.packages||[]).find(p=>p.id===a.packageId)||{}).deliveryId)
+                  : null;
+    const pkg     = a.packageId  ? (state.packages||[]).find(p=>p.id===a.packageId) : null;
     return `<tr style="border-top:1px solid var(--border);">
       <td style="padding:8px 12px;">
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
@@ -12130,6 +12135,10 @@ function renderReportWeekly(el) {
             oninput="toggleReportActivity('${key}','${setName}',${a.id},this.checked)" />
           <span style="font-size:13px;">${esc(a.name)}</span>
         </label>
+      </td>
+      <td style="padding:8px; font-size:12px;">
+        <div style="color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:160px;">${esc(del?.name||'—')}</div>
+        ${pkg?`<div style="font-size:10px;color:var(--muted);opacity:0.7;">└ ${esc(pkg.name)}</div>`:''}
       </td>
       <td style="padding:8px; font-size:12px; color:var(--muted);">${people.map(p=>p.name.split(' ')[0]).join(', ')||'—'}</td>
       <td style="padding:8px; font-size:12px; color:var(--muted);">${fmtDate(range.end)}</td>
@@ -12155,6 +12164,7 @@ function renderReportWeekly(el) {
       ${thisWeekActs.length ? `<table style="width:100%; border-collapse:collapse;">
         <thead><tr style="background:var(--surface2);">
           <th style="padding:8px 12px; text-align:left; font-size:11px; color:var(--muted);">Atividade</th>
+          <th style="padding:8px; font-size:11px; color:var(--muted);">Entrega / Pacote</th>
           <th style="padding:8px; font-size:11px; color:var(--muted);">Responsável</th>
           <th style="padding:8px; font-size:11px; color:var(--muted);">Prazo</th>
           <th style="padding:8px; font-size:11px; color:var(--muted);">Status</th>
@@ -12171,6 +12181,7 @@ function renderReportWeekly(el) {
       ${nextWeekActs.length ? `<table style="width:100%; border-collapse:collapse;">
         <thead><tr style="background:var(--surface2);">
           <th style="padding:8px 12px; text-align:left; font-size:11px; color:var(--muted);">Atividade</th>
+          <th style="padding:8px; font-size:11px; color:var(--muted);">Entrega / Pacote</th>
           <th style="padding:8px; font-size:11px; color:var(--muted);">Responsável</th>
           <th style="padding:8px; font-size:11px; color:var(--muted);">Prazo</th>
           <th style="padding:8px; font-size:11px; color:var(--muted);">Status</th>
@@ -12619,16 +12630,21 @@ async function exportReportWeeklyWord(key) {
     const people = allocs.map(al=>state.team.find(p=>p.id===al.personId)).filter(Boolean);
     const r = actDateRange(a);
     const statusMap = LABELS.status;
-    return [a.name, people.map(p=>p.name).join(', ')||'—', fmtDate(r.end), statusMap[a.status]||a.status, (a.progress||0)+'%'];
+    const del = a.deliveryId ? state.deliveries.find(d=>d.id===a.deliveryId)
+              : a.packageId  ? state.deliveries.find(d=>d.id===((state.packages||[]).find(p=>p.id===a.packageId)||{}).deliveryId)
+              : null;
+    const pkg = a.packageId ? (state.packages||[]).find(p=>p.id===a.packageId) : null;
+    const delLabel = del ? del.name + (pkg ? ' › ' + pkg.name : '') : '—';
+    return [a.name, delLabel, people.map(p=>p.name).join(', ')||'—', fmtDate(r.end), statusMap[a.status]||a.status, (a.progress||0)+'%'];
   });
 
   const children = [
     ..._docxHeader(`Relatório Semanal — ${proj?.name||''}`, `Semana de ${fmt(weekMon)} a ${fmt(weekSun)}`),
     _docxSection('1. Atividades Realizadas nesta Semana'),
-    thisActs.length ? _docxTable(['Atividade','Responsável','Prazo','Status','Progresso'], actTableRows(thisActs), [3500,1800,1000,1200,861]) : new Paragraph({ children: [new TextRun({ text: 'Nenhuma atividade selecionada.', color: '888888', size: 20 })] }),
+    thisActs.length ? _docxTable(['Atividade','Entrega / Pacote','Responsável','Prazo','Status','Progresso'], actTableRows(thisActs), [2500,1800,1500,900,1000,661]) : new Paragraph({ children: [new TextRun({ text: 'Nenhuma atividade selecionada.', color: '888888', size: 20 })] }),
     new Paragraph({ spacing:{after:0}, children:[] }),
     _docxSection('2. Previstas para a Próxima Semana'),
-    nextActs.length ? _docxTable(['Atividade','Responsável','Prazo','Status','Progresso'], actTableRows(nextActs), [3500,1800,1000,1200,861]) : new Paragraph({ children: [new TextRun({ text: 'Nenhuma atividade selecionada.', color: '888888', size: 20 })] }),
+    nextActs.length ? _docxTable(['Atividade','Entrega / Pacote','Responsável','Prazo','Status','Progresso'], actTableRows(nextActs), [2500,1800,1500,900,1000,661]) : new Paragraph({ children: [new TextRun({ text: 'Nenhuma atividade selecionada.', color: '888888', size: 20 })] }),
     new Paragraph({ spacing:{after:0}, children:[] }),
     _docxSection('3. Pendências'),
     ..._docxText(saved.pendencies || 'Nenhuma pendência registrada.'),
