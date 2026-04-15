@@ -12608,56 +12608,249 @@ async function exportReportWeeklyWord(key) {
   showToast('Gerando documento Word...');
   const ok = await _loadDocxLib();
   if (!ok) { showToast('Erro ao carregar biblioteca docx'); return; }
-  const { Document, Packer, Paragraph, TextRun } = window.docx;
-  const saved = getReportData(key);
-  const parts = key.split('_');
-  const projId   = parseInt(parts[1]);
+  const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+          AlignmentType, WidthType, BorderStyle, ShadingType, VerticalAlign,
+          ImageRun, Header, PageNumber, Footer, TabStopPosition, TabStopType } = window.docx;
+
+  const saved   = getReportData(key);
+  const parts   = key.split('_');
+  const projId  = parseInt(parts[1]);
   const weekDate = parts.slice(2).join('_');
-  const proj     = getProject(projId);
+  const proj    = getProject(projId);
   if (!weekDate || !projId) { showToast('Erro: dados do relatório inválidos. Gere o relatório novamente.'); return; }
+
   const weekMon  = new Date(weekDate + 'T12:00:00');
-  const weekSun  = new Date(weekMon); weekSun.setDate(weekMon.getDate()+6);
+  const weekSun  = new Date(weekMon); weekSun.setDate(weekMon.getDate() + 6);
+  const nextMon2 = new Date(weekSun); nextMon2.setDate(weekSun.getDate() + 1);
+  const nextSun2 = new Date(nextMon2); nextSun2.setDate(nextMon2.getDate() + 6);
   const mNames   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const fmt      = d => `${d.getDate()} ${mNames[d.getMonth()]} ${d.getFullYear()}`;
+  const fmt      = d => `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
+  const fmtShort = d => `${d.getDate()} ${mNames[d.getMonth()]}`;
 
-  const thisWeekIds = new Set(saved.selectedThisWeek||[]);
-  const nextWeekIds = new Set(saved.selectedNextWeek||[]);
-  const thisActs = state.activities.filter(a => thisWeekIds.has(a.id));
-  const nextActs = state.activities.filter(a => nextWeekIds.has(a.id));
+  // Reconstruct week activity lists
+  const deliveries = state.deliveries.filter(d => d.projectId === projId);
+  const allActs = state.activities.filter(a => {
+    if (a.deliveryId) return deliveries.some(d => d.id === a.deliveryId);
+    const pkg = (state.packages||[]).find(p => p.id === a.packageId);
+    return pkg && deliveries.some(d => d.id === pkg.deliveryId);
+  });
+  const thisWeekActsAll = allActs.filter(a => {
+    const r = actDateRange(a); if (!r.start && !r.end) return false;
+    const aS = r.start ? new Date(r.start) : new Date(r.end);
+    const aE = r.end   ? new Date(r.end)   : new Date(r.start);
+    return aS <= weekSun && aE >= weekMon;
+  });
+  const nextWeekActsAll = allActs.filter(a => {
+    const r = actDateRange(a); if (!r.start && !r.end) return false;
+    const aS = r.start ? new Date(r.start) : new Date(r.end);
+    const aE = r.end   ? new Date(r.end)   : new Date(r.start);
+    return aS <= nextSun2 && aE >= nextMon2;
+  });
+  const thisWeekIds = saved.selectedThisWeek ? new Set(saved.selectedThisWeek) : new Set(thisWeekActsAll.map(a=>a.id));
+  const nextWeekIds = saved.selectedNextWeek ? new Set(saved.selectedNextWeek) : new Set(nextWeekActsAll.map(a=>a.id));
+  const thisActs = allActs.filter(a => thisWeekIds.has(a.id));
+  const nextActs = allActs.filter(a => nextWeekIds.has(a.id));
 
-  const actTableRows = (acts) => acts.map(a => {
-    const allocs = a.allocations||[];
-    const people = allocs.map(al=>state.team.find(p=>p.id===al.personId)).filter(Boolean);
-    const r = actDateRange(a);
-    const statusMap = LABELS.status;
-    const del = a.deliveryId ? state.deliveries.find(d=>d.id===a.deliveryId)
-              : a.packageId  ? state.deliveries.find(d=>d.id===((state.packages||[]).find(p=>p.id===a.packageId)||{}).deliveryId)
-              : null;
-    const pkg = a.packageId ? (state.packages||[]).find(p=>p.id===a.packageId) : null;
-    const delLabel = del ? del.name + (pkg ? ' › ' + pkg.name : '') : '—';
-    return [a.name, delLabel, people.map(p=>p.name).join(', ')||'—', fmtDate(r.end), statusMap[a.status]||a.status, (a.progress||0)+'%'];
+  // Colors from Hidrobr brand
+  const TEAL    = '1B6B7B';   // teal dark
+  const NAVY    = '1F3763';   // navy blue
+  const GRAY    = '44546A';   // text gray
+  const LIGHT   = 'E8F4F6';   // light teal bg
+
+  // Border helpers
+  const cellBorder = { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' };
+  const allBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
+  const noBorder   = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  const noBorders  = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder };
+
+  // Logo image (base64)
+  const LOGO_B64 = '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';
+  const logoBytes = Uint8Array.from(atob(LOGO_B64), c => c.charCodeAt(0));
+
+  // ── Helper: section heading ──
+  const secHeading = (text) => new Paragraph({
+    spacing: { before: 240, after: 120 },
+    children: [new TextRun({ text, bold: true, size: 24, color: TEAL, font: 'Arial' })]
   });
 
+  // ── Helper: body text ──
+  const bodyText = (text) => (text||'').split('\n').filter(Boolean).map(line =>
+    new Paragraph({ spacing: { after: 80 },
+      children: [new TextRun({ text: line, size: 20, font: 'Arial', color: '333333' })] })
+  );
+
+  // ── Helper: activity table ──
+  const actTable = (acts) => {
+    if (!acts.length) return new Paragraph({
+      children: [new TextRun({ text: 'Nenhuma atividade selecionada.', size: 20, color: '888888', font: 'Arial' })]
+    });
+    const totalW = 9360;
+    const cols   = [3200, 1900, 1500, 900, 1000, 860];
+    const headers = ['Atividade', 'Entrega / Pacote', 'Responsável', 'Prazo', 'Status', 'Prog.'];
+    const mkHdr = (text, w) => new TableCell({
+      borders: allBorders,
+      width: { size: w, type: WidthType.DXA },
+      shading: { fill: TEAL, type: ShadingType.CLEAR },
+      margins: { top: 80, bottom: 80, left: 120, right: 120 },
+      children: [new Paragraph({ children: [new TextRun({ text, bold: true, size: 18, color: 'FFFFFF', font: 'Arial' })] })]
+    });
+    const mkCell = (text, w, bold=false) => new TableCell({
+      borders: allBorders,
+      width: { size: w, type: WidthType.DXA },
+      margins: { top: 60, bottom: 60, left: 120, right: 120 },
+      children: [new Paragraph({ children: [new TextRun({ text: String(text||'—'), size: 18, bold, font: 'Arial' })] })]
+    });
+    const statusMap = { nao_iniciado:'Não iniciado', em_andamento:'Em andamento', concluido:'Concluído', atrasado:'Atrasado', bloqueado:'Bloqueado' };
+    return new Table({
+      width: { size: totalW, type: WidthType.DXA },
+      columnWidths: cols,
+      rows: [
+        new TableRow({ children: headers.map((h,i) => mkHdr(h, cols[i])) }),
+        ...acts.map(a => {
+          const allocs = a.allocations||[];
+          const people = allocs.map(al=>state.team.find(p=>p.id===al.personId)).filter(Boolean);
+          const r      = actDateRange(a);
+          const del    = a.deliveryId ? state.deliveries.find(d=>d.id===a.deliveryId)
+                       : a.packageId  ? state.deliveries.find(d=>d.id===((state.packages||[]).find(p=>p.id===a.packageId)||{}).deliveryId) : null;
+          const pkg    = a.packageId ? (state.packages||[]).find(p=>p.id===a.packageId) : null;
+          const delLabel = del ? del.name + (pkg ? ' › ' + pkg.name : '') : '—';
+          return new TableRow({ children: [
+            mkCell(a.name, cols[0], true),
+            mkCell(delLabel, cols[1]),
+            mkCell(people.map(p=>p.name.split(' ')[0]).join(', ')||'—', cols[2]),
+            mkCell(fmtDate(r.end), cols[3]),
+            mkCell(statusMap[a.status]||a.status, cols[4]),
+            mkCell((a.progress||0)+'%', cols[5]),
+          ]});
+        })
+      ]
+    });
+  };
+
+  // ── Header table (Hidrobr template) ──
+  const headerTable = () => {
+    const cfg = state.config || {};
+    const projName = proj?.name || '';
+    const client   = proj?.client || '';
+    const dateStr  = fmt(new Date());
+    const totalW   = 9360;
+    // Row 1: Logo | "LOGO DA CONTRATANTE" | Código Contratante | Revisão/00
+    // Row 2: Logo | "              " | Código Contratada | Data/XX
+    // Row 3: Logo | "              " | Título do Projeto | —
+    // Row 4: Logo | "              " | TÍTULO DO PROJETO (bold, merged)
+    const logoCell = (rows) => new TableCell({
+      borders: allBorders,
+      rowSpan: rows,
+      width: { size: 1400, type: WidthType.DXA },
+      verticalAlign: VerticalAlign.CENTER,
+      margins: { top: 60, bottom: 60, left: 80, right: 80 },
+      children: [new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new ImageRun({ data: logoBytes, transformation: { width: 70, height: 66 }, type: 'png' })]
+      })]
+    });
+    const hCell = (text, w, bold=false, bg='', color='333333') => new TableCell({
+      borders: allBorders,
+      width: { size: w, type: WidthType.DXA },
+      shading: bg ? { fill: bg, type: ShadingType.CLEAR } : undefined,
+      margins: { top: 40, bottom: 40, left: 100, right: 100 },
+      children: [new Paragraph({ children: [new TextRun({ text, bold, size: 18, font: 'Arial', color })] })]
+    });
+    return new Table({
+      width: { size: totalW, type: WidthType.DXA },
+      columnWidths: [1400, 1200, 4960, 800, 1000],
+      rows: [
+        new TableRow({ children: [
+          logoCell(4),
+          hCell('LOGO DA CONTRATANTE', 1200, false, 'F2F2F2'),
+          hCell('Código Contratante', 4960),
+          hCell('Revisão', 800, true),
+          hCell('00', 1000, false, '', NAVY),
+        ]}),
+        new TableRow({ children: [
+          hCell('', 1200),
+          hCell(client || 'Cliente', 4960),
+          hCell('Data', 800, true),
+          hCell(dateStr, 1000, false, '', NAVY),
+        ]}),
+        new TableRow({ children: [
+          hCell('', 1200),
+          hCell('Título do Projeto', 4960),
+          hCell('', 800),
+          hCell('', 1000),
+        ]}),
+        new TableRow({ children: [
+          hCell('', 1200),
+          new TableCell({
+            borders: allBorders,
+            columnSpan: 3,
+            width: { size: 6760, type: WidthType.DXA },
+            shading: { fill: TEAL, type: ShadingType.CLEAR },
+            margins: { top: 60, bottom: 60, left: 120, right: 120 },
+            children: [new Paragraph({ alignment: AlignmentType.CENTER,
+              children: [new TextRun({ text: projName.toUpperCase(), bold: true, size: 20, color: 'FFFFFF', font: 'Arial' })] })]
+          }),
+        ]}),
+      ]
+    });
+  };
+
+  // ── Divider ──
+  const divider = new Paragraph({
+    border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: TEAL, space: 1 } },
+    spacing: { before: 160, after: 160 }, children: []
+  });
+
+  // ── Build document ──
   const children = [
-    ..._docxHeader(`Relatório Semanal — ${proj?.name||''}`, `Semana de ${fmt(weekMon)} a ${fmt(weekSun)}`),
-    _docxSection('1. Atividades Realizadas nesta Semana'),
-    thisActs.length ? _docxTable(['Atividade','Entrega / Pacote','Responsável','Prazo','Status','Progresso'], actTableRows(thisActs), [2500,1800,1500,900,1000,661]) : new Paragraph({ children: [new TextRun({ text: 'Nenhuma atividade selecionada.', color: '888888', size: 20 })] }),
-    new Paragraph({ spacing:{after:0}, children:[] }),
-    _docxSection('2. Previstas para a Próxima Semana'),
-    nextActs.length ? _docxTable(['Atividade','Entrega / Pacote','Responsável','Prazo','Status','Progresso'], actTableRows(nextActs), [2500,1800,1500,900,1000,661]) : new Paragraph({ children: [new TextRun({ text: 'Nenhuma atividade selecionada.', color: '888888', size: 20 })] }),
-    new Paragraph({ spacing:{after:0}, children:[] }),
-    _docxSection('3. Pendências'),
-    ..._docxText(saved.pendencies || 'Nenhuma pendência registrada.'),
-    _docxSection('4. Pontos de Alerta'),
-    ..._docxText(saved.alerts || 'Nenhum ponto de alerta.'),
-    _docxSection('5. Observações Gerais'),
-    ..._docxText(saved.notes || '—'),
+    headerTable(),
+    new Paragraph({ spacing: { after: 160 }, children: [] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 40 },
+      children: [new TextRun({ text: 'RELATÓRIO SEMANAL DE PROJETO', bold: true, size: 28, color: NAVY, font: 'Arial' })] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 240 },
+      children: [new TextRun({ text: `Semana de ${fmtShort(weekMon)} a ${fmtShort(weekSun)} de ${weekMon.getFullYear()}`, size: 22, color: GRAY, font: 'Arial' })] }),
+    divider,
+
+    secHeading('1. Atividades Realizadas nesta Semana'),
+    new Paragraph({ spacing: { after: 80 },
+      children: [new TextRun({ text: `Período: ${fmt(weekMon)} a ${fmt(weekSun)}`, size: 18, color: GRAY, font: 'Arial', italics: true })] }),
+    new Paragraph({ spacing: { after: 120 }, children: [] }),
+    actTable(thisActs),
+    new Paragraph({ spacing: { after: 0 }, children: [] }),
+    divider,
+
+    secHeading('2. Previstas para a Próxima Semana'),
+    new Paragraph({ spacing: { after: 80 },
+      children: [new TextRun({ text: `Período: ${fmt(nextMon2)} a ${fmt(nextSun2)}`, size: 18, color: GRAY, font: 'Arial', italics: true })] }),
+    new Paragraph({ spacing: { after: 120 }, children: [] }),
+    actTable(nextActs),
+    new Paragraph({ spacing: { after: 0 }, children: [] }),
+    divider,
+
+    secHeading('3. Pendências'),
+    ...bodyText(saved.pendencies || 'Nenhuma pendência registrada.'),
+    divider,
+
+    secHeading('4. Pontos de Alerta'),
+    ...bodyText(saved.alerts || 'Nenhum ponto de alerta.'),
+    divider,
+
+    secHeading('5. Observações Gerais'),
+    ...bodyText(saved.notes || '—'),
   ];
 
   try {
-    const doc = new Document({ sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } }, children }] });
+    const doc = new Document({
+      styles: {
+        default: { document: { run: { font: 'Arial', size: 20 } } }
+      },
+      sections: [{ properties: { page: {
+        size: { width: 11906, height: 16838 },
+        margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 }
+      }}, children }]
+    });
     const buf = await Packer.toBlob(doc);
-    _downloadDocx(buf, `Relatorio_Semanal_${proj?.name?.slice(0,20)||'Projeto'}_${weekDate}.docx`);
+    _downloadDocx(buf, `Relatorio_Semanal_${proj?.name?.replace(/\s+/g,'_').slice(0,20)||'Projeto'}_${weekDate}.docx`);
   } catch(e) {
     console.error('exportReportWeeklyWord error:', e);
     showToast('Erro ao gerar Word: ' + e.message);
