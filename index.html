@@ -2409,12 +2409,9 @@ function dashExpandToday() {
     const todayActs = state.activities.filter(a => {
       if (a.status === 'concluido') return false;
       const r = actDateRange(a);
-      if (!r.start && !r.end) return false;
-      const aS = r.start ? new Date(r.start) : null;
-      const aE = r.end   ? new Date(r.end)   : null;
-      if (aS) aS.setHours(0,0,0,0);
-      if (aE) aE.setHours(0,0,0,0);
-      return (!aS || aS <= todayEnd) && (!aE || aE >= today);
+      // Somente atividades cujo término é hoje
+      const todayStr = today.toISOString().slice(0,10);
+      return r.end === todayStr;
     }).sort((a,b) => {
       const o = {atrasado:0,bloqueado:1,em_andamento:2,nao_iniciado:3};
       const sa = isLate(a)?'atrasado':(a.status||'nao_iniciado');
@@ -2494,10 +2491,11 @@ function renderDashboard() {
   const totalHours       = state.activities.reduce((s,a) => s + actTotalHours(a), 0);
 
   // ── Today's activities (period covers today, not done) ──────────────
+  // Somente atividades cujo término é hoje
   const todayActs = state.activities.filter(a => {
     if (a.status === STATUS.DONE) return false;
     const r = actDateRange(a);
-    return r.start && r.end && r.start <= today && r.end >= today;
+    return r.end === today;
   });
 
   // ── Check-ins ────────────────────────────────────────────────────────
