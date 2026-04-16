@@ -1157,6 +1157,21 @@ window._wallSignIn = function() {
     <input type="hidden" id="a-delivery-id" />
     <input type="hidden" id="a-activity-id" />
     <input type="hidden" id="a-package-id" />
+
+    <!-- Checklist section — only shown for gerente/líder -->
+    <div id="a-checklist-section" style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);">
+          ☑ Checklist <span style="font-size:10px;font-weight:400;">(opcional)</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="addActivityChecklistItem()">+ Item</button>
+      </div>
+      <div id="a-checklist-list"></div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <input class="form-control" id="a-checklist-new" placeholder="Novo item..." style="flex:1;font-size:12px;" onkeydown="if(event.key==='Enter')addActivityChecklistItem()" />
+      </div>
+    </div>
+
     <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
       <button class="btn btn-ghost" onclick="closeModal('modal-activity')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveActivity()">Salvar Atividade</button>
@@ -1268,6 +1283,7 @@ window._wallSignIn = function() {
             <option value="package">Pacote de atividades</option>
             <option value="delivery">Entrega completa (com pacotes)</option>
             <option value="activity">Atividade avulsa</option>
+            <option value="checklist">Checklist de verificação</option>
           </select>
         </div>
         <div class="form-group">
@@ -1317,6 +1333,30 @@ window._wallSignIn = function() {
       </div>
     </div>
     <input type="hidden" id="lib-target-delivery-id" />
+  </div>
+</div>
+
+
+<!-- Modal Checklist -->
+<div class="modal-overlay" id="modal-checklist">
+  <div class="modal" style="width:520px;max-height:90vh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-shrink:0;">
+      <div class="modal-title" style="margin-bottom:0;" id="checklist-modal-title">Checklist</div>
+      <div style="font-size:12px;color:var(--muted);" id="checklist-progress-label"></div>
+    </div>
+    <div style="flex:1;overflow-y:auto;">
+      <div id="checklist-items-list" style="margin-bottom:12px;"></div>
+      <div id="checklist-add-row" style="display:none;margin-top:8px;">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input class="form-control" id="checklist-new-item" placeholder="Novo item do checklist..." style="flex:1;font-size:13px;" onkeydown="if(event.key==='Enter')addChecklistItem()" />
+          <button class="btn btn-primary btn-sm" onclick="addChecklistItem()">+ Adicionar</button>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);flex-shrink:0;display:flex;justify-content:flex-end;gap:8px;">
+      <button class="btn btn-ghost" onclick="closeModal('modal-checklist')">Fechar</button>
+      <button class="btn btn-primary" id="checklist-save-btn" onclick="saveChecklist()" style="display:none;">Salvar Checklist</button>
+    </div>
   </div>
 </div>
 
@@ -4016,7 +4056,7 @@ function saveRaci() {
 
 function renderDeliveryCard(d, p) {
   // All activities directly in this delivery (no package)
-  const directActs = state.activities.filter(a => a.deliveryId === d.id && !a.packageId);
+  const directActs = state.activities.filter(a => a.deliveryId === d.id && !a.packageId).sort((a,b) => (a.seqOrder??999) - (b.seqOrder??999));
   // Packages in this delivery
   const pkgs = (state.packages || []).filter(pkg => pkg.deliveryId === d.id);
   // All activities (direct + in packages) for totals
@@ -4080,6 +4120,8 @@ function renderDeliveryCard(d, p) {
           <button class="btn btn-ghost btn-sm" onclick="openNewPackage(${d.id})">+ Pacote</button>
           <button class="btn btn-ghost btn-sm" onclick="openNewActivity(${d.id})">+ Atividade</button>
           <button class="btn btn-ghost btn-sm" style="color:var(--teal);" onclick="openConvertDelivery(${d.id})" title="Converter em Pacote de Atividades">⇄ Converter</button>
+          <button class="btn btn-ghost btn-sm" style="padding:3px 6px;font-size:13px;" onclick="moveDelivery(${d.id},-1)" title="Mover para cima">▲</button>
+          <button class="btn btn-ghost btn-sm" style="padding:3px 6px;font-size:13px;" onclick="moveDelivery(${d.id},1)" title="Mover para baixo">▼</button>
           <button class="btn btn-ghost btn-sm" onclick="openEditDelivery(${d.id})">✎</button>
           <button class="btn btn-danger btn-sm" onclick="deleteDelivery(${d.id})">✕</button>
           ` : ''}
@@ -4152,6 +4194,8 @@ function renderPackageCard(pkg, d) {
           <div style="min-width:80px;">
             <div class="progress-wrap"><div class="progress-bar ${pct===100?'green':pct>60?'':pct>30?'amber':'red'}" style="width:${pct}%; background:var(--teal);"></div></div>
           </div>
+          ${canDo('edit_package') ? `<button class="btn btn-ghost btn-sm" style="padding:3px 5px;font-size:12px;" onclick="movePackage(${pkg.id},-1)" title="Mover para cima">▲</button>` : ''}
+          ${canDo('edit_package') ? `<button class="btn btn-ghost btn-sm" style="padding:3px 5px;font-size:12px;" onclick="movePackage(${pkg.id},1)" title="Mover para baixo">▼</button>` : ''}
           ${canDo('edit_package') ? `<button class="btn btn-ghost btn-sm" style="font-size:11px; padding:3px 8px;" onclick="openEditPackage(${pkg.id})">✎</button>` : ''}
           ${canDo('delete_package') ? `<button class="btn btn-danger btn-sm" style="font-size:11px; padding:3px 7px;" onclick="deletePackage(${pkg.id})">✕</button>` : ''}
         </div>
@@ -4210,6 +4254,9 @@ function renderActivityRowInPackage(a, idx, allActs) {
       </div>
       <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
         ${statusBadge}
+        ${a.checklist?.length ? `<span onclick="openChecklist('activity',${a.id})" style="cursor:pointer;">${checklistBadge(a)}</span>` : ''}
+        ${canDo('edit_activity') ? `<button class="btn btn-ghost btn-sm" style="padding:3px 5px;font-size:11px;" onclick="moveActivity(${a.id},-1)" title="Mover para cima">▲</button>` : ''}
+        ${canDo('edit_activity') ? `<button class="btn btn-ghost btn-sm" style="padding:3px 5px;font-size:11px;" onclick="moveActivity(${a.id},1)" title="Mover para baixo">▼</button>` : ''}
         <button class="btn btn-ghost btn-sm" style="padding:3px 7px;font-size:11px;" onclick="openProgress(${a.id})">↻</button>
         ${canDo('edit_activity') ? `<button class="btn btn-ghost btn-sm" style="padding:3px 6px;font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>` : ''}
         ${canDo('delete_activity') ? `<button class="btn btn-danger btn-sm" style="padding:3px 6px;font-size:11px;" onclick="deleteActivity(${a.id})">✕</button>` : ''}
@@ -5500,6 +5547,25 @@ function renderTemplateEditor() {
     return;
   }
 
+  if (type === 'checklist') {
+    const items = templateItems.filter(i => i.type === 'check');
+    let html = `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:10px;">Itens do Checklist</div>`;
+    if (!items.length) html += `<div style="color:var(--muted);font-size:13px;padding:8px 0;">Nenhum item ainda.</div>`;
+    items.forEach((item, i) => {
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2);border-radius:6px;margin-bottom:5px;">
+        <span style="color:var(--muted);">☐</span>
+        <input class="form-control" value="${esc(item.text||'')}" style="flex:1;font-size:12px;" oninput="templateItems[${i}].text=this.value">
+        <button class="btn btn-danger btn-sm" style="padding:2px 7px;" onclick="templateItems.splice(${i},1);renderTemplateEditor()">✕</button>
+      </div>`;
+    });
+    html += `<div style="display:flex;gap:8px;margin-top:8px;">
+      <input class="form-control" id="check-item-input" placeholder="Novo item do checklist..." style="flex:1;font-size:12px;" onkeydown="if(event.key==='Enter')addTemplateCheckItem()"/>
+      <button class="btn btn-ghost btn-sm" onclick="addTemplateCheckItem()">+ Item</button>
+    </div>`;
+    el.innerHTML = html;
+    return;
+  }
+
   let html = `
     <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); margin-bottom:10px;">
       ${type === 'delivery' ? 'Pacotes e Atividades desta Entrega' : 'Atividades deste Pacote'}
@@ -5549,6 +5615,16 @@ function renderTemplateEditor() {
   html += `<button class="btn btn-ghost btn-sm" onclick="addTemplateAct()">+ Atividade</button></div>`;
 
   el.innerHTML = html;
+}
+
+function addTemplateCheckItem() {
+  const input = document.getElementById('check-item-input');
+  const text = input?.value?.trim();
+  if (!text) return;
+  templateItems.push({ type: 'check', text, id: String(Date.now()) });
+  input.value = '';
+  renderTemplateEditor();
+  input.focus();
 }
 
 function addTemplateAct() {
@@ -5773,11 +5849,21 @@ function applyLibrarySelection() {
         }
         created++;
       });
+    } else if (t.type === 'checklist') {
+      // Apply checklist items to the target delivery
+      const d = getDelivery(deliveryId);
+      if (d) {
+        if (!d.checklist) d.checklist = [];
+        (t.items||[]).filter(i => i.type === 'check').forEach(ci =>
+          d.checklist.push({ id: String(uid()), text: ci.text, done: false })
+        );
+        created++;
+      }
     }
   });
 
   closeModal('modal-library-picker');
-  showToast(`✓ ${created} item(ns) adicionado(s) à entrega!`);
+  showToast(`✓ ${created} item(ns) adicionado(s)!`);
   render();
 }
 
@@ -6530,6 +6616,45 @@ function addAllocationRow() {
   renderAllocationList();
 }
 
+
+// ── Activity modal checklist editing ──
+let _editingActivityChecklist = [];
+
+function _initActivityChecklistSection(checklist) {
+  const canEdit = canDo('create_activity');
+  const section = document.getElementById('a-checklist-section');
+  if (section) section.style.display = canEdit ? '' : 'none';
+  _editingActivityChecklist = checklist ? JSON.parse(JSON.stringify(checklist)) : [];
+  _renderActivityChecklistEdit();
+}
+
+function _renderActivityChecklistEdit() {
+  const el = document.getElementById('a-checklist-list');
+  if (!el) return;
+  if (!_editingActivityChecklist.length) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:4px 0;">Nenhum item. Use "+ Item" para adicionar.</div>';
+    return;
+  }
+  el.innerHTML = _editingActivityChecklist.map((item, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:4px;">
+      <span style="color:var(--muted);font-size:12px;">☐</span>
+      <input class="form-control" value="${esc(item.text)}" style="flex:1;font-size:12px;"
+        oninput="_editingActivityChecklist[${i}].text=this.value">
+      <button onclick="_editingActivityChecklist.splice(${i},1);_renderActivityChecklistEdit();"
+        style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:0 2px;">✕</button>
+    </div>`).join('');
+}
+
+function addActivityChecklistItem() {
+  const input = document.getElementById('a-checklist-new');
+  const text  = input?.value?.trim();
+  if (!text) return;
+  _editingActivityChecklist.push({ id: String(Date.now()), text, done: false });
+  input.value = '';
+  _renderActivityChecklistEdit();
+  input.focus();
+}
+
 function openNewActivity(deliveryId) {
   document.getElementById('modal-activity-title').textContent = 'Nova Atividade';
   document.getElementById('a-name').value = '';
@@ -6541,6 +6666,7 @@ function openNewActivity(deliveryId) {
   document.getElementById('a-package-id').value = '';
   _editingAllocations = [];
   renderAllocationList();
+  _initActivityChecklistSection([]);
   openModal('modal-activity');
 }
 
@@ -6574,6 +6700,7 @@ function openEditActivity(id) {
     ? JSON.parse(JSON.stringify(a.allocations))
     : (a.personId ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }] : []);
   renderAllocationList();
+  _initActivityChecklistSection(a.checklist || []);
   openModal('modal-activity');
 }
 
@@ -6615,6 +6742,9 @@ function saveActivity() {
     deliveryId: packageId ? null : deliveryId,
     packageId: packageId || null,
   };
+
+  // Save checklist
+  data.checklist = _editingActivityChecklist;
 
   if (editId) {
     const a = getActivity(editId);
@@ -6684,6 +6814,15 @@ function saveProgress() {
   a.progress = parseInt(document.getElementById('progress-slider').value);
   a.status   = document.getElementById('progress-status').value;
   a.note     = document.getElementById('progress-note').value;
+
+  // Checklist warning — warn if trying to conclude with incomplete checklist
+  if (a.status === STATUS.DONE && !isChecklistComplete(a)) {
+    const done  = (a.checklist||[]).filter(i=>i.done).length;
+    const total = (a.checklist||[]).length;
+    if (!confirm(`⚠ O checklist desta atividade está incompleto (${done}/${total} itens).\n\nDeseja concluir mesmo assim?`)) {
+      a.status = STATUS.IN_PROGRESS;
+    }
+  }
 
   // NUNCA auto-concluir: analista precisa passar pelo fluxo de aprovação.
   // Gerente/Líder podem marcar concluído diretamente.
@@ -12972,6 +13111,156 @@ function _downloadDocx(buffer, filename) {
 // ============================================================
 //  HELPERS
 // ============================================================
+
+// ============================================================
+//  CHECKLIST
+//  Itens opcionais por atividade, pacote ou entrega.
+//  Gerente/Líder criam; qualquer alocado executa.
+// ============================================================
+let _checklistContext = null; // { type: 'activity'|'delivery'|'package', id, canEdit }
+
+function openChecklist(type, id) {
+  const canEdit = canDo('create_activity'); // gerente ou líder
+  _checklistContext = { type, id, canEdit };
+
+  let entity, title;
+  if (type === 'activity') {
+    entity = getActivity(id);
+    title  = entity?.name || 'Atividade';
+  } else if (type === 'delivery') {
+    entity = getDelivery(id);
+    title  = entity?.name || 'Entrega';
+  } else {
+    entity = getPackage(id);
+    title  = entity?.name || 'Pacote';
+  }
+  if (!entity) return;
+
+  document.getElementById('checklist-modal-title').textContent = '☑ ' + esc(title);
+  document.getElementById('checklist-add-row').style.display   = canEdit ? '' : 'none';
+  document.getElementById('checklist-save-btn').style.display  = canEdit ? '' : 'none';
+  document.getElementById('checklist-new-item').value = '';
+
+  _renderChecklistItems(entity.checklist || [], canEdit);
+  openModal('modal-checklist');
+}
+
+function _renderChecklistItems(items, canEdit) {
+  const el = document.getElementById('checklist-items-list');
+  const lbl = document.getElementById('checklist-progress-label');
+  if (!el) return;
+
+  const done  = items.filter(i => i.done).length;
+  const total = items.length;
+  lbl.textContent = total ? `${done} / ${total} concluídos` : '';
+
+  if (!total) {
+    el.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:16px 0;text-align:center;">
+      Nenhum item ainda.${canEdit ? ' Adicione itens abaixo.' : ''}
+    </div>`;
+    return;
+  }
+
+  const pct = total > 0 ? Math.round(done / total * 100) : 0;
+  const barColor = pct === 100 ? 'var(--green)' : pct >= 50 ? 'var(--accent)' : 'var(--amber)';
+
+  el.innerHTML =
+    `<div style="margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px;">
+        <span>Progresso do checklist</span><span style="font-weight:600;color:${barColor};">${pct}%</span>
+      </div>
+      <div style="height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:${barColor};border-radius:3px;transition:width 0.3s;"></div>
+      </div>
+    </div>` +
+    items.map((item, i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${item.done?'rgba(52,211,153,0.05)':'var(--surface2)'};border-radius:var(--radius-sm);margin-bottom:6px;border:1px solid ${item.done?'rgba(52,211,153,0.2)':'var(--border)'};">
+        <input type="checkbox" ${item.done ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--green);flex-shrink:0;cursor:pointer;"
+          onchange="toggleChecklistItem(${i}, this.checked)">
+        ${canEdit ? `
+          <input class="form-control" value="${esc(item.text)}" style="flex:1;font-size:13px;background:transparent;border:none;padding:0;${item.done?'text-decoration:line-through;color:var(--muted);':''}"
+            oninput="updateChecklistItemText(${i}, this.value)">
+          <button onclick="removeChecklistItem(${i})" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;flex-shrink:0;padding:0 2px;">✕</button>
+        ` : `
+          <span style="flex:1;font-size:13px;${item.done?'text-decoration:line-through;color:var(--muted);':''}">${esc(item.text)}</span>
+        `}
+      </div>`
+    ).join('');
+}
+
+function _getChecklistEntity() {
+  if (!_checklistContext) return null;
+  const { type, id } = _checklistContext;
+  if (type === 'activity')  return getActivity(id);
+  if (type === 'delivery')  return getDelivery(id);
+  if (type === 'package')   return getPackage(id);
+  return null;
+}
+
+function toggleChecklistItem(idx, checked) {
+  const entity = _getChecklistEntity();
+  if (!entity) return;
+  if (!entity.checklist) entity.checklist = [];
+  entity.checklist[idx].done = checked;
+  _renderChecklistItems(entity.checklist, _checklistContext.canEdit);
+  saveState();
+  // Sync if team member
+  if (sb && sbUser && sbUser.email !== ADMIN_EMAIL && _checklistContext.type === 'activity') {
+    sbSaveActivityUpdate(entity.id, entity.progress, entity.status, entity.note);
+  }
+}
+
+function updateChecklistItemText(idx, text) {
+  const entity = _getChecklistEntity();
+  if (!entity || !entity.checklist) return;
+  entity.checklist[idx].text = text;
+  // No need to re-render — input already reflects value
+}
+
+function removeChecklistItem(idx) {
+  const entity = _getChecklistEntity();
+  if (!entity || !entity.checklist) return;
+  entity.checklist.splice(idx, 1);
+  _renderChecklistItems(entity.checklist, _checklistContext.canEdit);
+}
+
+function addChecklistItem() {
+  const input = document.getElementById('checklist-new-item');
+  const text  = input?.value?.trim();
+  if (!text) { showToast('Informe o texto do item.'); return; }
+  const entity = _getChecklistEntity();
+  if (!entity) return;
+  if (!entity.checklist) entity.checklist = [];
+  entity.checklist.push({ id: uid(), text, done: false });
+  input.value = '';
+  _renderChecklistItems(entity.checklist, _checklistContext.canEdit);
+  input.focus();
+}
+
+function saveChecklist() {
+  // Already saving incrementally on each change
+  // This just closes and re-renders
+  saveState();
+  closeModal('modal-checklist');
+  render();
+}
+
+// Check if checklist is complete (all items done)
+function isChecklistComplete(entity) {
+  if (!entity?.checklist?.length) return true; // No checklist = no block
+  return entity.checklist.every(i => i.done);
+}
+
+function checklistBadge(entity) {
+  if (!entity?.checklist?.length) return '';
+  const done  = entity.checklist.filter(i => i.done).length;
+  const total = entity.checklist.length;
+  const complete = done === total;
+  const color = complete ? 'var(--green)' : 'var(--amber)';
+  const bg    = complete ? 'rgba(52,211,153,0.12)' : 'rgba(251,191,36,0.12)';
+  return `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;background:${bg};color:${color};">☑ ${done}/${total}</span>`;
+}
+
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
