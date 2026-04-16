@@ -1159,17 +1159,16 @@ window._wallSignIn = function() {
     <input type="hidden" id="a-package-id" />
 
     <!-- Checklist section — only shown for gerente/líder -->
-    <div id="a-checklist-section" style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;display:none;">
+    <div id="a-checklist-section" style="border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-top:12px;display:none;background:var(--surface2);">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);">
-          ☑ Checklist <span style="font-size:10px;font-weight:400;">(opcional)</span>
+        <div style="font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px;">
+          <span style="font-size:15px;">☑</span> Checklist de Verificação
+          <span style="font-size:10px;font-weight:400;color:var(--muted);">(opcional)</span>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="addActivityChecklistItem()">+ Item</button>
+        <button class="btn btn-ghost btn-sm" onclick="addActivityChecklistItem()">+ Adicionar item</button>
       </div>
       <div id="a-checklist-list"></div>
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <input class="form-control" id="a-checklist-new" placeholder="Novo item..." style="flex:1;font-size:12px;" onkeydown="if(event.key==='Enter')addActivityChecklistItem()" />
-      </div>
+      <input class="form-control" id="a-checklist-new" placeholder="Digite um item e pressione Enter..." style="font-size:13px;margin-top:8px;" onkeydown="if(event.key==='Enter')addActivityChecklistItem()" />
     </div>
 
     <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
@@ -1204,6 +1203,16 @@ window._wallSignIn = function() {
       <textarea class="form-control" id="progress-note" rows="2" placeholder="Notas de andamento..."></textarea>
     </div>
     <input type="hidden" id="progress-activity-id" />
+    <!-- Checklist shortcut — shown when activity has checklist -->
+    <div id="progress-checklist-row" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border);">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-size:12px;font-weight:500;" id="progress-checklist-label">☑ Checklist</div>
+        <button class="btn btn-ghost btn-sm" onclick="openChecklistFromProgress()">Abrir ☑</button>
+      </div>
+      <div style="margin-top:6px;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;">
+        <div id="progress-checklist-bar" style="height:100%;width:0%;background:var(--green);border-radius:3px;transition:width 0.3s;"></div>
+      </div>
+    </div>
     <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
       <button class="btn btn-ghost" onclick="closeModal('modal-progress')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveProgress()">Salvar</button>
@@ -6770,6 +6779,13 @@ function deleteActivity(id) {
 // ============================================================
 //  MODALS: PROGRESS
 // ============================================================
+function openChecklistFromProgress() {
+  const id = parseInt(document.getElementById('progress-activity-id').value);
+  if (!id) return;
+  closeModal('modal-progress');
+  openChecklist('activity', id);
+}
+
 function openProgress(id) {
   // Analista só vê slider e nota — sem acesso ao seletor de status
   const prof = currentProfile();
@@ -6796,6 +6812,23 @@ function openProgress(id) {
   document.getElementById('progress-status').value = a.status || 'nao_iniciado';
   document.getElementById('progress-note').value = a.note || '';
   document.getElementById('progress-activity-id').value = id;
+
+  // Show checklist shortcut if activity has checklist
+  const checklistRow = document.getElementById('progress-checklist-row');
+  const checklistLbl = document.getElementById('progress-checklist-label');
+  const checklistBar = document.getElementById('progress-checklist-bar');
+  if (a.checklist?.length) {
+    const done  = a.checklist.filter(i => i.done).length;
+    const total = a.checklist.length;
+    const pct   = Math.round(done / total * 100);
+    checklistRow.style.display = '';
+    checklistLbl.textContent   = `☑ Checklist — ${done}/${total} itens (${pct}%)`;
+    checklistBar.style.width   = pct + '%';
+    checklistBar.style.background = pct === 100 ? 'var(--green)' : pct >= 50 ? 'var(--accent)' : 'var(--amber)';
+  } else {
+    checklistRow.style.display = 'none';
+  }
+
   openModal('modal-progress');
 }
 
