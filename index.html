@@ -2397,6 +2397,82 @@ function _updateNavVisibility() {
 //  RENDER: DASHBOARD
 //  Renders project overview KPIs, activity status summary, heatmap and approval queue.
 // ============================================================
+
+// Dashboard today expand/collapse
+function dashExpandToday() {
+  const el = document.getElementById('dash-today-list');
+  if (el) {
+    // Build todayActs fresh
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const todayEnd = new Date(today); todayEnd.setHours(23,59,59,999);
+    const todayActs = state.activities.filter(a => {
+      if (a.status === 'concluido') return false;
+      const r = actDateRange(a);
+      if (!r.start && !r.end) return false;
+      const aS = r.start ? new Date(r.start) : null;
+      const aE = r.end   ? new Date(r.end)   : null;
+      if (aS) aS.setHours(0,0,0,0);
+      if (aE) aE.setHours(0,0,0,0);
+      return (!aS || aS <= todayEnd) && (!aE || aE >= today);
+    }).sort((a,b) => {
+      const o = {atrasado:0,bloqueado:1,em_andamento:2,nao_iniciado:3};
+      const sa = isLate(a)?'atrasado':(a.status||'nao_iniciado');
+      const sb = isLate(b)?'atrasado':(b.status||'nao_iniciado');
+      return (o[sa]??4)-(o[sb]??4);
+    });
+    const dotColors = { nao_iniciado:'var(--muted)', em_andamento:'var(--blue)', concluido:'var(--green)', atrasado:'var(--red)', bloqueado:'var(--amber)' };
+    function buildTodayActRow(a) {
+      const persons = actPersonIds(a).map(id => state.team.find(p => p.id === id)).filter(Boolean);
+      const del     = a.deliveryId ? state.deliveries.find(d => d.id === a.deliveryId) : null;
+      const pkg     = a.packageId  ? (state.packages||[]).find(pk => pk.id === a.packageId) : null;
+      const del2    = pkg ? state.deliveries.find(d => d.id === pkg.deliveryId) : null;
+      const proj    = state.projects.find(p => p.id === (del || del2)?.projectId);
+      const effSt   = isLate(a) ? 'atrasado' : (a.status || 'nao_iniciado');
+      const dotCol  = dotColors[effSt] || 'var(--muted)';
+      const nameStr = persons.map(p => p.name.split(' ')[0]).join(', ') || '—';
+      const projStr = proj ? proj.name.slice(0, 24) : '—';
+      const delStr  = (del || del2)?.name?.slice(0, 24) || '';
+      const prog    = a.progress || 0;
+      const checkBadge = a.checklist?.length
+        ? '<span style="margin-left:4px;font-size:10px;color:var(--muted);">☑ ' +
+          a.checklist.filter(i=>i.done).length + '/' + a.checklist.length + '</span>' : '';
+      return '<div onclick="openProgress(' + a.id + ')" ' +
+        'style="display:grid;grid-template-columns:8px 1fr auto auto;gap:8px;align-items:center;' +
+        'padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.12s;"' +
+        ' onmouseenter="this.style.background=\'var(--surface2)\'" onmouseleave="this.style.background=\'\'">'+
+        '<div style="width:7px;height:7px;border-radius:50%;background:' + dotCol + ';flex-shrink:0;"></div>' +
+        '<div style="min-width:0;">' +
+          '<div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+            esc(a.name) + checkBadge + '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap;">' +
+            '<span style="font-size:10px;color:var(--accent2);">' + esc(projStr) + '</span>' +
+            (delStr ? '<span style="font-size:10px;color:var(--muted);">· ' + esc(delStr) + '</span>' : '') +
+            '<span style="font-size:10px;color:var(--muted);">· ' + esc(nameStr) + '</span>' +
+          '</div>' +
+          '<div style="margin-top:5px;display:flex;align-items:center;gap:6px;">' +
+            '<div style="flex:1;height:3px;background:var(--surface3);border-radius:2px;overflow:hidden;max-width:120px;">' +
+              '<div style="height:100%;width:' + prog + '%;background:' + (prog===100?'var(--green)':prog>50?'var(--accent)':'var(--amber)') + ';border-radius:2px;"></div>' +
+            '</div><span style="font-size:10px;color:var(--muted);">' + prog + '%</span>' +
+          '</div>' +
+        '</div>' +
+        '<div>' + getStatusBadge(effSt) + '</div>' +
+        '<button onclick="event.stopPropagation();openEditActivity(' + a.id + ')" ' +
+          'style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 4px;" title="Editar">✎</button>' +
+        '</div>';
+    }
+    const rows = todayActs.map(a => buildTodayActRow(a)).join('');
+    const collapseBtn = todayActs.length > 5
+      ? '<div onclick="dashCollapseToday()" style="text-align:center;padding:9px 12px;font-size:11px;' +
+        'color:var(--muted);cursor:pointer;border-top:1px solid var(--border);">▴ Recolher</div>' : '';
+    el.innerHTML = rows + collapseBtn;
+  }
+}
+
+function dashCollapseToday() {
+  renderDashboard(); // full re-render collapses back to 5 items
+}
+
 function renderDashboard() {
   document.getElementById('topbar-title').textContent = 'Dashboard';
   document.getElementById('topbar-sub').textContent   = 'Visão geral do portfólio';
@@ -2539,30 +2615,65 @@ function renderDashboard() {
     }).join('');
   }
 
-  // Today activities
-  function buildTodayActsHTML() {
-    if (!todayActs.length) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Nenhuma atividade prevista para hoje.</div>';
-    const items = todayActs.slice(0, 6).map(a => {
-      const persons = actPersonIds(a).map(id => state.team.find(p => p.id === id)).filter(Boolean);
-      const del     = a.deliveryId ? state.deliveries.find(d => d.id === a.deliveryId) : null;
-      const pkg     = a.packageId  ? (state.packages||[]).find(pk => pk.id === a.packageId) : null;
-      const del2    = pkg ? state.deliveries.find(d => d.id === pkg.deliveryId) : null;
-      const proj    = state.projects.find(p => p.id === (del || del2)?.projectId);
-      const effSt   = isLate(a) ? 'atrasado' : (a.status || 'nao_iniciado');
-      const dotCol  = dotColors[effSt] || 'var(--muted)';
-      const nameStr = persons.map(p => p.name.split(' ')[0]).join(', ') || '—';
-      const projStr = proj ? ' · ' + proj.name.slice(0, 22) : '';
-      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">' +
-        '<div style="width:7px;height:7px;border-radius:50%;background:' + dotCol + ';flex-shrink:0;"></div>' +
-        '<div style="flex:1;min-width:0;">' +
-          '<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(a.name) + '</div>' +
-          '<div style="font-size:10px;color:var(--muted);margin-top:1px;">' + esc(nameStr + projStr) + '</div>' +
-        '</div>' + getStatusBadge(effSt) + '</div>';
-    });
-    const more = todayActs.length > 6
-      ? `<div style="text-align:center;margin-top:10px;font-size:11px;color:var(--accent2);cursor:pointer;" onclick="navigate('activities')">+ ${todayActs.length - 6} mais atividades hoje →</div>`
+  // Today activities — expandable list, click to open progress modal
+  function buildTodayActRow(a) {
+    const persons = actPersonIds(a).map(id => state.team.find(p => p.id === id)).filter(Boolean);
+    const del     = a.deliveryId ? state.deliveries.find(d => d.id === a.deliveryId) : null;
+    const pkg     = a.packageId  ? (state.packages||[]).find(pk => pk.id === a.packageId) : null;
+    const del2    = pkg ? state.deliveries.find(d => d.id === pkg.deliveryId) : null;
+    const proj    = state.projects.find(p => p.id === (del || del2)?.projectId);
+    const effSt   = isLate(a) ? 'atrasado' : (a.status || 'nao_iniciado');
+    const dotCol  = dotColors[effSt] || 'var(--muted)';
+    const nameStr = persons.map(p => p.name.split(' ')[0]).join(', ') || '—';
+    const projStr = proj ? proj.name.slice(0, 24) : '—';
+    const delStr  = (del || del2)?.name?.slice(0, 24) || '';
+    const prog    = a.progress || 0;
+    const checkBadge = a.checklist?.length
+      ? '<span style="margin-left:4px;font-size:10px;color:var(--muted);">☑ ' +
+        a.checklist.filter(i=>i.done).length + '/' + a.checklist.length + '</span>'
       : '';
-    return items.join('') + more;
+    return '<div onclick="openProgress(' + a.id + ')" ' +
+      'style="display:grid;grid-template-columns:8px 1fr auto auto;gap:8px;align-items:center;' +
+      'padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.12s;border-radius:0;"' +
+      ' onmouseenter="this.style.background=\'var(--surface2)\'" onmouseleave="this.style.background=\'\'">' +
+      '<div style="width:7px;height:7px;border-radius:50%;background:' + dotCol + ';flex-shrink:0;"></div>' +
+      '<div style="min-width:0;">' +
+        '<div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+          esc(a.name) + checkBadge +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap;">' +
+          '<span style="font-size:10px;color:var(--accent2);">' + esc(projStr) + '</span>' +
+          (delStr ? '<span style="font-size:10px;color:var(--muted);">· ' + esc(delStr) + '</span>' : '') +
+          '<span style="font-size:10px;color:var(--muted);">· ' + esc(nameStr) + '</span>' +
+        '</div>' +
+        '<div style="margin-top:5px;display:flex;align-items:center;gap:6px;">' +
+          '<div style="flex:1;height:3px;background:var(--surface3);border-radius:2px;overflow:hidden;max-width:120px;">' +
+            '<div style="height:100%;width:' + prog + '%;background:' + (prog===100?'var(--green)':prog>50?'var(--accent)':'var(--amber)') + ';border-radius:2px;"></div>' +
+          '</div>' +
+          '<span style="font-size:10px;color:var(--muted);">' + prog + '%</span>' +
+        '</div>' +
+      '</div>' +
+      '<div>' + getStatusBadge(effSt) + '</div>' +
+      '<button onclick="event.stopPropagation();openEditActivity(' + a.id + ')" ' +
+        'style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 4px;" title="Editar">✎</button>' +
+      '</div>';
+  }
+
+  function buildTodayActsHTML(expanded) {
+    if (!todayActs.length) return '<div style="font-size:12px;color:var(--muted);padding:12px;">Nenhuma atividade prevista para hoje.</div>';
+    const shown = expanded ? todayActs : todayActs.slice(0, 5);
+    const rows  = shown.map(a => buildTodayActRow(a)).join('');
+    const expandBtn = !expanded && todayActs.length > 5
+      ? '<div onclick="dashExpandToday()" style="text-align:center;padding:9px 12px;font-size:11px;' +
+        'color:var(--accent);cursor:pointer;font-weight:500;border-top:1px solid var(--border);' +
+        'transition:background 0.12s;" onmouseenter="this.style.background=\'var(--surface2)\'" ' +
+        'onmouseleave="this.style.background=\'\'">▾ Ver todas ' + todayActs.length + ' atividades</div>'
+      : (expanded && todayActs.length > 5
+        ? '<div onclick="dashCollapseToday()" style="text-align:center;padding:9px 12px;font-size:11px;' +
+          'color:var(--muted);cursor:pointer;border-top:1px solid var(--border);transition:background 0.12s;" ' +
+          'onmouseenter="this.style.background=\'var(--surface2)\'" onmouseleave="this.style.background=\'\'">▴ Recolher</div>'
+        : '');
+    return rows + expandBtn;
   }
 
   // Project bars
@@ -2845,8 +2956,8 @@ function renderDashboard() {
   parts.push(
     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:20px;">' +
       '<div class="card" style="border-left:3px solid var(--accent);">' +
-        '<div class="card-header"><div class="card-title">🗓 Atividades Previstas Hoje <span class="badge badge-gray" style="font-size:10px;">' + todayActs.length + '</span></div></div>' +
-        buildTodayActsHTML() +
+        '<div class="card-header" style="cursor:pointer;" onclick="dashExpandToday()"><div class="card-title">🗓 Atividades Previstas Hoje <span class="badge badge-gray" style="font-size:10px;">' + todayActs.length + '</span></div></div>' +
+        '<div id="dash-today-list">' + buildTodayActsHTML(false) + '</div>' +
       '</div>' +
       '<div class="card">' +
         '<div class="card-header"><div class="card-title">⬡ Por Projeto</div></div>' +
