@@ -3615,7 +3615,8 @@ function renderProjectDetail() {
     ${canEdit && activeTab === 'entregas' ? `<button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Entrega</button>` : ''}
     ${canEdit && activeTab === 'equipe'   ? `<button class="btn btn-primary btn-sm" onclick="openProjectTeamModal(${p.id})">✎ Gerenciar Equipe</button>` : ''}
     ${canEdit && activeTab === 'raci'     ? `<button class="btn btn-primary btn-sm" onclick="openRaciModal(${p.id})">✎ Editar RACI</button>` : ''}
-    ${canEdit && activeTab === 'riscos'   ? `<button class="btn btn-primary btn-sm" onclick="openNewRisk(${p.id})">+ Novo Risco</button>` : ''}
+    ${canEdit && activeTab === 'riscos'      ? `<button class="btn btn-primary btn-sm" onclick="openNewRisk(${p.id})">+ Novo Risco</button>` : ''}
+    ${canEdit && activeTab === 'cronograma'  ? `<button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Entrega</button>` : ''}
     ${canEdit ? `<button class="btn btn-ghost btn-sm" onclick="openEditProject(${p.id})">✎ Editar</button>` : ''}
   `;
 
@@ -3634,6 +3635,8 @@ function renderProjectDetail() {
     tabContent = renderRaciTab(p, deliveries);
   } else if (activeTab === 'riscos') {
     tabContent = renderProjectRisksTab(p);
+  } else if (activeTab === 'cronograma') {
+    tabContent = renderProjectCronograma(p);
   }
 
   document.getElementById('page-content').innerHTML = `
@@ -3673,6 +3676,7 @@ function renderProjectDetail() {
         ['equipe',   '◎', `Equipe do Projeto${allocCount ? ` (${allocCount})` : ''}`],
         ['raci',     '▦', 'Matriz RACI'],
         ['riscos','⚠','Riscos'],
+        ['cronograma','☰','Cronograma'],
       ].map(([tab, icon, label]) => `
         <div onclick="_projSetTab('${tab}')" style="padding:10px 20px;cursor:pointer;font-size:13px;font-weight:500;
           border-bottom:2px solid ${activeTab===tab?'var(--accent)':'transparent'};margin-bottom:-2px;
@@ -10169,6 +10173,390 @@ async function renderImpediments() {
       <div class="empty-sub">A equipe ainda não utilizou o check-in diário</div>
     </div>` : ''}
   `;
+}
+
+
+// ============================================================
+//  ABA CRONOGRAMA — tabela editável estilo MS Project
+// ============================================================
+
+function renderProjectCronograma(p) {
+  const canEdit = canEditProject(p.id);
+  const deliveries = state.deliveries
+    .filter(d => d.projectId === p.id)
+    .sort((a,b) => (a.seqOrder??999)-(b.seqOrder??999));
+
+  // Build flat list of rows: delivery > package > activity
+  // Each row: { kind, id, parentId, level, obj }
+  const rows = [];
+  deliveries.forEach(d => {
+    rows.push({ kind:'delivery', id:'d-'+d.id, objId:d.id, level:0, obj:d });
+    const pkgs = (state.packages||[])
+      .filter(pk => pk.deliveryId === d.id)
+      .sort((a,b) => (a.seqOrder??999)-(b.seqOrder??999));
+    pkgs.forEach(pk => {
+      rows.push({ kind:'package', id:'pk-'+pk.id, objId:pk.id, parentId:'d-'+d.id, level:1, obj:pk });
+      const pkActs = state.activities
+        .filter(a => a.packageId === pk.id)
+        .sort((a,b) => (a.seqOrder??999)-(b.seqOrder??999));
+      pkActs.forEach(a => {
+        rows.push({ kind:'activity', id:'a-'+a.id, objId:a.id, parentId:'pk-'+pk.id, level:2, obj:a });
+      });
+    });
+    // Direct activities (no package)
+    const dirActs = state.activities
+      .filter(a => a.deliveryId === d.id && !a.packageId)
+      .sort((a,b) => (a.seqOrder??999)-(b.seqOrder??999));
+    dirActs.forEach(a => {
+      rows.push({ kind:'activity', id:'a-'+a.id, objId:a.id, parentId:'d-'+d.id, level:1, obj:a });
+    });
+  });
+
+  const statusOpts = [
+    ['nao_iniciado','Não iniciado'],
+    ['em_andamento','Em andamento'],
+    ['concluido','Concluído'],
+    ['atrasado','Atrasado'],
+    ['bloqueado','Bloqueado'],
+  ];
+
+  const kindIcon  = { delivery:'⬡', package:'▣', activity:'·' };
+  const kindColor = { delivery:'var(--accent2)', package:'var(--teal)', activity:'var(--text)' };
+  const kindBg    = { delivery:'rgba(99,102,241,0.06)', package:'rgba(45,212,191,0.05)', activity:'transparent' };
+
+  // Build team options for activity rows
+  const teamOpts = state.team.map(t =>
+    `<option value="${t.id}">${esc(t.name.split(' ').slice(0,2).join(' '))}</option>`
+  ).join('');
+
+  const colDefs = [
+    { label:'',          width:'32px'  },   // drag handle
+    { label:'Nome',      width:'1fr'   },
+    { label:'Início',    width:'110px' },
+    { label:'Término',   width:'110px' },
+    { label:'Horas',     width:'68px'  },
+    { label:'Responsável',width:'140px'},
+    { label:'Status',    width:'130px' },
+    { label:'Prog.',     width:'72px'  },
+    { label:'',          width:'60px'  },   // actions
+  ];
+  const gridCols = colDefs.map(c=>c.width).join(' ');
+
+  const headerRow = `
+    <div style="display:grid;grid-template-columns:${gridCols};gap:0;
+      padding:6px 12px;font-size:10px;font-weight:700;text-transform:uppercase;
+      letter-spacing:0.6px;color:var(--muted);background:var(--surface2);
+      border-bottom:2px solid var(--border);position:sticky;top:0;z-index:2;">
+      <div></div>
+      ${colDefs.slice(1,-1).map(c=>`<div>${c.label}</div>`).join('')}
+      <div></div>
+    </div>`;
+
+  const rowsHtml = rows.map((row, ri) => {
+    const { kind, id, objId, level, obj } = row;
+    const indent = level * 20;
+    const allocs = obj.allocations || [];
+    const mainPersonId = allocs[0]?.personId || obj.personId || '';
+    const hours  = kind === 'activity'
+      ? (allocs.reduce((s,al)=>s+(parseFloat(al.hours)||0),0) || obj.hours || '')
+      : '';
+    const prog   = kind === 'activity' ? (obj.progress||0) : '';
+    const status = obj.status || 'nao_iniciado';
+    const late   = kind === 'activity' && isLate(obj);
+    const effStatus = late && status !== 'concluido' ? 'atrasado' : status;
+
+    const progBar = kind === 'activity' ? `
+      <div style="display:flex;align-items:center;gap:4px;">
+        <div style="flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;min-width:30px;">
+          <div style="height:100%;width:${prog}%;background:${prog===100?'var(--green)':prog>50?'var(--accent)':'var(--amber)'};border-radius:3px;"></div>
+        </div>
+        <span style="font-size:10px;color:var(--muted);min-width:24px;">${prog}%</span>
+      </div>` : `<div></div>`;
+
+    const statusSel = canEdit ? `
+      <select class="form-control" style="font-size:11px;padding:3px 6px;height:26px;"
+        onchange="cronogramaSave('${kind}',${objId},'status',this.value)">
+        ${statusOpts.map(([v,l])=>`<option value="${v}" ${status===v?'selected':''}>${l}</option>`).join('')}
+      </select>` : `<span style="font-size:11px;">${statusOpts.find(s=>s[0]===effStatus)?.[1]||status}</span>`;
+
+    const respSel = kind === 'activity' && canEdit ? `
+      <select class="form-control" style="font-size:11px;padding:3px 6px;height:26px;"
+        onchange="cronogramaSave('activity',${objId},'person',this.value)">
+        <option value="">—</option>
+        ${teamOpts.replace(`value="${mainPersonId}"`,`value="${mainPersonId}" selected`)}
+      </select>` : (kind === 'activity' ? `<span style="font-size:11px;">${esc(state.team.find(t=>t.id===mainPersonId)?.name?.split(' ')[0]||'—')}</span>` : `<div></div>`);
+
+    const actionBtns = canEdit ? `
+      <div style="display:flex;gap:2px;justify-content:flex-end;">
+        ${kind==='delivery' ? `<button class="btn btn-ghost btn-sm" style="padding:2px 5px;font-size:10px;" title="Novo pacote" onclick="cronogramaAddPkg(${objId})">+▣</button>` : ''}
+        ${kind==='delivery'||kind==='package' ? `<button class="btn btn-ghost btn-sm" style="padding:2px 5px;font-size:10px;" title="Nova atividade" onclick="cronogramaAddAct('${kind}',${objId})">+·</button>` : ''}
+        <button class="btn btn-ghost btn-sm" style="padding:2px 5px;font-size:10px;color:var(--red);" title="Excluir" onclick="cronogramaDelete('${kind}',${objId})">✕</button>
+      </div>` : '<div></div>';
+
+    return `
+      <div id="cgrow-${id}" data-cgid="${id}" data-cgkind="${kind}" data-cgobjid="${objId}"
+        draggable="${canEdit?'true':'false'}"
+        ondragstart="cgDragStart(event,'${id}')"
+        ondragover="cgDragOver(event,'${id}')"
+        ondragleave="cgDragLeave(event,'${id}')"
+        ondrop="cgDrop(event,'${id}')"
+        style="display:grid;grid-template-columns:${gridCols};gap:0;
+          align-items:center;padding:5px 12px;
+          border-bottom:1px solid var(--border);
+          background:${kindBg[kind]};
+          transition:background 0.15s;font-size:12px;"
+        onmouseenter="this.style.background='var(--surface2)'"
+        onmouseleave="this.style.background='${kindBg[kind]}'">
+
+        <!-- Drag handle -->
+        <div style="cursor:${canEdit?'grab':'default'};color:var(--muted);font-size:14px;text-align:center;user-select:none;">
+          ${canEdit?'⠿':''}
+        </div>
+
+        <!-- Nome (editable) -->
+        <div style="display:flex;align-items:center;gap:4px;min-width:0;padding-left:${indent}px;">
+          <span style="color:${kindColor[kind]};font-size:11px;flex-shrink:0;">${kindIcon[kind]}</span>
+          ${canEdit ? `
+            <input class="form-control" value="${esc(obj.name)}"
+              style="font-size:12px;font-weight:${level===0?'600':'400'};
+                background:transparent;border:1px solid transparent;padding:2px 6px;
+                color:${kindColor[kind]};min-width:0;width:100%;"
+              onfocus="this.style.borderColor='var(--accent)';this.style.background='var(--surface)'"
+              onblur="this.style.borderColor='transparent';this.style.background='transparent';cronogramaSave('${kind}',${objId},'name',this.value)"
+              onkeydown="if(event.key==='Enter')this.blur()" />
+          ` : `<span style="font-weight:${level===0?'600':'400'};color:${kindColor[kind]};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(obj.name)}</span>`}
+        </div>
+
+        <!-- Início -->
+        ${canEdit ? `
+          <input type="date" class="form-control" value="${obj.start||''}"
+            style="font-size:11px;padding:3px 6px;height:26px;"
+            onchange="cronogramaSave('${kind}',${objId},'start',this.value)" />
+        ` : `<span style="font-size:11px;color:var(--muted);">${fmtDate(obj.start)}</span>`}
+
+        <!-- Término -->
+        ${canEdit ? `
+          <input type="date" class="form-control" value="${obj.end||''}"
+            style="font-size:11px;padding:3px 6px;height:26px;${late?'border-color:var(--red);':''}"
+            onchange="cronogramaSave('${kind}',${objId},'end',this.value)" />
+        ` : `<span style="font-size:11px;${late?'color:var(--red);font-weight:600;':'color:var(--muted);'}">${fmtDate(obj.end)}</span>`}
+
+        <!-- Horas -->
+        ${kind==='activity' && canEdit ? `
+          <input type="number" class="form-control" value="${hours}"
+            min="0" step="0.5"
+            style="font-size:11px;padding:3px 6px;height:26px;"
+            onchange="cronogramaSave('activity',${objId},'hours',this.value)" />
+        ` : `<span style="font-size:11px;color:var(--muted);font-family:var(--mono);">${hours?hours+'h':''}</span>`}
+
+        <!-- Responsável -->
+        ${respSel}
+
+        <!-- Status -->
+        ${statusSel}
+
+        <!-- Progresso -->
+        ${progBar}
+
+        <!-- Ações -->
+        ${actionBtns}
+      </div>`;
+  }).join('');
+
+  const addDeliveryBtn = canEdit ? `
+    <div style="padding:10px 12px;border-top:1px solid var(--border);">
+      <button class="btn btn-ghost btn-sm" onclick="openNewDelivery(${p.id})">+ Nova Entrega</button>
+    </div>` : '';
+
+  return `
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <span>⠿ Arraste para reordenar</span>
+      <span>· Clique no nome para editar inline</span>
+      <span style="display:flex;gap:8px;">
+        <span style="color:var(--accent2);">⬡ Entrega</span>
+        <span style="color:var(--teal);">▣ Pacote</span>
+        <span>· Atividade</span>
+      </span>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden;">
+      ${headerRow}
+      <div id="cg-body" style="overflow-y:auto;max-height:70vh;">
+        ${rowsHtml || '<div style="padding:24px;text-align:center;color:var(--muted);">Nenhuma entrega cadastrada.</div>'}
+      </div>
+      ${addDeliveryBtn}
+    </div>`;
+}
+
+// ── Cronograma inline save ──────────────────────────────────
+function cronogramaSave(kind, id, field, value) {
+  let obj;
+  if (kind === 'delivery') obj = getDelivery(id);
+  else if (kind === 'package') obj = getPackage(id);
+  else obj = getActivity(id);
+  if (!obj) return;
+
+  if (field === 'name')   { obj.name = value.trim() || obj.name; }
+  if (field === 'start')  { obj.start = value; }
+  if (field === 'end')    { obj.end = value; }
+  if (field === 'status') { obj.status = value; }
+  if (field === 'hours' && kind === 'activity') {
+    const h = parseFloat(value) || 0;
+    obj.hours = h;
+    if (obj.allocations?.length) obj.allocations[0].hours = h;
+  }
+  if (field === 'person' && kind === 'activity') {
+    const personId = parseInt(value) || null;
+    obj.personId = personId;
+    if (obj.allocations?.length) {
+      obj.allocations[0].personId = personId;
+    } else if (personId) {
+      obj.allocations = [{ personId, hours: obj.hours||0, start: obj.start||'', end: obj.end||'' }];
+    }
+  }
+  saveState();
+}
+
+function cronogramaAddPkg(deliveryId) {
+  const name = prompt('Nome do pacote:');
+  if (!name?.trim()) return;
+  const pkg = { id: uid(), name: name.trim(), deliveryId, start:'', end:'', desc:'',
+    seqOrder: (state.packages||[]).filter(p=>p.deliveryId===deliveryId).length };
+  if (!state.packages) state.packages = [];
+  state.packages.push(pkg);
+  saveState();
+  render();
+}
+
+function cronogramaAddAct(parentKind, parentId) {
+  const name = prompt('Nome da atividade:');
+  if (!name?.trim()) return;
+  const isPackage = parentKind === 'package';
+  const act = {
+    id: uid(), name: name.trim(),
+    deliveryId: isPackage ? null : parentId,
+    packageId:  isPackage ? parentId : null,
+    allocations: [], hours: 0, start: '', end: '',
+    status: 'nao_iniciado', progress: 0, note: '',
+    seqOrder: state.activities.filter(a =>
+      isPackage ? a.packageId===parentId : (a.deliveryId===parentId && !a.packageId)
+    ).length
+  };
+  state.activities.push(act);
+  saveState();
+  render();
+}
+
+function cronogramaDelete(kind, id) {
+  if (kind === 'delivery') {
+    if (!confirm('Excluir esta entrega e todas as suas atividades e pacotes?')) return;
+    state.activities = state.activities.filter(a => {
+      if (a.deliveryId === id) return false;
+      const pkg = (state.packages||[]).find(p=>p.id===a.packageId);
+      if (pkg && pkg.deliveryId === id) return false;
+      return true;
+    });
+    state.packages = (state.packages||[]).filter(p => p.deliveryId !== id);
+    state.deliveries = state.deliveries.filter(d => d.id !== id);
+  } else if (kind === 'package') {
+    if (!confirm('Excluir este pacote e todas as suas atividades?')) return;
+    state.activities = state.activities.filter(a => a.packageId !== id);
+    state.packages = (state.packages||[]).filter(p => p.id !== id);
+  } else {
+    if (!confirm('Excluir esta atividade?')) return;
+    state.activities = state.activities.filter(a => a.id !== id);
+  }
+  saveState();
+  render();
+}
+
+// ── Drag-and-drop reorder ───────────────────────────────────
+let _cgDragId = null;
+
+function cgDragStart(e, id) {
+  _cgDragId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  const el = document.getElementById('cgrow-'+id);
+  if (el) el.style.opacity = '0.4';
+}
+
+function cgDragOver(e, id) {
+  e.preventDefault();
+  if (id === _cgDragId) return;
+  const el = document.getElementById('cgrow-'+id);
+  if (el) el.style.borderTop = '2px solid var(--accent)';
+}
+
+function cgDragLeave(e, id) {
+  const el = document.getElementById('cgrow-'+id);
+  if (el) el.style.borderTop = '';
+}
+
+function cgDrop(e, targetId) {
+  e.preventDefault();
+  const dragId = _cgDragId;
+  _cgDragId = null;
+
+  // Reset styles
+  document.querySelectorAll('[id^="cgrow-"]').forEach(el => {
+    el.style.opacity = '';
+    el.style.borderTop = '';
+  });
+
+  if (!dragId || dragId === targetId) return;
+
+  // Parse kind and objId from id strings like 'd-5', 'pk-12', 'a-7'
+  const parseRow = id => {
+    if (id.startsWith('d-'))  return { kind:'delivery', objId: parseInt(id.slice(2)) };
+    if (id.startsWith('pk-')) return { kind:'package',  objId: parseInt(id.slice(3)) };
+    if (id.startsWith('a-'))  return { kind:'activity', objId: parseInt(id.slice(2)) };
+    return null;
+  };
+
+  const drag   = parseRow(dragId);
+  const target = parseRow(targetId);
+  if (!drag || !target || drag.kind !== target.kind) {
+    showToast('Só é possível reordenar itens do mesmo tipo.');
+    return;
+  }
+
+  const reorder = (arr, getId, dragObjId, targetObjId) => {
+    const items = [...arr];
+    const fromIdx = items.findIndex(x => getId(x) === dragObjId);
+    const toIdx   = items.findIndex(x => getId(x) === targetObjId);
+    if (fromIdx < 0 || toIdx < 0) return arr;
+    const [moved] = items.splice(fromIdx, 1);
+    items.splice(toIdx, 0, moved);
+    items.forEach((x, i) => { x.seqOrder = i; });
+    return items;
+  };
+
+  if (drag.kind === 'delivery') {
+    state.deliveries = reorder(state.deliveries, d=>d.id, drag.objId, target.objId);
+  } else if (drag.kind === 'package') {
+    // Only reorder within same delivery
+    const dragPkg = (state.packages||[]).find(p=>p.id===drag.objId);
+    const tgtPkg  = (state.packages||[]).find(p=>p.id===target.objId);
+    if (!dragPkg || !tgtPkg || dragPkg.deliveryId !== tgtPkg.deliveryId) {
+      showToast('Pacotes só podem ser reordenados dentro da mesma entrega.');
+      return;
+    }
+    state.packages = reorder(state.packages, p=>p.id, drag.objId, target.objId);
+  } else {
+    // Activity — reorder within same parent
+    const dragAct = state.activities.find(a=>a.id===drag.objId);
+    const tgtAct  = state.activities.find(a=>a.id===target.objId);
+    if (!dragAct || !tgtAct) return;
+    const sameParent = dragAct.packageId === tgtAct.packageId &&
+                       dragAct.deliveryId === tgtAct.deliveryId;
+    if (!sameParent) {
+      showToast('Atividades só podem ser reordenadas dentro do mesmo pacote/entrega.');
+      return;
+    }
+    state.activities = reorder(state.activities, a=>a.id, drag.objId, target.objId);
+  }
+
+  saveState();
+  render();
 }
 
 function _riskLevelLabel(score) {
