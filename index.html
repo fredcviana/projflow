@@ -2544,12 +2544,26 @@ function renderManagementDashboard() {
 
   // ── Build projects section ───────────────────────────────
   function buildProjectsHTML() {
+    const sortBy = (window._mgmtFilters||{}).projSort || 'criticidade';
     const projs = state.projects.filter(p => p.status !== STATUS.DONE && p.status !== 'encerrado');
     if (!projs.length) return '<div style="color:var(--muted);font-size:13px;padding:12px;">Nenhum projeto ativo.</div>';
 
-    return projs
-      .map(p => ({ p, health: projectHealth(p) }))
-      .sort((a,b) => a.health.score - b.health.score)  // críticos primeiro
+    const enriched = projs.map(p => ({ p, health: projectHealth(p) }));
+
+    enriched.sort((a, b) => {
+      if (sortBy === 'criticidade') return a.health.score - b.health.score;
+      if (sortBy === 'progresso')   return (a.health.pct||0) - (b.health.pct||0);
+      if (sortBy === 'progresso_d') return (b.health.pct||0) - (a.health.pct||0);
+      if (sortBy === 'nome')        return a.p.name.localeCompare(b.p.name, 'pt-BR');
+      if (sortBy === 'prazo') {
+        const da = a.p.end || '9999'; const db = b.p.end || '9999';
+        return da.localeCompare(db);
+      }
+      if (sortBy === 'atrasadas')   return (b.health.late||0) - (a.health.late||0);
+      return a.health.score - b.health.score;
+    });
+
+    return enriched
       .map(({ p, health }) => {
         const { color, label, icon, pct=0, late=0, blocked=0, total=0, done=0 } = health;
         const risks = (state.risks||[]).filter(r=>r.projectId===p.id&&r.status!=='encerrado');
@@ -2587,24 +2601,38 @@ function renderManagementDashboard() {
 
   // ── Team workload ────────────────────────────────────────
   function buildTeamHTML() {
+    const sortBy = (window._mgmtFilters||{}).teamSort || 'carga';
     const today0 = new Date(); today0.setHours(0,0,0,0);
 
-    return state.team.map(person => {
+    // Build enriched team data first, then sort
+    const enrichedTeam = state.team.map(person => {
       const acts = state.activities.filter(a =>
         actPersonIds(a).includes(person.id) && a.status !== STATUS.DONE
       );
       const lateActs    = acts.filter(a => isLate(a));
-      const blockedActs = acts.filter(a => a.status === STATUS.BLOCKED);
-      const todayActs   = acts.filter(a => { const r=actDateRange(a); return r.end===todayStr; });
       const totalH      = acts.reduce((s,a) => {
         const al = (a.allocations||[]).find(x=>x.personId===person.id);
         return s + (al ? parseFloat(al.hours)||0 : parseFloat(a.hours)||0);
       }, 0);
+      const checkin = (_todayCheckins||[]).find(c => c.person_id === person.id);
+      return { person, acts, lateActs, totalH, checkin };
+    });
+
+    enrichedTeam.sort((a, b) => {
+      if (sortBy === 'carga')       return b.totalH - a.totalH;
+      if (sortBy === 'carga_asc')   return a.totalH - b.totalH;
+      if (sortBy === 'atrasadas')   return b.lateActs.length - a.lateActs.length;
+      if (sortBy === 'nome')        return a.person.name.localeCompare(b.person.name, 'pt-BR');
+      if (sortBy === 'checkin')     return (a.checkin ? 0 : 1) - (b.checkin ? 0 : 1);
+      return b.totalH - a.totalH;
+    });
+
+    return enrichedTeam.map(({ person, acts, lateActs, totalH, checkin }) => {
+      const blockedActs = acts.filter(a => a.status === STATUS.BLOCKED);
+      const todayActs   = acts.filter(a => { const r=actDateRange(a); return r.end===todayStr; });
       const weekH = person.weeklyHours || 40;
       const loadPct = Math.min(Math.round(totalH / weekH * 100), 100);
       const loadColor = loadPct > 90 ? '#ef4444' : loadPct > 70 ? '#f59e0b' : '#22c55e';
-
-      const checkin = (_todayCheckins||[]).find(c => c.person_id === person.id);
       const checkinDot = checkin
         ? `<span title="Check-in feito" style="color:#22c55e;font-size:12px;">✓</span>`
         : `<span title="Sem check-in hoje" style="color:var(--muted);font-size:12px;">○</span>`;
@@ -2790,12 +2818,24 @@ function renderManagementDashboard() {
 
       <!-- Projects semaphore -->
       <div class="card" style="padding:0;overflow:hidden;">
-        <div class="card-header" style="padding:14px 16px;border-bottom:1px solid var(--border);">
-          <div class="card-title">🚦 Saúde dos Projetos</div>
-          <div style="display:flex;gap:12px;font-size:10px;color:var(--muted);">
-            <span><span style="color:#ef4444;">●</span> Crítico</span>
-            <span><span style="color:#f59e0b;">●</span> Atenção</span>
-            <span><span style="color:#22c55e;">●</span> No prazo</span>
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div class="card-title" style="margin:0;">🚦 Saúde dos Projetos</div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="display:flex;gap:8px;font-size:10px;color:var(--muted);">
+              <span><span style="color:#ef4444;">●</span> Crítico</span>
+              <span><span style="color:#f59e0b;">●</span> Atenção</span>
+              <span><span style="color:#22c55e;">●</span> No prazo</span>
+            </div>
+            <select onchange="mgmtSetFilter('projSort',this.value)"
+              style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border);
+                background:var(--surface2);color:var(--text);cursor:pointer;">
+              <option value="criticidade" ${((window._mgmtFilters||{}).projSort||'criticidade')==='criticidade'?'selected':''}>↑ Criticidade</option>
+              <option value="atrasadas"   ${((window._mgmtFilters||{}).projSort||'')==='atrasadas'?'selected':''}>↑ Mais atrasadas</option>
+              <option value="progresso"   ${((window._mgmtFilters||{}).projSort||'')==='progresso'?'selected':''}>↑ Menor progresso</option>
+              <option value="progresso_d" ${((window._mgmtFilters||{}).projSort||'')==='progresso_d'?'selected':''}>↓ Maior progresso</option>
+              <option value="prazo"       ${((window._mgmtFilters||{}).projSort||'')==='prazo'?'selected':''}>↑ Prazo mais próximo</option>
+              <option value="nome"        ${((window._mgmtFilters||{}).projSort||'')==='nome'?'selected':''}>A–Z Nome</option>
+            </select>
           </div>
         </div>
         <div style="max-height:320px;overflow-y:auto;">${buildProjectsHTML()}</div>
@@ -2803,9 +2843,20 @@ function renderManagementDashboard() {
 
       <!-- Team workload -->
       <div class="card" style="padding:0;overflow:hidden;">
-        <div class="card-header" style="padding:14px 16px;border-bottom:1px solid var(--border);">
-          <div class="card-title">◎ Carga da Equipe</div>
-          <div style="font-size:10px;color:var(--muted);">horas alocadas · check-in · impedimentos</div>
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div>
+            <div class="card-title" style="margin:0;">◎ Carga da Equipe</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;">horas alocadas · check-in · impedimentos</div>
+          </div>
+          <select onchange="mgmtSetFilter('teamSort',this.value)"
+            style="font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border);
+              background:var(--surface2);color:var(--text);cursor:pointer;">
+            <option value="carga"     ${((window._mgmtFilters||{}).teamSort||'carga')==='carga'?'selected':''}>↓ Maior carga</option>
+            <option value="carga_asc" ${((window._mgmtFilters||{}).teamSort||'')==='carga_asc'?'selected':''}>↑ Menor carga</option>
+            <option value="atrasadas" ${((window._mgmtFilters||{}).teamSort||'')==='atrasadas'?'selected':''}>↑ Mais atrasadas</option>
+            <option value="checkin"   ${((window._mgmtFilters||{}).teamSort||'')==='checkin'?'selected':''}>○ Sem check-in primeiro</option>
+            <option value="nome"      ${((window._mgmtFilters||{}).teamSort||'')==='nome'?'selected':''}>A–Z Nome</option>
+          </select>
         </div>
         <div style="max-height:320px;overflow-y:auto;">${buildTeamHTML()}</div>
       </div>
@@ -2852,6 +2903,12 @@ function renderManagementDashboard() {
 
 function mgmtSetTab(tab) {
   window._mgmtTab = tab;
+  renderManagementDashboard();
+}
+
+function mgmtSetFilter(key, value) {
+  if (!window._mgmtFilters) window._mgmtFilters = {};
+  window._mgmtFilters[key] = value;
   renderManagementDashboard();
 }
 
