@@ -2238,7 +2238,7 @@ function navigate(page, id) {
     const isGerente = profile === 'gerente';
     const isLider   = profile === 'lider';
     // Pages restricted to Gerente only
-    const gerenteOnly = ['team', 'library', 'settings'];
+    const gerenteOnly = ['team', 'library', 'settings', 'mgmt'];
     // Pages restricted to Gerente + Líder (Analista cannot access)
     const gerenteLider = ['approvals', 'reports', 'risks', 'risk_detail', 'risk_criteria', 'risk_crisis', 'risk_media'];
     if (gerenteOnly.includes(page) && !isGerente) {
@@ -2280,6 +2280,7 @@ function render() {
 
   const pages = {
     dashboard: renderDashboard,
+    mgmt: renderManagementDashboard,
     projects: renderProjects,
     project_detail: renderProjectDetail,
     activities: renderActivitiesDashboard,
@@ -2468,6 +2469,383 @@ function dashExpandToday() {
 
 function dashCollapseToday() {
   renderDashboard(); // full re-render collapses back to 5 items
+}
+
+
+// ============================================================
+//  DASHBOARD GERENCIAL
+//  Visão executiva: projetos, equipe, atividades ontem/semana
+// ============================================================
+
+function renderManagementDashboard() {
+  if (currentProfile() !== 'gerente') {
+    navigate('dashboard');
+    return;
+  }
+
+  document.getElementById('topbar-title').textContent = 'Dashboard Gerencial';
+  document.getElementById('topbar-sub').textContent   = 'Visão executiva · ' + new Date().toLocaleDateString('pt-BR', { weekday:'long', day:'numeric', month:'long' });
+  document.getElementById('topbar-actions').innerHTML = `
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" id="mgmt-tab-hoje"   onclick="mgmtSetTab('hoje')"   style="font-weight:600;">📅 Ontem</button>
+      <button class="btn btn-ghost btn-sm" id="mgmt-tab-semana" onclick="mgmtSetTab('semana')" >📆 Esta Semana</button>
+    </div>`;
+
+  const today    = new Date(); today.setHours(0,0,0,0);
+  const todayStr = today.toISOString().slice(0,10);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
+  const yestStr  = yesterday.toISOString().slice(0,10);
+
+  // Monday of current week
+  const monday = new Date(today);
+  const dayOfWeek = monday.getDay();
+  monday.setDate(monday.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+  const monStr = monday.toISOString().slice(0,10);
+  const sunStr = sunday.toISOString().slice(0,10);
+
+  const isMonday = today.getDay() === 1;
+
+  // ── Project health semaphore ─────────────────────────────
+  function projectHealth(p) {
+    const deliveries = state.deliveries.filter(d => d.projectId === p.id);
+    const pkgIds = (state.packages||[]).filter(pk => deliveries.some(d=>d.id===pk.deliveryId)).map(pk=>pk.id);
+    const acts = state.activities.filter(a =>
+      deliveries.some(d=>d.id===a.deliveryId) || pkgIds.includes(a.packageId)
+    );
+    if (!acts.length) return { color:'var(--muted)', label:'Sem atividades', icon:'○', score:0 };
+
+    const total    = acts.length;
+    const done     = acts.filter(a=>a.status===STATUS.DONE).length;
+    const late     = acts.filter(a=>isLate(a)).length;
+    const blocked  = acts.filter(a=>a.status===STATUS.BLOCKED).length;
+    const pct      = Math.round(done/total*100);
+    const latePct  = Math.round(late/total*100);
+
+    // Project end date check
+    const projEnd  = p.end || p.endDate || '';
+    const overdue  = projEnd && projEnd < todayStr && p.status !== STATUS.DONE;
+
+    if (overdue || latePct > 30 || blocked > 0) {
+      return { color:'#ef4444', label:'Crítico', icon:'●', score:1, pct, late, blocked, total, done };
+    } else if (latePct > 10 || latePct > 0) {
+      return { color:'#f59e0b', label:'Atenção', icon:'●', score:2, pct, late, blocked, total, done };
+    } else {
+      return { color:'#22c55e', label:'No prazo', icon:'●', score:3, pct, late, blocked, total, done };
+    }
+  }
+
+  // ── Build projects section ───────────────────────────────
+  function buildProjectsHTML() {
+    const projs = state.projects.filter(p => p.status !== STATUS.DONE && p.status !== 'encerrado');
+    if (!projs.length) return '<div style="color:var(--muted);font-size:13px;padding:12px;">Nenhum projeto ativo.</div>';
+
+    return projs
+      .map(p => ({ p, health: projectHealth(p) }))
+      .sort((a,b) => a.health.score - b.health.score)  // críticos primeiro
+      .map(({ p, health }) => {
+        const { color, label, icon, pct=0, late=0, blocked=0, total=0, done=0 } = health;
+        const risks = (state.risks||[]).filter(r=>r.projectId===p.id&&r.status!=='encerrado');
+        const critRisks = risks.filter(r=>riskScore(r.probResidual||r.prob,r.magResidual||r.mag)>=17).length;
+        return `
+          <div onclick="navigate('project_detail',${p.id})"
+            style="display:grid;grid-template-columns:10px 1fr auto;gap:12px;align-items:center;
+              padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.12s;"
+            onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">
+            <div title="${label}" style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;
+              box-shadow:0 0 6px ${color}88;"></div>
+            <div style="min-width:0;">
+              <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.name)}</div>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:120px;">
+                  <div style="flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden;">
+                    <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width 0.4s;"></div>
+                  </div>
+                  <span style="font-size:11px;color:var(--muted);min-width:30px;">${pct}%</span>
+                </div>
+                <span style="font-size:10px;color:var(--muted);">${done}/${total} ativ.</span>
+                ${late ? `<span style="font-size:10px;color:#ef4444;font-weight:600;">⚠ ${late} atrasada${late>1?'s':''}</span>` : ''}
+                ${blocked ? `<span style="font-size:10px;color:#f59e0b;">🚧 ${blocked} bloqueada${blocked>1?'s':''}</span>` : ''}
+                ${critRisks ? `<span style="font-size:10px;color:#ef4444;">🔴 ${critRisks} risco${critRisks>1?'s':''} crítico${critRisks>1?'s':''}</span>` : ''}
+              </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <span style="font-size:10px;font-weight:700;color:${color};background:${color}18;
+                padding:3px 8px;border-radius:20px;">${label}</span>
+              ${p.end ? `<div style="font-size:10px;color:var(--muted);margin-top:3px;">até ${fmtDate(p.end)}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+  }
+
+  // ── Team workload ────────────────────────────────────────
+  function buildTeamHTML() {
+    const today0 = new Date(); today0.setHours(0,0,0,0);
+
+    return state.team.map(person => {
+      const acts = state.activities.filter(a =>
+        actPersonIds(a).includes(person.id) && a.status !== STATUS.DONE
+      );
+      const lateActs    = acts.filter(a => isLate(a));
+      const blockedActs = acts.filter(a => a.status === STATUS.BLOCKED);
+      const todayActs   = acts.filter(a => { const r=actDateRange(a); return r.end===todayStr; });
+      const totalH      = acts.reduce((s,a) => {
+        const al = (a.allocations||[]).find(x=>x.personId===person.id);
+        return s + (al ? parseFloat(al.hours)||0 : parseFloat(a.hours)||0);
+      }, 0);
+      const weekH = person.weeklyHours || 40;
+      const loadPct = Math.min(Math.round(totalH / weekH * 100), 100);
+      const loadColor = loadPct > 90 ? '#ef4444' : loadPct > 70 ? '#f59e0b' : '#22c55e';
+
+      const checkin = (_todayCheckins||[]).find(c => c.person_id === person.id);
+      const checkinDot = checkin
+        ? `<span title="Check-in feito" style="color:#22c55e;font-size:12px;">✓</span>`
+        : `<span title="Sem check-in hoje" style="color:var(--muted);font-size:12px;">○</span>`;
+
+      const col = getPersonColor(state.team.indexOf(person));
+
+      return `
+        <div style="display:grid;grid-template-columns:32px 1fr auto;gap:10px;align-items:center;
+          padding:10px 16px;border-bottom:1px solid var(--border);transition:background 0.12s;cursor:default;"
+          onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">
+          <div class="avatar avatar-sm" style="background:${col}22;color:${col};flex-shrink:0;">${initials(person.name)}</div>
+          <div style="min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:13px;font-weight:500;">${esc(person.name.split(' ').slice(0,2).join(' '))}</span>
+              ${checkinDot}
+              ${checkin?.has_impediment ? `<span title="${esc(checkin.impediment||'')}" style="color:#ef4444;font-size:11px;">🚧</span>` : ''}
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:5px;flex:1;min-width:80px;">
+                <div style="flex:1;height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;max-width:80px;">
+                  <div style="height:100%;width:${loadPct}%;background:${loadColor};border-radius:2px;"></div>
+                </div>
+                <span style="font-size:10px;color:${loadColor};font-weight:600;">${Math.round(totalH)}h</span>
+              </div>
+              ${lateActs.length ? `<span style="font-size:10px;color:#ef4444;">${lateActs.length} atrasada${lateActs.length>1?'s':''}</span>` : ''}
+              ${blockedActs.length ? `<span style="font-size:10px;color:#f59e0b;">🚧 bloqueada${blockedActs.length>1?'s':''}</span>` : ''}
+              ${todayActs.length ? `<span style="font-size:10px;color:var(--accent2);">📅 ${todayActs.length} hoje</span>` : ''}
+              ${acts.length===0 ? `<span style="font-size:10px;color:var(--muted);">Sem atividades ativas</span>` : ''}
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;font-size:10px;color:var(--muted);">
+            <div>${person.role||''}</div>
+            <div style="margin-top:2px;">${acts.length} ativ. ativas</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── KPI bar ──────────────────────────────────────────────
+  const allActs   = state.activities;
+  const activeProjs = state.projects.filter(p=>p.status!==STATUS.DONE&&p.status!=='encerrado');
+  const totalActs = allActs.filter(a=>a.status!==STATUS.DONE).length;
+  const lateActs  = allActs.filter(a=>isLate(a)).length;
+  const blockedActs = allActs.filter(a=>a.status===STATUS.BLOCKED).length;
+  const pendingApprovals = allActs.filter(a=>a.approvalStatus==='pending').length;
+  const critRisksTotal = (state.risks||[]).filter(r=>r.status!=='encerrado'&&riskScore(r.probResidual||r.prob,r.magResidual||r.mag)>=17).length;
+
+  const kpisHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;">
+      ${[
+        { label:'Projetos Ativos', value: activeProjs.length, color:'var(--accent2)', sub:'em execução' },
+        { label:'Atividades Abertas', value: totalActs, color:'var(--text)', sub:'pendentes' },
+        { label:'Atrasadas', value: lateActs, color: lateActs>0?'#ef4444':'#22c55e', sub:'requerem atenção', alert: lateActs>0 },
+        { label:'Bloqueadas', value: blockedActs, color: blockedActs>0?'#f59e0b':'#22c55e', sub:'com impedimento', alert: blockedActs>0 },
+        { label:'Aprovações', value: pendingApprovals, color: pendingApprovals>0?'var(--accent)':'#22c55e', sub:'aguardando', click:"navigate('approvals')" },
+        { label:'Riscos Críticos', value: critRisksTotal, color: critRisksTotal>0?'#ef4444':'#22c55e', sub:'score ≥ 17', click:"navigate('risks')" },
+      ].map(k=>`
+        <div class="stat" onclick="${k.click||''}" style="cursor:${k.click?'pointer':'default'};
+          ${k.alert?'border-color:'+k.color+';background:'+k.color+'08;':''}">
+          <div class="stat-label">${k.label}</div>
+          <div class="stat-value" style="color:${k.color};">${k.value}</div>
+          <div class="stat-sub">${k.sub}</div>
+        </div>`).join('')}
+    </div>`;
+
+  // ── Time-based panels (ontem / semana) ───────────────────
+  function buildYesterdayHTML() {
+    const executed = allActs.filter(a => {
+      // Concluded yesterday OR updated yesterday
+      const r = actDateRange(a);
+      return r.end === yestStr || a.updatedAt?.slice(0,10) === yestStr;
+    });
+    if (!executed.length) return '<div style="color:var(--muted);font-size:13px;padding:16px;">Nenhuma atividade executada ou encerrada ontem.</div>';
+    return executed.map(a => {
+      const persons = actPersonIds(a).map(id=>state.team.find(p=>p.id===id)).filter(Boolean);
+      const del  = a.deliveryId ? state.deliveries.find(d=>d.id===a.deliveryId) : null;
+      const pkg  = a.packageId  ? (state.packages||[]).find(p=>p.id===a.packageId) : null;
+      const del2 = pkg ? state.deliveries.find(d=>d.id===pkg.deliveryId) : null;
+      const proj = state.projects.find(p=>p.id===(del||del2)?.projectId);
+      const prog = a.progress||0;
+      const effSt = isLate(a)&&a.status!==STATUS.DONE?'atrasado':(a.status||'nao_iniciado');
+      return `
+        <div onclick="openProgress(${a.id})"
+          style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;
+            padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.12s;"
+          onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">
+          <div style="min-width:0;">
+            <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(a.name)}</div>
+            <div style="display:flex;gap:8px;margin-top:3px;flex-wrap:wrap;">
+              ${proj?`<span style="font-size:10px;color:var(--accent2);">${esc(proj.name.slice(0,22))}</span>`:''}
+              ${(del||del2)?`<span style="font-size:10px;color:var(--muted);">· ${esc((del||del2).name.slice(0,22))}</span>`:''}
+              <span style="font-size:10px;color:var(--muted);">· ${persons.map(p=>p.name.split(' ')[0]).join(', ')||'—'}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+              <div style="flex:1;height:3px;background:var(--surface3);border-radius:2px;max-width:100px;overflow:hidden;">
+                <div style="height:100%;width:${prog}%;background:${prog===100?'#22c55e':prog>50?'var(--accent)':'#f59e0b'};border-radius:2px;"></div>
+              </div>
+              <span style="font-size:10px;color:var(--muted);">${prog}%</span>
+            </div>
+          </div>
+          ${getStatusBadge(effSt)}
+          <button onclick="event.stopPropagation();openEditActivity(${a.id})"
+            style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 4px;">✎</button>
+        </div>`;
+    }).join('');
+  }
+
+  function buildWeekHTML() {
+    const weekActs = allActs.filter(a => {
+      const r = actDateRange(a);
+      if (!r.start && !r.end) return false;
+      const s = r.start||r.end, e = r.end||r.start;
+      return s <= sunStr && e >= monStr;
+    }).sort((a,b) => {
+      const o={atrasado:0,bloqueado:1,em_andamento:2,nao_iniciado:3,concluido:4};
+      const sa=isLate(a)&&a.status!==STATUS.DONE?'atrasado':(a.status||'nao_iniciado');
+      const sb=isLate(b)&&b.status!==STATUS.DONE?'atrasado':(b.status||'nao_iniciado');
+      return (o[sa]??5)-(o[sb]??5);
+    });
+
+    if (!weekActs.length) return '<div style="color:var(--muted);font-size:13px;padding:16px;">Nenhuma atividade prevista para esta semana.</div>';
+
+    // Group by project
+    const byProj = {};
+    weekActs.forEach(a => {
+      const del  = a.deliveryId ? state.deliveries.find(d=>d.id===a.deliveryId) : null;
+      const pkg  = a.packageId  ? (state.packages||[]).find(p=>p.id===a.packageId) : null;
+      const del2 = pkg ? state.deliveries.find(d=>d.id===pkg.deliveryId) : null;
+      const proj = state.projects.find(p=>p.id===(del||del2)?.projectId);
+      const key  = proj?.id || 'sem_projeto';
+      const name = proj?.name || 'Sem projeto';
+      if (!byProj[key]) byProj[key] = { name, projId: proj?.id, acts: [] };
+      byProj[key].acts.push({ a, del: del||del2 });
+    });
+
+    return Object.values(byProj).map(group => `
+      <div style="border-bottom:2px solid var(--border);">
+        <div style="padding:10px 16px 6px;background:var(--surface2);display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:12px;font-weight:700;color:var(--accent2);cursor:pointer;"
+            onclick="navigate('project_detail',${group.projId})">${esc(group.name)}</span>
+          <span style="font-size:10px;color:var(--muted);">${group.acts.length} atividade${group.acts.length>1?'s':''}</span>
+        </div>
+        ${group.acts.map(({ a, del }) => {
+          const persons = actPersonIds(a).map(id=>state.team.find(p=>p.id===id)).filter(Boolean);
+          const prog = a.progress||0;
+          const effSt = isLate(a)&&a.status!==STATUS.DONE?'atrasado':(a.status||'nao_iniciado');
+          const r = actDateRange(a);
+          const endColor = r.end < todayStr && a.status!==STATUS.DONE ? '#ef4444' : 'var(--muted)';
+          return `
+            <div onclick="openProgress(${a.id})"
+              style="display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;
+                padding:8px 16px 8px 28px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.12s;"
+              onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">
+              <div style="min-width:0;">
+                <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(a.name)}</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;">
+                  ${del?`<span style="font-size:10px;color:var(--muted);">${esc(del.name.slice(0,20))}</span>`:''}
+                  <span style="font-size:10px;color:var(--muted);">· ${persons.map(p=>p.name.split(' ')[0]).join(', ')||'—'}</span>
+                  <span style="font-size:10px;color:${endColor};">📅 ${fmtDate(r.end)}</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                <div style="width:50px;height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;">
+                  <div style="height:100%;width:${prog}%;background:${prog===100?'#22c55e':prog>50?'var(--accent)':'#f59e0b'};border-radius:2px;"></div>
+                </div>
+                <span style="font-size:10px;color:var(--muted);">${prog}%</span>
+              </div>
+              ${getStatusBadge(effSt)}
+              <button onclick="event.stopPropagation();openEditActivity(${a.id})"
+                style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:12px;padding:2px 4px;">✎</button>
+            </div>`;
+        }).join('')}
+      </div>`).join('');
+  }
+
+  // ── Assemble page ────────────────────────────────────────
+  const activeTab = window._mgmtTab || (isMonday ? 'semana' : 'hoje');
+
+  document.getElementById('page-content').innerHTML = `
+    ${kpisHTML}
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+
+      <!-- Projects semaphore -->
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div class="card-header" style="padding:14px 16px;border-bottom:1px solid var(--border);">
+          <div class="card-title">🚦 Saúde dos Projetos</div>
+          <div style="display:flex;gap:12px;font-size:10px;color:var(--muted);">
+            <span><span style="color:#ef4444;">●</span> Crítico</span>
+            <span><span style="color:#f59e0b;">●</span> Atenção</span>
+            <span><span style="color:#22c55e;">●</span> No prazo</span>
+          </div>
+        </div>
+        <div style="max-height:320px;overflow-y:auto;">${buildProjectsHTML()}</div>
+      </div>
+
+      <!-- Team workload -->
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div class="card-header" style="padding:14px 16px;border-bottom:1px solid var(--border);">
+          <div class="card-title">◎ Carga da Equipe</div>
+          <div style="font-size:10px;color:var(--muted);">horas alocadas · check-in · impedimentos</div>
+        </div>
+        <div style="max-height:320px;overflow-y:auto;">${buildTeamHTML()}</div>
+      </div>
+    </div>
+
+    <!-- Time panel: ontem / semana -->
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;
+        padding:14px 16px;border-bottom:1px solid var(--border);">
+        <div class="card-title" id="mgmt-panel-title">
+          ${activeTab==='hoje'
+            ? `📋 Atividades Executadas — Ontem (${yesterday.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'short'})})`
+            : `📆 Atividades da Semana — ${monday.toLocaleDateString('pt-BR',{day:'numeric',month:'short'})} a ${sunday.toLocaleDateString('pt-BR',{day:'numeric',month:'short'})}`}
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button onclick="mgmtSetTab('hoje')"
+            style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer;
+              background:${activeTab==='hoje'?'var(--accent)':'transparent'};
+              color:${activeTab==='hoje'?'#fff':'var(--muted)'};">
+            📋 Ontem
+          </button>
+          <button onclick="mgmtSetTab('semana')"
+            style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer;
+              background:${activeTab==='semana'?'var(--accent)':'transparent'};
+              color:${activeTab==='semana'?'#fff':'var(--muted)'};">
+            📆 Esta Semana
+          </button>
+        </div>
+      </div>
+      <div style="max-height:480px;overflow-y:auto;" id="mgmt-time-panel">
+        ${activeTab==='hoje' ? buildYesterdayHTML() : buildWeekHTML()}
+      </div>
+    </div>
+  `;
+
+  // Highlight active topbar tab
+  setTimeout(() => {
+    const t1 = document.getElementById('mgmt-tab-hoje');
+    const t2 = document.getElementById('mgmt-tab-semana');
+    if (t1) t1.style.fontWeight = activeTab==='hoje' ? '700' : '400';
+    if (t2) t2.style.fontWeight = activeTab==='semana' ? '700' : '400';
+  }, 0);
+}
+
+function mgmtSetTab(tab) {
+  window._mgmtTab = tab;
+  renderManagementDashboard();
 }
 
 function renderDashboard() {
