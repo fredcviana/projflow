@@ -539,6 +539,9 @@ window._wallSignIn = function() {
     <div class="nav-item active" onclick="navigate('dashboard')">
       <span class="nav-icon">◈</span><span>Dashboard</span>
     </div>
+    <div class="nav-item" id="nav-mgmt" onclick="navigate('mgmt')" style="display:none;">
+      <span class="nav-icon">🎯</span><span>Gerencial</span>
+    </div>
     <div class="nav-item" onclick="navigate('projects')">
       <span class="nav-icon">⬡</span><span>Projetos</span>
     </div>
@@ -2339,6 +2342,10 @@ function _updateNavVisibility() {
 
   // Always visible for all logged-in users: Dashboard, Projetos, Atividades, Minha Visão
   // (these are always in the DOM without display:none)
+
+  // Dashboard Gerencial — somente Gerente
+  const navMgmt = document.getElementById('nav-mgmt');
+  if (navMgmt) navMgmt.style.display = isGerente ? '' : 'none';
 
   // Aprovações: Gerente e Líder visualizam; Analista não
   const navApprovals = document.getElementById('nav-approvals');
