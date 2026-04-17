@@ -5077,7 +5077,6 @@ function renderActivitiesDashboard() {
   const fProject   = document.getElementById('act-filter-project')?.value  || '';
   const fPerson    = document.getElementById('act-filter-person')?.value   || '';
   const fStatus    = document.getElementById('act-filter-status')?.value   || '';
-  const fDateType  = document.getElementById('act-filter-date-type')?.value || 'end';
   const fDateFrom  = document.getElementById('act-filter-date-from')?.value || '';
   const fDateTo    = document.getElementById('act-filter-date-to')?.value   || '';
 
@@ -5099,18 +5098,14 @@ function renderActivitiesDashboard() {
       <option value="bloqueado"    ${fStatus==='bloqueado'?'selected':''}>Bloqueado</option>
     </select>
     <div style="width:1px;height:24px;background:var(--border);margin:0 4px;"></div>
-    <select class="form-control" id="act-filter-date-type" onchange="renderActivitiesDashboard()" style="width:110px; font-size:12px; padding:6px 8px;">
-      <option value="end"   ${fDateType==='end'  ?'selected':''}>Término</option>
-      <option value="start" ${fDateType==='start'?'selected':''}>Início</option>
-    </select>
     <input type="date" class="form-control" id="act-filter-date-from"
       value="${fDateFrom}" onchange="renderActivitiesDashboard()"
-      title="Data inicial do período"
+      title="Início do período"
       style="width:130px; font-size:12px; padding:6px 8px;" />
     <span style="font-size:12px; color:var(--muted); flex-shrink:0;">até</span>
     <input type="date" class="form-control" id="act-filter-date-to"
       value="${fDateTo}" onchange="renderActivitiesDashboard()"
-      title="Data final do período"
+      title="Fim do período"
       style="width:130px; font-size:12px; padding:6px 8px;" />
     ${(fDateFrom||fDateTo) ? '<button onclick="actClearDateFilter()" title="Limpar filtro de data" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:0 4px;">✕</button>' : ''}
   `;
@@ -5135,11 +5130,15 @@ function renderActivitiesDashboard() {
   if (fStatus)  acts = acts.filter(a => a.effStatus === fStatus);
   if (fDateFrom || fDateTo) {
     acts = acts.filter(a => {
-      const r    = actDateRange(a);
-      const date = fDateType === 'start' ? r.start : r.end;
-      if (!date) return false;
-      if (fDateFrom && date < fDateFrom) return false;
-      if (fDateTo   && date > fDateTo)   return false;
+      // Mostra atividades em aberto cujo período se sobrepõe ao intervalo selecionado
+      if (a.effStatus === 'concluido') return false; // exclui concluídas
+      const r = actDateRange(a);
+      const aStart = r.start || r.end;   // se só tem término, usa como início
+      const aEnd   = r.end   || r.start; // se só tem início, usa como fim
+      if (!aStart && !aEnd) return false;
+      // Sobreposição: a atividade começa antes do fim do filtro E termina após o início do filtro
+      if (fDateFrom && aEnd   && aEnd   < fDateFrom) return false;
+      if (fDateTo   && aStart && aStart > fDateTo)   return false;
       return true;
     });
   }
