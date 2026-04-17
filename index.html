@@ -4719,6 +4719,7 @@ document.addEventListener('dragend', () => {
 });
 
 function renderDeliveryCard(d, p) {
+  const canEdit = canEditProject(p?.id || d?.projectId);
   // All activities directly in this delivery (no package)
   const directActs = state.activities.filter(a => a.deliveryId === d.id && !a.packageId).sort((a,b) => (a.seqOrder??999) - (b.seqOrder??999));
   // Packages in this delivery
