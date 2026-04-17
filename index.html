@@ -4752,7 +4752,7 @@ function renderDeliveryCard(d, p) {
 
   // Packages
   pkgs.forEach(pkg => {
-    bodyHTML += renderPackageCard(pkg, d);
+    bodyHTML += renderPackageCard(pkg, d, canEdit);
   });
 
   if (!totalItems) {
@@ -4811,7 +4811,8 @@ function renderDeliveryCard(d, p) {
     </div>`;
 }
 
-function renderPackageCard(pkg, d) {
+function renderPackageCard(pkg, d, canEdit) {
+  canEdit = canEdit !== undefined ? canEdit : canEditProject(d?.projectId);
   const acts = state.activities.filter(a => a.packageId === pkg.id)
     .sort((a,b) => (a.seqOrder||0) - (b.seqOrder||0));
   const totalH = acts.reduce((s,a) => s+actTotalHours(a), 0);
