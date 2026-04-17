@@ -1840,6 +1840,12 @@ const STATUS = Object.freeze({
   BLOCKED     : 'bloqueado',
 });
 
+// Returns state.team sorted alphabetically by name — used in all selects
+function sortedTeam(pool) {
+  return [...(pool || state.team)].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity:'base' }));
+}
+
+
 /** User profiles */
 const PROFILE = Object.freeze({
   MANAGER : 'gerente',
@@ -4935,7 +4941,7 @@ function renderActivitiesDashboard() {
     </select>
     <select class="form-control" id="act-filter-person" onchange="renderActivitiesDashboard()" style="width:160px; font-size:12px; padding:6px 10px;">
       <option value="">Todas as pessoas</option>
-      ${state.team.map(p=>`<option value="${p.id}" ${String(p.id)===fPerson?'selected':''}>${esc(p.name)}</option>`).join('')}
+      ${sortedTeam().map(p=>`<option value="${p.id}" ${String(p.id)===fPerson?'selected':''}>${esc(p.name)}</option>`).join('')}
     </select>
     <select class="form-control" id="act-filter-status" onchange="renderActivitiesDashboard()" style="width:150px; font-size:12px; padding:6px 10px;">
       <option value="">Todos os status</option>
@@ -5380,7 +5386,7 @@ function renderMyView() {
       <div style="font-size:13px; color:var(--muted);">Visualizando:</div>
       <select class="form-control" id="myview-person" style="width:220px;" onchange="setMyPerson(this.value)">
         <option value="">— Selecione uma pessoa —</option>
-        ${state.team.map(p => `<option value="${p.id}" ${String(p.id)===savedPerson?'selected':''}>${esc(p.name)}</option>`).join('')}
+        ${sortedTeam().map(p => `<option value="${p.id}" ${String(p.id)===savedPerson?'selected':''}>${esc(p.name)}</option>`).join('')}
       </select>
       ${sbUser && !hasCheckedInToday() ? `
       <button class="btn btn-ghost btn-sm" style="color:var(--amber); border-color:rgba(251,191,36,0.4);" onclick="openCheckinModal()">
@@ -6973,7 +6979,7 @@ function openEditPackage(id) {
 function populatePersonSelectPkg(selectedId) {
   const sel = document.getElementById('pkg-person');
   sel.innerHTML = '<option value="">— Nenhum responsável —</option>' +
-    state.team.map(p => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+    sortedTeam().map(p => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
 }
 
 function savePackage() {
@@ -7084,7 +7090,7 @@ function renderAllocationList() {
 
   // Filter people by project team if defined
   const projectTeam = _getActivityModalProjectTeam();
-  const teamOptions = projectTeam.length ? projectTeam : state.team;
+  const teamOptions = sortedTeam(projectTeam.length ? projectTeam : state.team);
   const isFiltered  = projectTeam.length > 0;
 
   if (!_editingAllocations.length) {
@@ -9837,7 +9843,7 @@ function openNewFact() {
     state.projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
   const ownerSel = document.getElementById('fact-owner');
   ownerSel.innerHTML = '<option value="">— Selecionar pessoa —</option>' +
-    state.team.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    sortedTeam().map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
 
   openModal('modal-fact');
 }
@@ -9884,7 +9890,7 @@ function openEditFact(id) {
     state.projects.map(p => `<option value="${p.id}" ${p.id===f.projectId?'selected':''}>${esc(p.name)}</option>`).join('');
   const ownerSel = document.getElementById('fact-owner');
   ownerSel.innerHTML = '<option value="">— Selecionar pessoa —</option>' +
-    state.team.map(p => `<option value="${p.id}" ${p.id===f.ownerId?'selected':''}>${esc(p.name)}</option>`).join('');
+    sortedTeam().map(p => `<option value="${p.id}" ${p.id===f.ownerId?'selected':''}>${esc(p.name)}</option>`).join('');
 
   openModal('modal-fact');
 }
@@ -9922,7 +9928,7 @@ function renderFactActionList() {
         <select onchange="_factActions[${i}].who=this.options[this.selectedIndex].text"
           style="width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:12px;padding:6px 8px;font-family:var(--font);">
           <option value="">—</option>
-          ${state.team.map(p => `<option value="${p.id}" ${a.who===p.name?'selected':''}>${esc(p.name)}</option>`).join('')}
+          ${sortedTeam().map(p => `<option value="${p.id}" ${a.who===p.name?'selected':''}>${esc(p.name)}</option>`).join('')}
         </select>
       </div>
       <div>
@@ -10776,7 +10782,7 @@ function renderProjectCronograma(p) {
   const kindBg    = { delivery:'rgba(99,102,241,0.06)', package:'rgba(45,212,191,0.05)', activity:'transparent' };
 
   // Build team options for activity rows
-  const teamOpts = state.team.map(t =>
+  const teamOpts = sortedTeam().map(t =>
     `<option value="${t.id}">${esc(t.name.split(' ').slice(0,2).join(' '))}</option>`
   ).join('');
 
@@ -12614,7 +12620,7 @@ function _populateRiskForm(r, projectId) {
   const catSel=document.getElementById('rk-category');
   catSel.innerHTML=(state.riskCategories||[]).map(c=>`<option value="${esc(c)}" ${r?.category===c?'selected':''}>${esc(c)}</option>`).join('');
   const ownerSel=document.getElementById('rk-owner');
-  ownerSel.innerHTML=`<option value="">— Nenhum —</option>`+state.team.map(p=>`<option value="${p.id}" ${r?.ownerId===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+  ownerSel.innerHTML=`<option value="">— Nenhum —</option>`+sortedTeam().map(p=>`<option value="${p.id}" ${r?.ownerId===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
   // Delivery selector — show deliveries of the project
   const pId = projectId || r?.projectId || null;
   const delSel = document.getElementById('rk-delivery');
@@ -12812,7 +12818,7 @@ function _populateRiskEventForm(e,riskId) {
   document.getElementById('rke-mag').value      =e?.mag||3;
   _updateRiskEventScore();
   const ownerSel=document.getElementById('rke-owner');
-  ownerSel.innerHTML=`<option value="">— Nenhum —</option>`+state.team.map(p=>`<option value="${p.id}" ${e?.ownerId===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+  ownerSel.innerHTML=`<option value="">— Nenhum —</option>`+sortedTeam().map(p=>`<option value="${p.id}" ${e?.ownerId===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
   _riskEventWhys=e?.whys?.length?deepClone(e.whys):[{question:'Por quê o evento ocorreu?',answer:''},{question:'Por quê isso aconteceu?',answer:''},{question:'Por quê isso ocorreu?',answer:''},{question:'Por quê isso se deu?',answer:''},{question:'Por quê isso é assim?',answer:''}];
   _renderRiskEventWhys();
   _riskEventActions=e?.actions?deepClone(e.actions):[];
@@ -12870,8 +12876,8 @@ function _renderRiskActions() {
   const projId = _riskCurrentProjectId;
   const projAlloc = projId ? (state.projects.find(p=>p.id===projId)?.teamAlloc||[]) : [];
   const teamOptions = projAlloc.length
-    ? projAlloc.map(al => state.team.find(t=>t.id===al.personId)).filter(Boolean)
-    : state.team;
+    ? sortedTeam(projAlloc.map(al => state.team.find(t=>t.id===al.personId)).filter(Boolean))
+    : sortedTeam();
   const teamOpts = `<option value="">— Responsável —</option>` +
     teamOptions.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
   el.innerHTML = _riskActions.map((a, i) => `
