@@ -4718,309 +4718,389 @@ document.addEventListener('dragend', () => {
   });
 });
 
+
+// ── Status helpers ─────────────────────────────────────────
+function _deliveryStatusDot(status, isLate) {
+  if (isLate)              return '#ef4444';
+  if (status === 'concluido') return '#22c55e';
+  if (status === 'bloqueado') return '#f59e0b';
+  if (status === 'em_andamento') return '#1B6B7B';
+  return '#9ca3af';
+}
+
+// ── Rebuild renderDeliveryCard ─────────────────────────────
 function renderDeliveryCard(d, p) {
-  const canEdit = canEditProject(p?.id || d?.projectId);
-  // All activities directly in this delivery (no package)
-  const directActs = state.activities.filter(a => a.deliveryId === d.id && !a.packageId).sort((a,b) => (a.seqOrder??999) - (b.seqOrder??999));
-  // Packages in this delivery
-  const pkgs = (state.packages || []).filter(pkg => pkg.deliveryId === d.id);
-  // All activities (direct + in packages) for totals
-  const pkgIds = pkgs.map(pkg => pkg.id);
-  const allActs = state.activities.filter(a => a.deliveryId === d.id || pkgIds.includes(a.packageId));
-  // Deduplicate — activities can reference deliveryId OR packageId
+  const canEdit   = canEditProject(p?.id || d?.projectId);
+  const directActs = state.activities
+    .filter(a => a.deliveryId === d.id && !a.packageId)
+    .sort((a,b) => (a.seqOrder??999)-(b.seqOrder??999));
+  const pkgs = (state.packages||[])
+    .filter(pk => pk.deliveryId === d.id)
+    .sort((a,b) => (a.seqOrder??999)-(b.seqOrder??999));
+  const pkgIds     = pkgs.map(pk => pk.id);
   const allActsUniq = state.activities.filter(a =>
-    a.deliveryId === d.id || pkgs.some(pkg => pkg.id === a.packageId)
+    a.deliveryId === d.id || pkgs.some(pk => pk.id === a.packageId)
   );
+  const totalH = allActsUniq.reduce((s,a)=>s+actTotalHours(a),0);
+  const doneH  = allActsUniq.filter(a=>a.status===STATUS.DONE).reduce((s,a)=>s+actTotalHours(a),0);
+  const pct    = totalH > 0 ? Math.round(doneH/totalH*100) : 0;
+  const lates  = allActsUniq.filter(a=>isLate(a)).length;
+  const blocked = allActsUniq.filter(a=>a.status===STATUS.BLOCKED).length;
+  const allDone = allActsUniq.length > 0 && allActsUniq.every(a=>a.status===STATUS.DONE);
+  const hasLate = lates > 0;
+  const delivStatus = allDone ? 'concluido' : blocked > 0 ? 'bloqueado' : hasLate ? 'atrasado' : 'em_andamento';
+  const dotColor = _deliveryStatusDot(delivStatus, hasLate && !allDone);
 
-  const totalH = allActsUniq.reduce((s,a) => s+actTotalHours(a), 0);
-  const doneH  = allActsUniq.filter(a => a.status === STATUS.DONE).reduce((s,a) => s+actTotalHours(a), 0);
-  const pct    = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
-  const lates  = allActsUniq.filter(a => isLate(a)).length;
+  // Collapsed by default for done deliveries
+  const isExpanded = !allDone;
+
+  // Responsible people (first 3 unique)
+  const people = [...new Set(allActsUniq.flatMap(a =>
+    (a.allocations||[]).map(al=>al.personId).filter(Boolean)
+  ))].slice(0,3).map(id=>state.team.find(t=>t.id===id)).filter(Boolean);
+
+  // Body
   const totalItems = pkgs.length + directActs.length;
-
-  // Build body content
   let bodyHTML = '';
 
-  // Direct activities (no package)
   if (directActs.length) {
-    bodyHTML += `
-      <div class="activity-header">
-        <div>Atividade</div><div>Responsável</div><div>Horas</div>
-        <div>Início</div><div>Término</div><div>Progresso</div><div>Status</div>
-      </div>
-      ${directActs.map(a => renderActivityRow(a)).join('')}`;
+    bodyHTML += `<div style="border-top:0.5px solid var(--border);">
+      ${_actColHeader(52)}
+      ${directActs.map((a,i)=>_actRow(a,i,directActs,52,canEdit)).join('')}
+    </div>`;
   }
-
-  // Packages
-  pkgs.forEach(pkg => {
-    bodyHTML += renderPackageCard(pkg, d, canEdit);
+  pkgs.forEach(pk => {
+    bodyHTML += renderPackageCard(pk, d, canEdit);
   });
 
   if (!totalItems) {
-    bodyHTML = `<div style="color:var(--muted); font-size:13px; padding:12px 0;">
+    bodyHTML = `<div style="padding:14px 16px;font-size:13px;color:var(--muted);">
       Nenhum item.
-      ${canDo('create_activity') ? `<a onclick="openNewActivity(${d.id})" style="color:var(--accent2); cursor:pointer;">+ Atividade direta</a>
+      ${canEdit ? `<a onclick="openNewActivity(${d.id})" style="color:var(--accent2);cursor:pointer;">+ Atividade</a>
       &nbsp;·&nbsp;
-      <a onclick="openNewPackage(${d.id})" style="color:var(--teal); cursor:pointer;">+ Pacote de atividades</a>` : ''}
+      <a onclick="openNewPackage(${d.id})" style="color:var(--teal);cursor:pointer;">+ Pacote</a>` : ''}
     </div>`;
   }
 
+  // Status badge
+  const statusColors = { concluido:'#22c55e', atrasado:'#ef4444', bloqueado:'#f59e0b', em_andamento:'#1B6B7B' };
+  const statusLabels = { concluido:'Concluído', atrasado:'Atrasado', bloqueado:'Bloqueado', em_andamento:'Em andamento' };
+  const sColor = statusColors[delivStatus] || '#9ca3af';
+  const sLabel = statusLabels[delivStatus] || delivStatus;
+
+  const barColor = pct===100 ? '#22c55e' : pct>50 ? '#1B6B7B' : pct>0 ? '#f59e0b' : '#9ca3af';
+
   return `
     <div class="delivery-card" id="dc-${d.id}"
-      draggable="${canEdit ? 'true' : 'false'}"
+      draggable="${canEdit?'true':'false'}"
       ondragstart="dcDragStart(event,'delivery',${d.id})"
       ondragover="dcDragOver(event,'delivery',${d.id},this)"
       ondragleave="dcDragLeave(this)"
-      ondrop="dcDrop(event,'delivery',${d.id})">
-      <div class="delivery-header" onclick="toggleDelivery(${d.id})" style="position:relative;">
-        ${canEdit ? `<div
-          draggable="false"
-          onmousedown="event.stopPropagation()"
-          style="display:flex;flex-direction:column;gap:3px;padding:4px 6px 4px 0;cursor:grab;flex-shrink:0;opacity:0.3;transition:opacity 0.15s;"
-          onmouseenter="this.style.opacity='0.9'" onmouseleave="this.style.opacity='0.3'"
+      ondrop="dcDrop(event,'delivery',${d.id})"
+      style="background:var(--surface);border:0.5px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;">
+
+      <!-- Header -->
+      <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;"
+        onclick="toggleDelivery(${d.id})">
+
+        <!-- Drag handle -->
+        ${canEdit ? `<div onmousedown="event.stopPropagation()"
+          style="display:flex;flex-direction:column;gap:3px;cursor:grab;opacity:0.25;flex-shrink:0;transition:opacity 0.15s;"
+          onmouseenter="this.style.opacity='0.9'" onmouseleave="this.style.opacity='0.25'"
           title="Arrastar para reordenar">
-          <span style="display:block;width:14px;height:1.5px;background:currentColor;border-radius:1px;"></span>
-          <span style="display:block;width:14px;height:1.5px;background:currentColor;border-radius:1px;"></span>
-          <span style="display:block;width:14px;height:1.5px;background:currentColor;border-radius:1px;"></span>
+          <span style="display:block;width:13px;height:1.5px;background:currentColor;border-radius:1px;"></span>
+          <span style="display:block;width:13px;height:1.5px;background:currentColor;border-radius:1px;"></span>
+          <span style="display:block;width:13px;height:1.5px;background:currentColor;border-radius:1px;"></span>
         </div>` : ''}
-        <span class="expand-icon" id="exp-${d.id}">▶</span>
-        <div style="flex:1; min-width:0;">
-          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <span style="font-size:14px; font-weight:500;">${esc(d.name)}</span>
-            ${lates > 0 ? `<span class="badge badge-red">${lates} atrasada${lates>1?'s':''}</span>` : ''}
-            ${pkgs.length > 0 ? `<span class="badge badge-purple">${pkgs.length} pacote${pkgs.length>1?'s':''}</span>` : ''}
+
+        <!-- Status dot -->
+        <div style="width:9px;height:9px;border-radius:50%;background:${dotColor};flex-shrink:0;
+          box-shadow:0 0 0 2px ${dotColor}22;"></div>
+
+        <!-- Info -->
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+            <span style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${esc(d.name)}
+            </span>
+            <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;
+              background:${sColor}18;color:${sColor};">${sLabel}</span>
+            <span style="font-size:10px;color:var(--muted);">
+              ${allActsUniq.length} ativ.
+            </span>
+            ${lates ? `<span style="font-size:10px;color:#ef4444;font-weight:600;">⚠ ${lates} atrasada${lates>1?'s':''}</span>` : ''}
+            ${d.checklist?.length ? `<span onclick="event.stopPropagation();openChecklist('delivery',${d.id})" style="cursor:pointer;">${checklistBadge(d)}</span>` : ''}
           </div>
-          <div style="font-size:11px; color:var(--muted); margin-top:3px;">
-            ${fmtDate(d.start)} → ${fmtDate(d.end)} · ${allActsUniq.length} atividade${allActsUniq.length!==1?'s':''} · ${totalH}h · ${pct}% concluído
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <!-- Progress bar -->
+            <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:80px;max-width:180px;">
+              <div style="flex:1;height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;">
+                <div style="height:100%;width:${pct}%;background:${barColor};border-radius:2px;transition:width 0.3s;"></div>
+              </div>
+              <span style="font-size:10px;color:var(--muted);min-width:28px;">${pct}%</span>
+            </div>
+            <!-- Meta -->
+            <span style="font-size:10px;color:var(--muted);">${fmtDate(d.start)} → ${fmtDate(d.end)}</span>
+            <!-- People avatars -->
+            <div style="display:flex;gap:3px;align-items:center;">
+              ${people.map((t,i)=>{
+                const col=getPersonColor(state.team.indexOf(t));
+                return `<div title="${esc(t.name)}" class="avatar avatar-sm"
+                  style="background:${col}22;color:${col};font-size:9px;width:20px;height:20px;">
+                  ${initials(t.name)}</div>`;
+              }).join('')}
+              ${people.length===0?'<span style="font-size:10px;color:var(--muted);">—</span>':''}
+            </div>
           </div>
         </div>
-        <div style="display:flex; gap:6px;" onclick="event.stopPropagation()">
-          ${canDo('create_activity') ? `
-          <button class="btn btn-ghost btn-sm" style="color:var(--accent2);" onclick="openLibraryPicker(${d.id})">▣ Biblioteca</button>
-          <button class="btn btn-ghost btn-sm" onclick="openNewPackage(${d.id})">+ Pacote</button>
-          <button class="btn btn-ghost btn-sm" onclick="openNewActivity(${d.id})">+ Atividade</button>
-          <button class="btn btn-ghost btn-sm" style="color:var(--teal);" onclick="openConvertDelivery(${d.id})" title="Converter em Pacote de Atividades">⇄ Converter</button>
 
-          <button class="btn btn-ghost btn-sm" onclick="openEditDelivery(${d.id})">✎</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteDelivery(${d.id})">✕</button>
+        <!-- Actions -->
+        <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;" onclick="event.stopPropagation()">
+          ${canEdit ? `
+            ${d.checklist?.length===undefined||d.checklist?.length===0 ? `<button onclick="openChecklist('delivery',${d.id})" title="Checklist"
+              style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:3px 5px;border-radius:4px;"
+              onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='none'">☑</button>` : ''}
+            <button onclick="openLibraryPicker(${d.id})" title="Biblioteca"
+              style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:11px;padding:3px 6px;border-radius:4px;"
+              onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='none'">▣</button>
+            <button onclick="openNewPackage(${d.id})" title="Novo pacote"
+              style="background:none;border:none;cursor:pointer;color:var(--teal);font-size:13px;padding:3px 5px;border-radius:4px;font-weight:600;"
+              onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='none'">+▣</button>
+            <button onclick="openNewActivity(${d.id})" title="Nova atividade"
+              style="background:none;border:none;cursor:pointer;color:var(--accent2);font-size:13px;padding:3px 5px;border-radius:4px;font-weight:600;"
+              onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='none'">+</button>
+            <button onclick="openEditDelivery(${d.id})" title="Editar"
+              style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:3px 5px;border-radius:4px;"
+              onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='none'">✎</button>
+            <button onclick="deleteDelivery(${d.id})" title="Excluir"
+              style="background:none;border:none;cursor:pointer;color:var(--red);font-size:13px;padding:3px 5px;border-radius:4px;"
+              onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='none'">✕</button>
           ` : ''}
+          <span id="exp-${d.id}" style="color:var(--muted);font-size:12px;padding:3px 4px;transition:transform 0.2s;
+            transform:${allDone?'rotate(-90deg)':'rotate(0deg)'};">▾</span>
         </div>
       </div>
-      <div class="delivery-body" id="body-${d.id}">
+
+      <!-- Body -->
+      <div class="delivery-body" id="body-${d.id}" style="${allDone?'display:none;':''}">
         ${bodyHTML}
       </div>
     </div>`;
 }
 
+// ── Column header for activity table ──────────────────────
+function _actColHeader(indent) {
+  return `<div style="display:grid;grid-template-columns:20px 1fr 110px 80px 70px 60px;gap:8px;
+    padding:5px 14px 5px ${indent}px;background:var(--surface2);
+    border-bottom:0.5px solid var(--border);">
+    <div></div>
+    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);">Atividade</div>
+    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);">Responsável</div>
+    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);">Término</div>
+    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);">Prog.</div>
+    <div></div>
+  </div>`;
+}
+
+// ── Unified activity row ────────────────────────────────────
+function _actRow(a, idx, allActs, indent, canEdit) {
+  const allocs = a.allocations?.length ? a.allocations
+    : (a.personId ? [{personId:a.personId,hours:a.hours||0}] : []);
+  const range   = actDateRange(a);
+  const prog    = a.progress || 0;
+  const late    = isLate(a);
+  const effSt   = late && a.status !== STATUS.DONE ? 'atrasado' : (a.status||'nao_iniciado');
+  const dotColors = {nao_iniciado:'#9ca3af',em_andamento:'#1B6B7B',concluido:'#22c55e',atrasado:'#ef4444',bloqueado:'#f59e0b'};
+  const dotColor  = dotColors[effSt] || '#9ca3af';
+  const barColor  = prog===100?'#22c55e':prog>50?'#1B6B7B':prog>0?'#f59e0b':'#9ca3af';
+  const endColor  = late && a.status!==STATUS.DONE ? '#ef4444' : 'var(--muted)';
+
+  const mainPerson = allocs[0]?.personId ? state.team.find(t=>t.id===allocs[0].personId) : null;
+  const col = mainPerson ? getPersonColor(state.team.indexOf(mainPerson)) : '#9ca3af';
+  const extraCount = allocs.length > 1 ? allocs.length - 1 : 0;
+
+  return `<div id="dc-act-${a.id}"
+    draggable="${canEdit?'true':'false'}"
+    ondragstart="dcDragStart(event,'activity',${a.id})"
+    ondragover="dcDragOver(event,'activity',${a.id},this)"
+    ondragleave="dcDragLeave(this)"
+    ondrop="dcDrop(event,'activity',${a.id})"
+    style="display:grid;grid-template-columns:20px 1fr 110px 80px 70px 60px;gap:8px;
+      align-items:center;padding:8px 14px 8px ${indent}px;
+      border-bottom:0.5px solid var(--border);transition:background 0.1s;"
+    onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">
+
+    <!-- Drag handle -->
+    ${canEdit ? `<div onmousedown="event.stopPropagation()"
+      style="display:flex;flex-direction:column;gap:2px;cursor:grab;opacity:0.2;transition:opacity 0.15s;align-self:center;"
+      onmouseenter="this.style.opacity='0.9'" onmouseleave="this.style.opacity='0.2'"
+      title="Arrastar para reordenar">
+      <span style="display:block;width:10px;height:1.5px;background:currentColor;border-radius:1px;"></span>
+      <span style="display:block;width:10px;height:1.5px;background:currentColor;border-radius:1px;"></span>
+      <span style="display:block;width:10px;height:1.5px;background:currentColor;border-radius:1px;"></span>
+    </div>` : '<div></div>'}
+
+    <!-- Name -->
+    <div style="min-width:0;">
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div style="width:6px;height:6px;border-radius:50%;background:${dotColor};flex-shrink:0;"></div>
+        ${a.isRisk ? `<span title="Ação de risco" style="width:14px;height:14px;border-radius:50%;
+          background:rgba(249,115,22,0.15);color:#f97316;font-size:8px;font-weight:700;
+          display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">⚠</span>` : ''}
+        <span style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          ${esc(a.name)}
+        </span>
+        ${a.checklist?.length ? `<span onclick="openChecklist('activity',${a.id})" style="cursor:pointer;flex-shrink:0;">${checklistBadge(a)}</span>` : ''}
+      </div>
+      ${a.note ? `<div style="font-size:10px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(a.note)}</div>` : ''}
+    </div>
+
+    <!-- Person -->
+    <div style="display:flex;align-items:center;gap:4px;">
+      ${mainPerson ? `
+        <div class="avatar avatar-sm" style="background:${col}22;color:${col};font-size:9px;width:20px;height:20px;flex-shrink:0;">
+          ${initials(mainPerson.name)}</div>
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          ${mainPerson.name.split(' ')[0]}
+        </span>
+        ${extraCount ? `<span style="font-size:10px;color:var(--muted);">+${extraCount}</span>` : ''}
+      ` : `<span style="font-size:11px;color:var(--muted);">—</span>`}
+    </div>
+
+    <!-- End date -->
+    <div style="font-size:11px;color:${endColor};font-weight:${late&&a.status!==STATUS.DONE?'600':'400'};">
+      ${fmtDate(range.end)}
+    </div>
+
+    <!-- Progress -->
+    <div style="display:flex;align-items:center;gap:4px;">
+      <div style="flex:1;height:3px;background:var(--surface3);border-radius:2px;overflow:hidden;min-width:30px;">
+        <div style="height:100%;width:${prog}%;background:${barColor};border-radius:2px;"></div>
+      </div>
+      <span style="font-size:10px;color:var(--muted);min-width:24px;">${prog}%</span>
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex;gap:2px;justify-content:flex-end;align-items:center;">
+      <button onclick="openProgress(${a.id})" title="Atualizar andamento"
+        style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:12px;padding:3px 4px;border-radius:4px;"
+        onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='none'">↻</button>
+      ${canEdit ? `<button onclick="openEditActivity(${a.id})" title="Editar"
+        style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:12px;padding:3px 4px;border-radius:4px;"
+        onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='none'">✎</button>` : ''}
+      ${canDo('delete_activity') ? `<button onclick="deleteActivity(${a.id})" title="Excluir"
+        style="background:none;border:none;cursor:pointer;color:var(--red);font-size:12px;padding:3px 4px;border-radius:4px;"
+        onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='none'">✕</button>` : ''}
+    </div>
+  </div>`;
+}
+
+// ── Rebuild renderPackageCard ──────────────────────────────
 function renderPackageCard(pkg, d, canEdit) {
   canEdit = canEdit !== undefined ? canEdit : canEditProject(d?.projectId);
-  const acts = state.activities.filter(a => a.packageId === pkg.id)
-    .sort((a,b) => (a.seqOrder||0) - (b.seqOrder||0));
-  const totalH = acts.reduce((s,a) => s+actTotalHours(a), 0);
-  const doneH  = acts.filter(a => a.status === STATUS.DONE).reduce((s,a) => s+actTotalHours(a), 0);
-  const pct    = totalH > 0 ? Math.round(doneH / totalH * 100) : 0;
-  const lates  = acts.filter(a => isLate(a)).length;
+  const acts = state.activities
+    .filter(a => a.packageId === pkg.id)
+    .sort((a,b) => (a.seqOrder??999)-(b.seqOrder??999));
+  const totalH = acts.reduce((s,a)=>s+actTotalHours(a),0);
+  const doneH  = acts.filter(a=>a.status===STATUS.DONE).reduce((s,a)=>s+actTotalHours(a),0);
+  const pct    = totalH > 0 ? Math.round(doneH/totalH*100) : 0;
+  const lates  = acts.filter(a=>isLate(a)).length;
+  const allDone = acts.length>0 && acts.every(a=>a.status===STATUS.DONE);
+  const hasLate = lates>0 && !allDone;
+  const hasBlocked = acts.some(a=>a.status===STATUS.BLOCKED);
+  const pkgStatus = allDone?'concluido':hasBlocked?'bloqueado':hasLate?'atrasado':'em_andamento';
+  const sColors={concluido:'#22c55e',atrasado:'#ef4444',bloqueado:'#f59e0b',em_andamento:'#1B6B7B'};
+  const sColor = sColors[pkgStatus]||'#9ca3af';
+  const barColor = pct===100?'#22c55e':pct>50?'#1B6B7B':pct>0?'#f59e0b':'#9ca3af';
 
-  // Consolidated status: blocked if any activity is blocked
-  const hasBlocked  = acts.some(a => a.status === STATUS.BLOCKED);
-  const hasLate     = acts.some(a => isLate(a) && a.status !== STATUS.DONE);
-  const allDone     = acts.length > 0 && acts.every(a => a.status === STATUS.DONE);
-  const pkgStatus   = allDone ? 'concluido' : hasBlocked ? 'bloqueado' : hasLate ? 'atrasado' : 'em_andamento';
-
-  const personIdx = state.team.findIndex(p => p.id === pkg.personId);
-  const person    = state.team.find(p => p.id === pkg.personId);
-  const col       = personIdx >= 0 ? getPersonColor(personIdx) : '#7a7a8a';
-
-  let actsHTML = '';
-  if (acts.length) {
-    actsHTML = `
-      <div style="padding:12px 16px;">
-        <div class="activity-header" style="grid-template-columns:24px 2fr 1fr 80px 110px 110px 120px 100px;">
-          <div>#</div><div>Atividade</div><div>Responsável</div><div>Horas</div>
-          <div>Início</div><div>Término</div><div>Progresso</div><div>Status</div>
-        </div>
-        ${acts.map((a, idx) => renderActivityRowInPackage(a, idx, acts)).join('')}
-        ${canDo('create_activity') ? `<div style="margin-top:10px;">
-          <a onclick="openNewActivityInPackage(${pkg.id}, ${d.id})" style="font-size:12px; color:var(--teal); cursor:pointer;">+ Adicionar atividade ao pacote</a>
+  const actsHTML = acts.length
+    ? `<div>
+        ${_actColHeader(68)}
+        ${acts.map((a,i)=>_actRow(a,i,acts,68,canEdit)).join('')}
+        ${canEdit ? `<div style="padding:7px 14px 7px 68px;border-top:0.5px solid var(--border);">
+          <a onclick="openNewActivityInPackage(${pkg.id},${d.id})"
+            style="font-size:11px;color:var(--teal);cursor:pointer;">+ Atividade no pacote</a>
         </div>` : ''}
+      </div>`
+    : `<div style="padding:10px 14px 10px 68px;font-size:12px;color:var(--muted);">
+        Nenhuma atividade.
+        ${canEdit ? `<a onclick="openNewActivityInPackage(${pkg.id},${d.id})"
+          style="color:var(--teal);cursor:pointer;">+ Adicionar</a>` : ''}
       </div>`;
-  } else {
-    actsHTML = `<div style="padding:12px 16px; color:var(--muted); font-size:13px;">
-      Nenhuma atividade.
-      ${canDo('create_activity') ? `<a onclick="openNewActivityInPackage(${pkg.id}, ${d.id})" style="color:var(--teal); cursor:pointer;">+ Adicionar</a>` : ''}
-    </div>`;
-  }
 
   return `
-    <div id="dc-pkg-${pkg.id}" style="margin:8px 0; border:1px solid rgba(45,212,191,0.2); border-radius:8px; overflow:hidden;"
-      draggable="${canEdit ? 'true' : 'false'}"
+    <div id="dc-pkg-${pkg.id}"
+      draggable="${canEdit?'true':'false'}"
       ondragstart="dcDragStart(event,'package',${pkg.id})"
       ondragover="dcDragOver(event,'package',${pkg.id},this)"
       ondragleave="dcDragLeave(this)"
-      ondrop="dcDrop(event,'package',${pkg.id})">
-      <div style="background:rgba(45,212,191,0.06); padding:12px 16px; display:flex; align-items:center; gap:10px; cursor:pointer;" onclick="toggleDelivery('pkg-${pkg.id}')">
-        ${canEdit ? `<div
-          onmousedown="event.stopPropagation()"
-          style="display:flex;flex-direction:column;gap:3px;padding:4px 6px 4px 0;cursor:grab;flex-shrink:0;opacity:0.3;transition:opacity 0.15s;"
-          onmouseenter="this.style.opacity='0.9'" onmouseleave="this.style.opacity='0.3'"
-          title="Arrastar para reordenar">
-          <span style="display:block;width:12px;height:1.5px;background:var(--teal);border-radius:1px;"></span>
-          <span style="display:block;width:12px;height:1.5px;background:var(--teal);border-radius:1px;"></span>
-          <span style="display:block;width:12px;height:1.5px;background:var(--teal);border-radius:1px;"></span>
-        </div>` : ''}
-        <span class="expand-icon" id="exp-pkg-${pkg.id}">▶</span>
-        <div style="width:6px; height:6px; border-radius:50%; background:var(--teal); flex-shrink:0;"></div>
-        <div style="flex:1; min-width:0;">
-          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <span style="font-size:13px; font-weight:500; color:var(--teal);">${esc(pkg.name)}</span>
-            <span class="badge" style="background:rgba(45,212,191,0.12); color:var(--teal); font-size:10px;">Pacote</span>
-            ${getStatusBadge(pkgStatus)}
-            ${lates > 0 ? `<span class="badge badge-red">${lates} atrasada${lates>1?'s':''}</span>` : ''}
-          </div>
-          <div style="font-size:11px; color:var(--muted); margin-top:2px; display:flex; gap:12px; flex-wrap:wrap;">
-            ${person ? `<span>${initials(person.name)} ${person.name.split(' ')[0]}</span>` : ''}
-            <span>${fmtDate(pkg.start)} → ${fmtDate(pkg.end)}</span>
-            <span>${acts.length} atividade${acts.length!==1?'s':''}</span>
-            <span>${totalH}h · ${pct}%</span>
-          </div>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;" onclick="event.stopPropagation()">
-          <div style="min-width:80px;">
-            <div class="progress-wrap"><div class="progress-bar ${pct===100?'green':pct>60?'':pct>30?'amber':'red'}" style="width:${pct}%; background:var(--teal);"></div></div>
-          </div>
+      ondrop="dcDrop(event,'package',${pkg.id})"
+      style="border-top:0.5px solid var(--border);">
 
-          ${canDo('edit_package') ? `<button class="btn btn-ghost btn-sm" style="font-size:11px; padding:3px 8px;" onclick="openEditPackage(${pkg.id})">✎</button>` : ''}
-          ${canDo('delete_package') ? `<button class="btn btn-danger btn-sm" style="font-size:11px; padding:3px 7px;" onclick="deletePackage(${pkg.id})">✕</button>` : ''}
+      <!-- Package header -->
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px 8px 36px;
+        background:var(--surface2);cursor:pointer;transition:background 0.1s;"
+        onclick="toggleDelivery('pkg-${pkg.id}')"
+        onmouseenter="this.style.background='var(--surface3)'" onmouseleave="this.style.background='var(--surface2)'">
+
+        <!-- Drag handle -->
+        ${canEdit ? `<div onmousedown="event.stopPropagation()"
+          style="display:flex;flex-direction:column;gap:2px;cursor:grab;opacity:0.25;flex-shrink:0;transition:opacity 0.15s;"
+          onmouseenter="this.style.opacity='0.9'" onmouseleave="this.style.opacity='0.25'"
+          title="Arrastar para reordenar">
+          <span style="display:block;width:10px;height:1.5px;background:var(--teal);border-radius:1px;"></span>
+          <span style="display:block;width:10px;height:1.5px;background:var(--teal);border-radius:1px;"></span>
+          <span style="display:block;width:10px;height:1.5px;background:var(--teal);border-radius:1px;"></span>
+        </div>` : ''}
+
+        <span style="font-size:10px;color:var(--teal);flex-shrink:0;">▣</span>
+        <span style="font-size:12px;font-weight:500;color:var(--teal);flex:1;
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(pkg.name)}</span>
+
+        <span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;
+          background:${sColor}18;color:${sColor};">${{concluido:'Concluído',atrasado:'Atrasado',bloqueado:'Bloqueado',em_andamento:'Em andamento'}[pkgStatus]}</span>
+        <span style="font-size:10px;color:var(--muted);">${acts.length} ativ.</span>
+
+        <!-- Mini progress bar -->
+        <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;width:70px;">
+          <div style="flex:1;height:3px;background:var(--surface3);border-radius:2px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${barColor};border-radius:2px;"></div>
+          </div>
+          <span style="font-size:10px;color:var(--muted);">${pct}%</span>
+        </div>
+
+        ${lates ? `<span style="font-size:10px;color:#ef4444;">⚠${lates}</span>` : ''}
+        ${pkg.checklist?.length ? `<span onclick="event.stopPropagation();openChecklist('package',${pkg.id})"
+          style="cursor:pointer;">${checklistBadge(pkg)}</span>` : ''}
+
+        <!-- Actions -->
+        <div style="display:flex;gap:2px;" onclick="event.stopPropagation()">
+          ${canEdit ? `
+            <button onclick="openEditPackage(${pkg.id})" title="Editar pacote"
+              style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:12px;padding:2px 4px;border-radius:3px;"
+              onmouseenter="this.style.background='var(--border)'" onmouseleave="this.style.background='none'">✎</button>
+            <button onclick="deletePackage(${pkg.id})" title="Excluir pacote"
+              style="background:none;border:none;cursor:pointer;color:var(--red);font-size:12px;padding:2px 4px;border-radius:3px;"
+              onmouseenter="this.style.background='var(--border)'" onmouseleave="this.style.background='none'">✕</button>
+          ` : ''}
+          <span id="exp-pkg-${pkg.id}" style="color:var(--muted);font-size:11px;padding:2px 3px;transition:transform 0.2s;">▾</span>
         </div>
       </div>
+
+      <!-- Package body -->
       <div class="delivery-body" id="body-pkg-${pkg.id}">
         ${actsHTML}
       </div>
     </div>`;
 }
 
+// ── Keep old functions as aliases for backward compat ──────
 function renderActivityRowInPackage(a, idx, allActs) {
-  const allocs = a.allocations && a.allocations.length ? a.allocations
-    : (a.personId ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }] : []);
-  const totalH = actTotalHours(a);
-  const range  = actDateRange(a);
-  const prog   = a.progress || 0;
-  const late   = isLate(a);
-  const statusBadge = late && a.status !== STATUS.DONE ? `<span class="badge badge-red">Atrasado</span>` : getStatusBadge(a.status);
-  const prevDone = idx === 0 || allActs[idx-1].status === STATUS.DONE;
-  const seqColor = idx === 0 ? 'var(--muted)' : prevDone ? 'var(--green)' : 'var(--amber)';
-
-  const personHTML = allocs.length === 0
-    ? '<span style="color:var(--muted);">—</span>'
-    : allocs.map(al => {
-        const p = state.team.find(x => x.id === al.personId);
-        const pIdx = state.team.findIndex(x => x.id === al.personId);
-        const col = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
-        return p ? `<div style="display:inline-flex;align-items:center;gap:4px;margin-right:4px;">
-          <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(p.name)}</div>
-          <span style="font-size:11px;">${p.name.split(' ')[0]}</span>
-          <span style="font-size:10px;color:var(--muted);font-family:var(--mono);">${al.hours||0}h</span>
-          ${getPersonTeamBadge(p.id)}
-        </div>` : '';
-      }).join('');
-
-  return `
-    <div class="activity-row" id="dc-act-${a.id}"
-      draggable="${canDo('edit_activity') ? 'true' : 'false'}"
-      ondragstart="dcDragStart(event,'activity',${a.id})"
-      ondragover="dcDragOver(event,'activity',${a.id},this)"
-      ondragleave="dcDragLeave(this)"
-      ondrop="dcDrop(event,'activity',${a.id})"
-      style="grid-template-columns:16px 24px 2fr 1fr 80px 110px 110px 120px 100px;">
-      ${canDo('edit_activity') ? `<div
-        onmousedown="event.stopPropagation()"
-        style="display:flex;flex-direction:column;gap:2px;padding:2px 3px;cursor:grab;opacity:0.25;transition:opacity 0.15s;align-self:center;"
-        onmouseenter="this.style.opacity='0.9'" onmouseleave="this.style.opacity='0.25'"
-        title="Arrastar para reordenar">
-        <span style="display:block;width:10px;height:1.5px;background:currentColor;border-radius:1px;"></span>
-        <span style="display:block;width:10px;height:1.5px;background:currentColor;border-radius:1px;"></span>
-        <span style="display:block;width:10px;height:1.5px;background:currentColor;border-radius:1px;"></span>
-      </div>` : '<div></div>'}
-      <div style="font-size:11px; font-weight:600; color:${seqColor}; text-align:center;">${idx+1}</div>
-      <div style="min-width:0;">
-        <div style="display:flex; align-items:center; gap:6px;">
-          ${idx > 0 ? `<span style="font-size:10px; color:var(--muted);">→</span>` : ''}
-          ${a.isRisk ? `<span title="Ação de risco${a.riskActionOf ? ': ' + a.riskActionOf : ''}" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:rgba(249,115,22,0.15);color:#f97316;font-size:9px;font-weight:700;flex-shrink:0;">⚠</span>` : ''}
-          <div style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.name)}</div>
-        </div>
-        ${a.note ? `<div style="font-size:11px; color:var(--muted);">${esc(a.note)}</div>` : ''}
-      </div>
-      <div><div style="display:flex;flex-wrap:wrap;">${personHTML}</div></div>
-      <div style="font-family:var(--mono);font-size:12px;">${totalH||'—'}h</div>
-      <div style="font-size:12px;color:var(--muted);">${fmtDate(range.start)}</div>
-      <div style="font-size:12px;color:var(--muted);">${fmtDate(range.end)}</div>
-      <div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <div class="progress-wrap" style="flex:1;width:60px;"><div class="progress-bar ${prog===100?'green':prog>60?'':prog>30?'amber':'red'}" style="width:${prog}%;"></div></div>
-          <span style="font-size:11px;color:var(--muted);min-width:28px;">${prog}%</span>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
-        ${statusBadge}
-        ${a.checklist?.length ? `<span onclick="openChecklist('activity',${a.id})" style="cursor:pointer;">${checklistBadge(a)}</span>` : ''}
-
-        <button class="btn btn-ghost btn-sm" style="padding:3px 7px;font-size:11px;" onclick="openProgress(${a.id})">↻</button>
-        ${canDo('edit_activity') ? `<button class="btn btn-ghost btn-sm" style="padding:3px 6px;font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>` : ''}
-        ${canDo('delete_activity') ? `<button class="btn btn-danger btn-sm" style="padding:3px 6px;font-size:11px;" onclick="deleteActivity(${a.id})">✕</button>` : ''}
-      </div>
-    </div>`;
+  return _actRow(a, idx, allActs, 68, canDo('edit_activity'));
 }
 
 function renderActivityRow(a) {
-  const allocs = a.allocations && a.allocations.length ? a.allocations
-    : (a.personId ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }] : []);
-  const totalH = actTotalHours(a);
-  const prog   = a.progress || 0;
-  const late   = isLate(a);
-  const range  = actDateRange(a);
-  const statusBadge = late && a.status !== STATUS.DONE ? `<span class="badge badge-red">Atrasado</span>` : getStatusBadge(a.status);
-
-  // Build compact person list
-  const personHTML = allocs.length === 0
-    ? '<span style="color:var(--muted);">—</span>'
-    : allocs.map(al => {
-        const p    = state.team.find(x => x.id === al.personId);
-        const pIdx = state.team.findIndex(x => x.id === al.personId);
-        const col  = pIdx >= 0 ? getPersonColor(pIdx) : '#7a7a8a';
-        return p ? `<div class="tooltip-wrap" style="display:inline-flex; align-items:center; gap:4px; margin-right:4px; margin-bottom:2px;">
-          <div class="avatar avatar-sm" style="background:${col}22;color:${col};">${initials(p.name)}</div>
-          <span style="font-size:11px; white-space:nowrap;">${p.name.split(' ')[0]}</span>
-          <span style="font-size:10px; color:var(--muted); font-family:var(--mono);">${al.hours||0}h</span>
-          ${getPersonTeamBadge(p.id)}
-          <div class="tooltip">${esc(p.name)}<br>${fmtDate(al.start)||'—'} → ${fmtDate(al.end)||'—'}<br>${al.hours||0}h</div>
-        </div>` : '';
-      }).join('');
-
-  return `
-    <div class="activity-row">
-      <div style="min-width:0;">
-        <div style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.name)}</div>
-        ${a.note ? `<div style="font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(a.note)}</div>` : ''}
-      </div>
-      <div style="min-width:0;"><div style="display:flex; flex-wrap:wrap;">${personHTML}</div></div>
-      <div style="font-family:var(--mono); font-size:12px;">${totalH||'—'}h</div>
-      <div style="font-size:12px; color:var(--muted);">${fmtDate(range.start)}</div>
-      <div style="font-size:12px; color:var(--muted);">${fmtDate(range.end)}</div>
-      <div>
-        <div style="display:flex; align-items:center; gap:6px;">
-          <div class="progress-wrap" style="flex:1; width:60px;">
-            <div class="progress-bar ${prog===100?'green':prog>60?'':prog>30?'amber':'red'}" style="width:${prog}%;"></div>
-          </div>
-          <span style="font-size:11px; color:var(--muted); min-width:28px;">${prog}%</span>
-        </div>
-      </div>
-      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-        ${statusBadge}
-        <button class="btn btn-ghost btn-sm" style="padding:3px 8px; font-size:11px;" onclick="openProgress(${a.id})">↻</button>
-        ${canDo('edit_activity') ? `<button class="btn btn-ghost btn-sm" style="padding:3px 7px; font-size:11px;" onclick="openEditActivity(${a.id})">✎</button>` : ''}
-        ${canDo('delete_activity') ? `<button class="btn btn-danger btn-sm" style="padding:3px 7px; font-size:11px;" onclick="deleteActivity(${a.id})">✕</button>` : ''}
-      </div>
-    </div>`;
+  return _actRow(a, 0, [a], 52, canDo('edit_activity'));
 }
 
 function toggleDelivery(id) {
