@@ -8525,56 +8525,103 @@ async function sbSignOut() {
 
 // ── Recovery banner — shown when local has unsaved changes ──
 function _showRecoveryBanner(local, remote, newActs, newDels) {
-  // Remove any existing banner
   const existing = document.getElementById('recovery-banner');
   if (existing) existing.remove();
 
+  // Calculate exactly what's new in local vs remote
+  const remoteActIds = new Set((remote.activities||[]).map(a => a.id));
+  const remoteDelIds = new Set((remote.deliveries||[]).map(d => d.id));
+  const remotePkgIds = new Set((remote.packages||[]).map(p => p.id));
+
+  const onlyLocalActs = (local.activities||[]).filter(a => !remoteActIds.has(a.id));
+  const onlyLocalDels = (local.deliveries||[]).filter(d => !remoteDelIds.has(d.id));
+  const onlyLocalPkgs = (local.packages||[]).filter(p => !remotePkgIds.has(p.id));
+
+  const total = onlyLocalActs.length + onlyLocalDels.length + onlyLocalPkgs.length;
+
   const parts = [];
-  if (newActs > 0) parts.push(`${newActs} atividade${newActs>1?'s':''} nova${newActs>1?'s':''}`);
-  if (newDels > 0) parts.push(`${newDels} entrega${newDels>1?'s':''} nova${newDels>1?'s':''}`);
-  const desc = parts.length ? parts.join(' e ') : 'alterações';
+  if (onlyLocalActs.length) parts.push(`${onlyLocalActs.length} atividade${onlyLocalActs.length>1?'s':''}`);
+  if (onlyLocalDels.length) parts.push(`${onlyLocalDels.length} entrega${onlyLocalDels.length>1?'s':''}`);
+  if (onlyLocalPkgs.length) parts.push(`${onlyLocalPkgs.length} pacote${onlyLocalPkgs.length>1?'s':''}`);
+  const desc = parts.length ? parts.join(', ') : 'alterações';
+
+  // Also capture edited items (same ID, but local version is different)
+  const editedActs = (local.activities||[]).filter(a => {
+    if (!remoteActIds.has(a.id)) return false;
+    const r = (remote.activities||[]).find(x => x.id === a.id);
+    return r && (a.progress !== r.progress || a.status !== r.status || a.name !== r.name);
+  });
 
   const banner = document.createElement('div');
   banner.id = 'recovery-banner';
-  banner.style.cssText = `
-    position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
-    background: #1F3763; color: #fff;
-    padding: 12px 20px;
-    display: flex; align-items: center; gap: 14px;
-    font-family: var(--font, sans-serif); font-size: 13px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
-  `;
+  banner.style.cssText = [
+    'position:fixed;top:0;left:0;right:0;z-index:9999;',
+    'background:#1F3763;color:#fff;',
+    'padding:14px 20px;',
+    'display:flex;align-items:center;gap:14px;flex-wrap:wrap;',
+    'font-family:var(--font,sans-serif);font-size:13px;',
+    'box-shadow:0 2px 16px rgba(0,0,0,0.4);',
+  ].join('');
+
   banner.innerHTML = `
-    <span style="font-size:18px;">💾</span>
-    <span style="flex:1;">
-      Encontramos <strong>${desc}</strong> salvas localmente que não foram sincronizadas com o servidor.
-      Deseja recuperar essas alterações?
-    </span>
-    <button id="recovery-keep" style="
-      background:#1B6B7B; color:#fff; border:none; border-radius:6px;
-      padding:7px 16px; font-size:12px; cursor:pointer; font-weight:600;">
-      ✓ Sim, recuperar
+    <span style="font-size:20px;flex-shrink:0;">💾</span>
+    <div style="flex:1;min-width:200px;">
+      <div style="font-weight:600;margin-bottom:2px;">Alterações locais encontradas</div>
+      <div style="font-size:12px;opacity:0.85;">
+        ${total > 0
+          ? `${desc} criada${total>1?'s':''} localmente ainda não sincronizada${total>1?'s':''} com o servidor.`
+          : 'Você tem edições locais não sincronizadas.'}
+        ${editedActs.length > 0 ? ` + ${editedActs.length} atividade${editedActs.length>1?'s':''} editada${editedActs.length>1?'s':''}.` : ''}
+      </div>
+    </div>
+    <button id="recovery-merge" style="
+      background:#1B6B7B;color:#fff;border:none;border-radius:6px;
+      padding:8px 18px;font-size:12px;cursor:pointer;font-weight:600;flex-shrink:0;">
+      ✓ Recuperar e mesclar
     </button>
     <button id="recovery-discard" style="
-      background:rgba(255,255,255,0.15); color:#fff; border:1px solid rgba(255,255,255,0.3);
-      border-radius:6px; padding:7px 16px; font-size:12px; cursor:pointer;">
-      Não, usar versão do servidor
+      background:rgba(255,255,255,0.12);color:#fff;
+      border:1px solid rgba(255,255,255,0.25);border-radius:6px;
+      padding:8px 14px;font-size:12px;cursor:pointer;flex-shrink:0;">
+      Descartar
     </button>
   `;
   document.body.prepend(banner);
 
-  // Keep local → sync to Supabase
-  document.getElementById('recovery-keep').onclick = async () => {
+  // MERGE: inject only the new local objects into the current server state
+  document.getElementById('recovery-merge').onclick = async () => {
     banner.remove();
-    state = local;
+    sbSetSyncLabel('Recuperando alterações…');
+
+    // Start from server state (preserves your edits today)
+    const merged = JSON.parse(JSON.stringify(remote));
+
+    // Inject objects that only exist locally
+    onlyLocalActs.forEach(a => merged.activities.push(a));
+    onlyLocalDels.forEach(d => merged.deliveries.push(d));
+    onlyLocalPkgs.forEach(p => { if (!merged.packages) merged.packages = []; merged.packages.push(p); });
+
+    // Apply local edits to existing activities (progress, status, note)
+    editedActs.forEach(localAct => {
+      const idx = merged.activities.findIndex(a => a.id === localAct.id);
+      if (idx >= 0) {
+        merged.activities[idx].progress = localAct.progress;
+        merged.activities[idx].status   = localAct.status;
+        merged.activities[idx].note     = localAct.note;
+      }
+    });
+
+    // Update nextId to highest of both
+    merged.nextId = Math.max(local.nextId || 0, remote.nextId || 0);
+
+    state = merged;
     localStorage.setItem('projflow_v2', JSON.stringify(state));
-    sbSetSyncLabel('Sincronizando alterações recuperadas…');
     await sbSaveData();
     render();
-    showToast('✓ Alterações recuperadas e sincronizadas!');
+    showToast(`✓ ${desc} recuperada${total>1?'s':''}! Dados mesclados com o servidor.`);
   };
 
-  // Discard local → load remote
+  // DISCARD: just load server state
   document.getElementById('recovery-discard').onclick = () => {
     banner.remove();
     _applyRemoteState(remote);
