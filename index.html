@@ -2209,15 +2209,16 @@ function loadState() {
  */
 function saveState() {
   localStorage.setItem('projflow_v2', JSON.stringify(state));
-  // Debounce Supabase sync — only admin writes main data
-  if (sb && sbUser && sbUser.email === ADMIN_EMAIL) {
-    clearTimeout(sbSyncTimer);
-    sbSyncTimer = setTimeout(sbSaveData, 1500);
-  }
-  // Team members save their activity updates
-  if (sb && sbUser && sbUser.email !== ADMIN_EMAIL) {
-    clearTimeout(sbSyncTimer);
-    sbSyncTimer = setTimeout(() => {}, 0); // updates handled per-activity
+  // All users with edit rights sync to Supabase
+  // Gerente and Líder write full state; Analista writes only activity updates
+  if (sb && sbUser) {
+    const profile = currentProfile();
+    const canWrite = profile === 'gerente' || profile === 'lider' || sbUser.email === ADMIN_EMAIL;
+    if (canWrite) {
+      clearTimeout(sbSyncTimer);
+      sbSyncTimer = setTimeout(sbSaveData, 1500);
+    }
+    // Analista: activity-level updates handled separately via sbSaveActivityUpdate
   }
 }
 
@@ -8522,6 +8523,90 @@ async function sbSignOut() {
   _showLoginWall();
 }
 
+async 
+// ── Recovery banner — shown when local has unsaved changes ──
+function _showRecoveryBanner(local, remote, newActs, newDels) {
+  // Remove any existing banner
+  const existing = document.getElementById('recovery-banner');
+  if (existing) existing.remove();
+
+  const parts = [];
+  if (newActs > 0) parts.push(`${newActs} atividade${newActs>1?'s':''} nova${newActs>1?'s':''}`);
+  if (newDels > 0) parts.push(`${newDels} entrega${newDels>1?'s':''} nova${newDels>1?'s':''}`);
+  const desc = parts.length ? parts.join(' e ') : 'alterações';
+
+  const banner = document.createElement('div');
+  banner.id = 'recovery-banner';
+  banner.style.cssText = `
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+    background: #1F3763; color: #fff;
+    padding: 12px 20px;
+    display: flex; align-items: center; gap: 14px;
+    font-family: var(--font, sans-serif); font-size: 13px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  `;
+  banner.innerHTML = `
+    <span style="font-size:18px;">💾</span>
+    <span style="flex:1;">
+      Encontramos <strong>${desc}</strong> salvas localmente que não foram sincronizadas com o servidor.
+      Deseja recuperar essas alterações?
+    </span>
+    <button id="recovery-keep" style="
+      background:#1B6B7B; color:#fff; border:none; border-radius:6px;
+      padding:7px 16px; font-size:12px; cursor:pointer; font-weight:600;">
+      ✓ Sim, recuperar
+    </button>
+    <button id="recovery-discard" style="
+      background:rgba(255,255,255,0.15); color:#fff; border:1px solid rgba(255,255,255,0.3);
+      border-radius:6px; padding:7px 16px; font-size:12px; cursor:pointer;">
+      Não, usar versão do servidor
+    </button>
+  `;
+  document.body.prepend(banner);
+
+  // Keep local → sync to Supabase
+  document.getElementById('recovery-keep').onclick = async () => {
+    banner.remove();
+    state = local;
+    localStorage.setItem('projflow_v2', JSON.stringify(state));
+    sbSetSyncLabel('Sincronizando alterações recuperadas…');
+    await sbSaveData();
+    render();
+    showToast('✓ Alterações recuperadas e sincronizadas!');
+  };
+
+  // Discard local → load remote
+  document.getElementById('recovery-discard').onclick = () => {
+    banner.remove();
+    _applyRemoteState(remote);
+  };
+}
+
+function _applyRemoteState(remote) {
+  if (!remote.packages)          remote.packages          = [];
+  if (!remote.templates)         remote.templates         = [];
+  if (!remote.facts)             remote.facts             = [];
+  if (!remote.sprints)           remote.sprints           = [];
+  if (!remote.sprintActivities)  remote.sprintActivities  = {};
+  if (!remote.logbookEntries)    remote.logbookEntries    = [];
+  if (!remote.reports)           remote.reports           = {};
+  if (!remote.risks)             remote.risks             = [];
+  if (!remote.riskEvents)        remote.riskEvents        = [];
+  if (!remote.config)            remote.config            = {};
+  remote.activities = (remote.activities||[]).map(a => {
+    if (!a.allocations) {
+      a.allocations = a.personId
+        ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }]
+        : [];
+    }
+    return a;
+  });
+  state = remote;
+  localStorage.setItem('projflow_v2', JSON.stringify(state));
+  render();
+  sbSetSyncLabel('✓ Sincronizado');
+}
+
 async function sbLoadData() {
   try {
     const { data, error } = await sb
@@ -8534,33 +8619,33 @@ async function sbLoadData() {
     if (data && data.data) {
       const remote = data.data;
       sbDataId = data.id;
+      const remoteUpdatedAt = data.updated_at;
       const local = loadState();
-      if ((remote.nextId || 0) >= (local.nextId || 0)) {
-        // Run same migrations as loadState() to ensure allocations array exists
-        if (!remote.packages)         remote.packages         = [];
-        if (!remote.templates)        remote.templates        = [];
-        if (!remote.facts)            remote.facts            = [];
-        if (!remote.sprints)          remote.sprints          = [];
-        if (!remote.sprintActivities) remote.sprintActivities = {};
-        if (!remote.logbookEntries)   remote.logbookEntries   = [];
-        if (!remote.reports)          remote.reports          = {};
-        if (!remote.risks)            remote.risks            = [];
-        if (!remote.riskEvents)       remote.riskEvents       = [];
-        if (!remote.riskCategories)   remote.riskCategories   = remote.riskCategories || ['Operacional','Financeiro','Legal/Compliance','Reputacional','Ambiental','Estratégico','HSE','Técnico','Contratual'];
-        if (!remote.riskCriteria)     remote.riskCriteria     = remote.riskCriteria     || {};
-        if (!remote.riskMediaKeywords) remote.riskMediaKeywords = remote.riskMediaKeywords || ['Hidrobr'];
-        if (!remote.config)           remote.config           = {};
-        // Migrate old single-person activities to allocations array
-        remote.activities = (remote.activities || []).map(a => {
-          if (!a.allocations) {
-            a.allocations = a.personId
-              ? [{ personId: a.personId, hours: a.hours||0, start: a.start||'', end: a.end||'' }]
-              : [];
-          }
-          return a;
-        });
-        state = remote;
-        localStorage.setItem('projflow_v2', JSON.stringify(state));
+      // Use remote if it's newer than local OR if local has no changes beyond remote
+      // Key insight: if remote.nextId >= local.nextId, remote is ahead — use it
+      // If local.nextId > remote.nextId, user made local changes — keep local but still load remote structure
+      const localHasNewChanges = (local.nextId || 0) > (remote.nextId || 0);
+
+      // If user has unsaved local changes, offer to recover them
+      if (localHasNewChanges) {
+        const localActCount  = (local.activities||[]).length;
+        const remoteActCount = (remote.activities||[]).length;
+        const localDelCount  = (local.deliveries||[]).length;
+        const remoteDelCount = (remote.deliveries||[]).length;
+        const newActs = localActCount - remoteActCount;
+        const newDels = localDelCount - remoteDelCount;
+
+        // Show recovery banner — non-blocking, user decides
+        _showRecoveryBanner(local, remote, newActs, newDels);
+        // Keep local state for now — user will decide via banner
+        state = local;
+        render();
+        sbSetSyncLabel('⚠ Alterações locais encontradas');
+        return; // skip overwriting with remote until user decides
+      }
+
+      if (!localHasNewChanges) {
+        _applyRemoteState(remote);
       }
       // Apply only RECENT pending updates from projflow_updates
       // Only updates newer than the last full save — avoids reverting approved activities
@@ -8598,6 +8683,7 @@ async function sbLoadData() {
           }
         }
       } catch(e) { /* projflow_updates unavailable */ }
+      window._sbLastLoadedAt = data.updated_at || new Date().toISOString();
       render();
       sbSetSyncLabel('✓ Sincronizado');
     }
@@ -8611,17 +8697,51 @@ async function sbSaveData() {
   sbSetSyncLabel('Salvando…');
   try {
     if (sbDataId) {
-      await sb.from('projflow_data').update({ data: state, updated_at: new Date().toISOString() }).eq('id', sbDataId);
+      // Before writing, check if remote is newer than what we loaded
+      // This prevents overwriting changes made by another user simultaneously
+      const { data: current } = await sb
+        .from('projflow_data')
+        .select('updated_at, data')
+        .eq('id', sbDataId)
+        .single();
+
+      if (current && current.updated_at > (window._sbLastLoadedAt || '')) {
+        // Remote is newer — merge: take remote as base, apply our nextId if higher
+        const remote = current.data;
+        if ((state.nextId || 0) > (remote.nextId || 0)) {
+          // We have newer objects — merge them in
+          remote.nextId       = state.nextId;
+          remote.activities   = state.activities;
+          remote.deliveries   = state.deliveries;
+          remote.packages     = state.packages || remote.packages;
+          remote.projects     = state.projects;
+          remote.risks        = state.risks || remote.risks;
+          state = remote;
+          localStorage.setItem('projflow_v2', JSON.stringify(state));
+        } else {
+          // Remote is genuinely newer — use it
+          state = remote;
+          localStorage.setItem('projflow_v2', JSON.stringify(state));
+          render();
+          sbSetSyncLabel('✓ Atualizado por outro utilizador');
+          return;
+        }
+      }
+
+      await sb.from('projflow_data')
+        .update({ data: state, updated_at: new Date().toISOString() })
+        .eq('id', sbDataId);
     } else {
       const { data } = await sb.from('projflow_data').insert({ data: state }).select().single();
       if (data) sbDataId = data.id;
     }
+    window._sbLastLoadedAt = new Date().toISOString();
     const t = new Date();
     sbSetSyncLabel(`✓ Salvo às ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`);
-    // Auto-snapshot diário (silencioso, 1x por dia)
     _autoSnapshotIfNeeded();
   } catch(e) {
     sbSetSyncLabel('Erro ao salvar');
+    console.error('sbSaveData error:', e);
   }
 }
 
