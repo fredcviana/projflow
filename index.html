@@ -1845,6 +1845,27 @@ function sortedTeam(pool) {
   return [...(pool || state.team)].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity:'base' }));
 }
 
+// Enforce progress/status rules on an activity object:
+// 1. progress = 100 → status = concluido
+// 2. progress > 0 and status = nao_iniciado → status = em_andamento
+function _enforceProgressRules(a) {
+  if (!a) return;
+  const prog = parseInt(a.progress) || 0;
+  if (prog >= 100) {
+    a.progress = 100;
+    // Only auto-complete for gerente/lider — analista still needs approval
+    if (currentProfile() !== 'analista') {
+      a.status = STATUS.DONE;
+    } else {
+      // Analista at 100% → goes to in_progress waiting for approval
+      if (a.status === STATUS.NOT_STARTED) a.status = STATUS.IN_PROGRESS;
+    }
+  } else if (prog > 0 && a.status === STATUS.NOT_STARTED) {
+    a.status = STATUS.IN_PROGRESS;
+  }
+}
+
+
 
 /** User profiles */
 const PROFILE = Object.freeze({
@@ -7573,6 +7594,7 @@ function saveActivity() {
   if (editId) {
     const a = getActivity(editId);
     Object.assign(a, data);
+    _enforceProgressRules(a);
   } else {
     if (packageId) {
       const pkgActs = state.activities.filter(a => a.packageId === packageId);
@@ -7662,6 +7684,9 @@ function saveProgress() {
   a.progress = parseInt(document.getElementById('progress-slider').value);
   a.status   = document.getElementById('progress-status').value;
   a.note     = document.getElementById('progress-note').value;
+
+  // Enforce rules: 100% → concluido, >0% + não_iniciado → em_andamento
+  _enforceProgressRules(a);
 
   // Checklist warning — warn if trying to conclude with incomplete checklist
   if (a.status === STATUS.DONE && !isChecklistComplete(a)) {
@@ -8825,6 +8850,7 @@ function sbSubscribeRealtime() {
         act.progress = u.progress;
         act.status   = u.status;
         act.note     = u.note;
+        _enforceProgressRules(act);
         if (u.approval_status !== undefined && u.approval_status !== null) {
           act.approvalStatus = u.approval_status;
         }
@@ -11375,6 +11401,12 @@ function cronogramaSave(kind, id, field, value) {
   if (field === 'start')  { obj.start = value; }
   if (field === 'end')    { obj.end = value; }
   if (field === 'status') { obj.status = value; }
+  if (field === 'progress' && kind === 'activity') {
+    obj.progress = parseInt(value) || 0;
+    _enforceProgressRules(obj);
+    saveState();
+    return;
+  }
   if (field === 'hours' && kind === 'activity') {
     const h = parseFloat(value) || 0;
     obj.hours = h;
