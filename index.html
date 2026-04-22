@@ -8736,10 +8736,18 @@ async function sbLoadData() {
             const act = state.activities.find(a => a.id === u.activity_id);
             if (act) {
               act.progress = u.progress ?? act.progress;
-              act.status   = u.status   ?? act.status;
+              // Don't downgrade status if already approved/concluded
+              if (act.approvalStatus !== 'approved' || u.status !== 'nao_iniciado') {
+                act.status = u.status ?? act.status;
+              }
               act.note     = u.note     ?? act.note;
-              if (u.approval_status !== null && u.approval_status !== undefined)
-                act.approvalStatus = u.approval_status;
+              // Never revert an approved/revision decision with a pending update
+              if (u.approval_status !== null && u.approval_status !== undefined) {
+                const alreadyDecided = act.approvalStatus === 'approved' || act.approvalStatus === 'revision';
+                if (!alreadyDecided || u.approval_status === 'approved' || u.approval_status === 'revision') {
+                  act.approvalStatus = u.approval_status;
+                }
+              }
               if (u.approval_desc !== null && u.approval_desc !== undefined)
                 act.approvalDesc = u.approval_desc;
               if (u.approval_link !== null && u.approval_link !== undefined)
@@ -8848,8 +8856,18 @@ function sbSubscribeRealtime() {
       const act = state.activities.find(a => a.id === u.activity_id);
       if (act) {
         act.progress = u.progress;
-        act.status   = u.status;
+        // Don't revert a concluded/approved activity via realtime analista update
+        if (act.approvalStatus !== 'approved' || u.status !== 'nao_iniciado') {
+          act.status = u.status;
+        }
         act.note     = u.note;
+        // Protect approval decision from being overwritten by analista updates
+        if (u.approval_status !== null && u.approval_status !== undefined) {
+          const alreadyDecided = act.approvalStatus === 'approved' || act.approvalStatus === 'revision';
+          if (!alreadyDecided || u.approval_status === 'approved' || u.approval_status === 'revision') {
+            act.approvalStatus = u.approval_status;
+          }
+        }
         _enforceProgressRules(act);
         if (u.approval_status !== undefined && u.approval_status !== null) {
           act.approvalStatus = u.approval_status;
